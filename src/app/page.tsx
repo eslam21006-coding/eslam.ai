@@ -8,7 +8,7 @@ export default function HomePage() {
       <section className="w-full max-w-4xl rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] px-6 py-12 text-center shadow-[var(--shadow-soft)] sm:px-12 sm:py-16">
         <div className="mx-auto mb-7 h-px w-14 bg-[var(--gold)]" />
         <StatusPill>الهوية البصرية التأسيسية</StatusPill>
-        <p dir="ltr" className="mt-7 text-sm font-semibold tracking-[0.32em] text-[var(--gold)]">
+        <p lang="en" dir="ltr" className="mt-7 text-sm font-semibold tracking-[0.32em] text-[var(--gold)]">
           ESLAM.AI
         </p>
         <h1 className="mx-auto mt-4 max-w-2xl text-4xl font-semibold leading-tight tracking-tight sm:text-6xl">
