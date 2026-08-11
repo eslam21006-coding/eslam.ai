@@ -79,6 +79,7 @@ test("stream route holds the generation lease through final assistant persistenc
 
 test("streaming UI consumes fetch body, survives strict-mode effect replay, and refreshes persisted data", () => {
   const chat = readSource("src/features/conversations/conversation-chat.tsx");
+  const threadPage = readSource("src/app/app/chat/[conversationId]/page.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
   const button = readSource("src/features/conversations/message-submit-button.tsx");
 
@@ -88,8 +89,10 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(chat, /assistant: current\.assistant \+ delta/);
   assert.match(chat, /mountedRef\.current = true/);
   assert.match(chat, /abortRef\.current\?\.abort\(\)/);
-  assert.match(chat, /targetConversationId === conversationId/);
+  assert.match(chat, /targetConversationId !== conversationId \|\| clearResponseErrorOnSuccess/);
+  assert.match(chat, /router\.replace\(cleanConversationUrl/);
   assert.match(chat, /router\.refresh\(\)/);
+  assert.match(threadPage, /clearResponseErrorOnSuccess=\{responseFailed\}/);
   assert.match(composer, /disabled=\{streaming\}/);
   assert.match(composer, /useActionState/);
   assert.match(button, /streaming \|\| actionPending/);
