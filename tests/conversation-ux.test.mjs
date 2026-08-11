@@ -41,7 +41,8 @@ test("successful streaming keeps the optimistic turn visible until persisted pro
   assert.doesNotMatch(chat, /optimisticBaseMessageCountRef/);
 });
 
-test("composer supports chat keyboard semantics, auto-grow, and desktop focus recovery", () => {
+test("composer supports chat keyboard semantics, auto-grow, and focus continuity across new-thread navigation", () => {
+  const chat = readSource("src/features/conversations/conversation-chat.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
 
   assert.match(composer, /event\.key !== "Enter"/);
@@ -51,14 +52,22 @@ test("composer supports chat keyboard semantics, auto-grow, and desktop focus re
   assert.match(composer, /Math\.min\(textarea\.scrollHeight, 160\)/);
   assert.match(composer, /matchMedia\("\(pointer: fine\)"\)/);
   assert.match(composer, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(composer, /COMPOSER_FOCUS_STORAGE_KEY/);
+  assert.match(composer, /sessionStorage\.getItem\(COMPOSER_FOCUS_STORAGE_KEY\)/);
+  assert.match(composer, /sessionStorage\.removeItem\(COMPOSER_FOCUS_STORAGE_KEY\)/);
+  assert.match(chat, /rememberComposerFocus\(targetConversationId\)/);
+  assert.match(chat, /sessionStorage\.setItem\(COMPOSER_FOCUS_STORAGE_KEY, conversationId\)/);
   assert.match(composer, /Shift \+ Enter لسطر جديد/);
 });
 
-test("conversation history keeps the active thread visible and improves the empty state", () => {
+test("conversation history keeps the active thread visible on desktop and when the mobile dialog opens", () => {
   const shell = readSource("src/features/app-shell/app-shell.tsx");
 
   assert.match(shell, /activeConversationRef/);
   assert.match(shell, /scrollIntoView\(\{ block: "nearest" \}\)/);
+  assert.match(shell, /menu\.showModal\(\)/);
+  assert.match(shell, /requestAnimationFrame/);
+  assert.match(shell, /#conversations a\[aria-current=\\"page\\"\]/);
   assert.match(shell, /border-\[var\(--gold-muted\)\]/);
   assert.match(shell, /ابدأ أول محادثة/);
 });
