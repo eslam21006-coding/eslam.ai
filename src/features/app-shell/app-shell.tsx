@@ -5,16 +5,11 @@ import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import { logoutAction } from "@/features/auth/actions";
+import type { ConversationNavItem } from "@/features/conversations/contracts";
 
 const navigation = [
   { href: "/app/chat", label: "محادثة جديدة", icon: "chat" },
   { href: "/app/business", label: "الملف التجاري", icon: "business" },
-] as const;
-
-const recentConversations = [
-  "مراجعة أداء الـ Webinar",
-  "ارتفاع تكلفة الـ Meta Ads",
-  "تحسين عرض البرنامج",
 ] as const;
 
 function NavIcon({ name }: { name: "chat" | "business" }) {
@@ -35,7 +30,13 @@ function NavIcon({ name }: { name: "chat" | "business" }) {
   );
 }
 
-function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
+type SidebarContentProps = {
+  conversations: ConversationNavItem[];
+  conversationsLoadFailed: boolean;
+  onNavigate?: () => void;
+};
+
+function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: SidebarContentProps) {
   const pathname = usePathname();
 
   return (
@@ -71,22 +72,40 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         })}
       </nav>
 
-      <div id="conversations" className="min-h-0 flex-1 border-t border-[var(--border)] px-3 py-4">
+      <div id="conversations" className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)] px-3 py-4">
         <div className="flex items-center justify-between px-3">
           <p className="text-xs font-medium text-[var(--foreground-subtle)]">المحادثات السابقة</p>
-          <span aria-hidden="true" className="text-xs text-[var(--foreground-subtle)]">•••</span>
         </div>
         <div className="mt-2 grid gap-1">
-          {recentConversations.map((title) => (
-            <Link
-              key={title}
-              href="/app/chat"
-              onClick={onNavigate}
-              className="truncate rounded-[var(--radius-sm)] px-3 py-2.5 text-sm text-[var(--foreground-muted)] transition-colors hover:bg-white/[0.03] hover:text-[var(--foreground)]"
-            >
-              {title}
-            </Link>
-          ))}
+          {conversationsLoadFailed ? (
+            <p className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
+              تعذر تحميل المحادثات الآن.
+            </p>
+          ) : conversations.length === 0 ? (
+            <p className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
+              لا توجد محادثات محفوظة بعد.
+            </p>
+          ) : (
+            conversations.map((conversation) => {
+              const href = `/app/chat/${conversation.id}`;
+              const active = pathname === href;
+              return (
+                <Link
+                  key={conversation.id}
+                  href={href}
+                  onClick={onNavigate}
+                  aria-current={active ? "page" : undefined}
+                  className={`truncate rounded-[var(--radius-sm)] px-3 py-2.5 text-sm transition-colors ${
+                    active
+                      ? "bg-white/[0.04] text-[var(--foreground)]"
+                      : "text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {conversation.title}
+                </Link>
+              );
+            })
+          )}
         </div>
       </div>
 
@@ -115,7 +134,13 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+type AppShellProps = {
+  children: ReactNode;
+  conversations: ConversationNavItem[];
+  conversationsLoadFailed?: boolean;
+};
+
+export function AppShell({ children, conversations, conversationsLoadFailed = false }: AppShellProps) {
   const pathname = usePathname();
   const mobileMenuRef = useRef<HTMLDialogElement>(null);
 
@@ -140,11 +165,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   const openMobileMenu = () => mobileMenuRef.current?.showModal();
   const closeMobileMenu = () => mobileMenuRef.current?.close();
+  const sidebarProps = { conversations, conversationsLoadFailed };
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
       <aside className="fixed inset-y-0 right-0 z-20 hidden w-72 border-l border-[var(--border)] bg-[var(--surface)] lg:block">
-        <SidebarContent />
+        <SidebarContent {...sidebarProps} />
       </aside>
 
       <dialog
@@ -161,7 +187,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             <span aria-hidden="true" className="text-xl">×</span>
           </button>
-          <SidebarContent onNavigate={closeMobileMenu} />
+          <SidebarContent {...sidebarProps} onNavigate={closeMobileMenu} />
         </div>
       </dialog>
 
