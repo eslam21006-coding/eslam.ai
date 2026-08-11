@@ -29,16 +29,24 @@ test("Next.js proxy refreshes Supabase auth using bulk cookie APIs", () => {
   assert.doesNotMatch(sessionProxy, /SERVICE_ROLE|SECRET_KEY/i);
 });
 
-test("email password actions cover signup login logout and profile initialization", () => {
+test("email password actions preserve credentials and recover safely", () => {
   const actions = readSource("src/features/auth/actions.ts");
+  const chat = readSource("src/app/app/chat/page.tsx");
 
+  assert.match(actions, /name === "email" \? value\.trim\(\) : value/);
   assert.match(actions, /signInWithPassword/);
   assert.match(actions, /auth\.signUp/);
-  assert.match(actions, /auth\.signOut/);
   assert.match(actions, /\.from\("profiles"\)/);
   assert.match(actions, /ignoreDuplicates: true/);
+  assert.match(actions, /recoverFromProfileFailure/);
+  assert.match(actions, /profile_init_failed/);
+  assert.match(actions, /const \{ error \} = await supabase\.auth\.signOut\(\)/);
+  assert.match(actions, /logout_failed/);
   assert.match(actions, /redirect\("\/app\/chat"\)/);
   assert.doesNotMatch(actions, /error\.message/);
+  assert.match(chat, /role="alert"/);
+  assert.match(chat, /logout_failed/);
+  assert.match(chat, /profile_init_failed/);
 });
 
 test("auth UI is Arabic RTL-compatible and offers both account flows", () => {
@@ -52,6 +60,7 @@ test("auth UI is Arabic RTL-compatible and offers both account flows", () => {
   assert.match(card, /\/auth\/signup/);
   assert.match(card, /\/auth\/login/);
   assert.match(login, /redirectAuthenticatedUser\(\)/);
+  assert.match(login, /profile_init_failed/);
   assert.match(signup, /redirectAuthenticatedUser\(\)/);
   assert.match(shell, /logoutAction/);
   assert.match(shell, /تسجيل الخروج/);
