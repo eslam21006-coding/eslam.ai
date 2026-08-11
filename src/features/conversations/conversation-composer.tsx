@@ -86,8 +86,10 @@ export function ConversationComposer({
           required
           maxLength={MAX_MESSAGE_LENGTH}
           value={displayedValue}
+          disabled={streaming}
+          aria-disabled={streaming}
           onChange={(event) => onValueChange(event.target.value)}
-          className="block min-h-16 w-full resize-none bg-transparent px-3 py-2 text-sm leading-7 text-[var(--foreground)] placeholder:text-[var(--foreground-subtle)]"
+          className="block min-h-16 w-full resize-none bg-transparent px-3 py-2 text-sm leading-7 text-[var(--foreground)] placeholder:text-[var(--foreground-subtle)] disabled:cursor-wait disabled:opacity-70"
         />
         <div className="flex items-center justify-between gap-3 px-1 pb-1">
           <button
