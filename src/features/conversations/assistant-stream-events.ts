@@ -1,5 +1,3 @@
-import { MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
-
 type StreamEvent = {
   type: string;
   delta?: string;
@@ -8,6 +6,7 @@ type StreamEvent = {
 };
 
 type StreamOptions = {
+  maxMessageLength: number;
   onDelta(delta: string): void;
 };
 
@@ -52,7 +51,7 @@ export async function consumeBasicEslamStream(
     const delta = visibleDelta(event, content);
     if (!delta) continue;
 
-    if (content.length + delta.length > MAX_MESSAGE_LENGTH) {
+    if (content.length + delta.length > options.maxMessageLength) {
       throw new Error("OpenAI streaming response exceeds the message limit.");
     }
 
