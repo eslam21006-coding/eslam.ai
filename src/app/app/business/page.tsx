@@ -1,4 +1,5 @@
 import { saveBusinessDnaAction } from "@/features/business-dna/actions";
+import { BusinessDnaSubmitButton } from "@/features/business-dna/submit-button";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -218,12 +219,7 @@ export default async function BusinessPage({ searchParams }: { searchParams: Sea
           </aside>
 
           <div className="flex justify-end">
-            <button
-              type="submit"
-              className="min-h-12 rounded-[var(--radius-sm)] border border-[var(--gold)] bg-[var(--gold)] px-6 text-sm font-semibold text-black transition-opacity hover:opacity-90"
-            >
-              حفظ الملف التجاري
-            </button>
+            <BusinessDnaSubmitButton />
           </div>
         </form>
       )}
