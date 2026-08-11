@@ -28,6 +28,17 @@ test("mentee shell exposes the minimal Arabic navigation contract", () => {
   assert.match(shell, /dir="ltr"/);
 });
 
+test("mobile dialog closes when the shell crosses into the desktop breakpoint", () => {
+  const shell = readSource("src/features/app-shell/app-shell.tsx");
+
+  assert.match(shell, /matchMedia\("\(min-width: 64rem\)"\)/);
+  assert.match(shell, /desktopBreakpoint\.matches/);
+  assert.match(shell, /mobileMenuRef\.current\?\.open/);
+  assert.match(shell, /mobileMenuRef\.current\.close\(\)/);
+  assert.match(shell, /addEventListener\("change", closeAtDesktop\)/);
+  assert.match(shell, /removeEventListener\("change", closeAtDesktop\)/);
+});
+
 test("chat shell keeps mixed Arabic and English readable without suppressing focus", () => {
   const chat = readSource("src/app/app/chat/page.tsx");
 
