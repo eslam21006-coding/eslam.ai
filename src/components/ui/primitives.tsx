@@ -130,10 +130,10 @@ export function DropdownPreview() {
         </span>
       </summary>
       <div className="absolute z-10 mt-2 grid w-full gap-1 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-raised)] p-1.5 shadow-[var(--shadow-soft)]">
-        <button className="rounded-lg px-3 py-2 text-start text-sm text-[var(--foreground-muted)] hover:bg-[var(--gold-soft)] hover:text-[var(--foreground)]">
+        <button type="button" className="rounded-lg px-3 py-2 text-start text-sm text-[var(--foreground-muted)] hover:bg-[var(--gold-soft)] hover:text-[var(--foreground)]">
           الاختيار الأول
         </button>
-        <button className="rounded-lg px-3 py-2 text-start text-sm text-[var(--foreground-muted)] hover:bg-[var(--gold-soft)] hover:text-[var(--foreground)]">
+        <button type="button" className="rounded-lg px-3 py-2 text-start text-sm text-[var(--foreground-muted)] hover:bg-[var(--gold-soft)] hover:text-[var(--foreground)]">
           الاختيار الثاني
         </button>
       </div>
