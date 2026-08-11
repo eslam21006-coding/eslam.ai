@@ -15,6 +15,8 @@ import {
 import { MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
 import { MessageSubmitButton } from "@/features/conversations/message-submit-button";
 
+export const COMPOSER_FOCUS_STORAGE_KEY = "eslam-ai:focus-composer";
+
 export type ComposerError = MessageActionState["error"] | "network_uncertain";
 
 type ConversationComposerProps = {
@@ -82,6 +84,29 @@ export function ConversationComposer({
 
     textareaRef.current?.focus({ preventScroll: true });
   }, [streaming]);
+
+  useEffect(() => {
+    if (!conversationId) return;
+    if (!window.matchMedia("(pointer: fine)").matches) return;
+
+    let shouldRestoreFocus = false;
+    try {
+      shouldRestoreFocus =
+        window.sessionStorage.getItem(COMPOSER_FOCUS_STORAGE_KEY) === conversationId;
+      if (shouldRestoreFocus) {
+        window.sessionStorage.removeItem(COMPOSER_FOCUS_STORAGE_KEY);
+      }
+    } catch {
+      return;
+    }
+
+    if (!shouldRestoreFocus) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      textareaRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [conversationId]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (
