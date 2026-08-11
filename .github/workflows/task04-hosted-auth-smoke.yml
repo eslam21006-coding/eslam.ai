@@ -1,0 +1,95 @@
+name: Task 04 Hosted Auth Smoke
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/task04-hosted-auth-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SUPABASE_URL: https://wiftrwvtjsuzntbjknjy.supabase.co
+      SUPABASE_PUBLISHABLE_KEY: sb_publishable_nhSiOMnLQnvh-DLB8_U65A_U5rIA_rE
+
+    steps:
+      - name: Exercise hosted auth and RLS
+        env:
+          SMOKE_PASSWORD: ${{ github.token }}Aa1!
+        run: |
+          node <<'NODE'
+          const base = process.env.SUPABASE_URL;
+          const key = process.env.SUPABASE_PUBLISHABLE_KEY;
+          const email = `eslam-ai-smoke-${process.env.GITHUB_RUN_ID}@example.com`;
+          const password = process.env.SMOKE_PASSWORD;
+          const common = { apikey: key, "Content-Type": "application/json" };
+
+          async function jsonFetch(url, init = {}) {
+            const response = await fetch(url, init);
+            const text = await response.text();
+            let body = {};
+            try { body = text ? JSON.parse(text) : {}; } catch { body = { text }; }
+            return { response, body };
+          }
+
+          const settings = await jsonFetch(`${base}/auth/v1/settings`, { headers: { apikey: key } });
+          if (!settings.response.ok) throw new Error(`Auth settings failed: ${settings.response.status}`);
+          console.log(`email_enabled=${Boolean(settings.body.external?.email)}`);
+          console.log(`mailer_autoconfirm=${Boolean(settings.body.mailer_autoconfirm)}`);
+
+          const signup = await jsonFetch(`${base}/auth/v1/signup`, {
+            method: "POST",
+            headers: common,
+            body: JSON.stringify({ email, password }),
+          });
+          if (!signup.response.ok) throw new Error(`Signup failed: ${signup.response.status} ${JSON.stringify(signup.body)}`);
+          console.log(`signup_user_created=${Boolean(signup.body.user?.id)}`);
+          console.log(`smoke_email=${email}`);
+
+          if (!signup.body.access_token) {
+            throw new Error("Signup succeeded but email confirmation is required; hosted password-login smoke cannot continue until the test user is confirmed.");
+          }
+
+          const login = await jsonFetch(`${base}/auth/v1/token?grant_type=password`, {
+            method: "POST",
+            headers: common,
+            body: JSON.stringify({ email, password }),
+          });
+          if (!login.response.ok || !login.body.access_token || !login.body.user?.id) {
+            throw new Error(`Password login failed: ${login.response.status} ${JSON.stringify(login.body)}`);
+          }
+          console.log("password_login=ok");
+
+          const authHeaders = {
+            ...common,
+            Authorization: `Bearer ${login.body.access_token}`,
+            Prefer: "return=representation",
+          };
+          const profile = await jsonFetch(`${base}/rest/v1/profiles`, {
+            method: "POST",
+            headers: authHeaders,
+            body: JSON.stringify({ id: login.body.user.id, display_name: "Hosted smoke" }),
+          });
+          if (!profile.response.ok) throw new Error(`Profile insert failed: ${profile.response.status} ${JSON.stringify(profile.body)}`);
+          console.log("profile_insert_under_rls=ok");
+
+          const read = await jsonFetch(`${base}/rest/v1/profiles?select=id,display_name&id=eq.${login.body.user.id}`, {
+            headers: { apikey: key, Authorization: `Bearer ${login.body.access_token}` },
+          });
+          if (!read.response.ok || !Array.isArray(read.body) || read.body.length !== 1) {
+            throw new Error(`Profile read failed: ${read.response.status} ${JSON.stringify(read.body)}`);
+          }
+          console.log("profile_read_under_rls=ok");
+
+          const logout = await jsonFetch(`${base}/auth/v1/logout`, {
+            method: "POST",
+            headers: { apikey: key, Authorization: `Bearer ${login.body.access_token}` },
+          });
+          if (!logout.response.ok) throw new Error(`Logout failed: ${logout.response.status} ${JSON.stringify(logout.body)}`);
+          console.log("logout=ok");
+          NODE
