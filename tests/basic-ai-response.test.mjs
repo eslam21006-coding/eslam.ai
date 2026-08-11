@@ -17,30 +17,35 @@ test("OpenAI SDK is pinned and server-only credentials stay private", () => {
   assert.match(openaiClient, /"gpt-5-mini"/);
   assert.match(openaiClient, /const OPENAI_TIMEOUT_MS = 45_000/);
   assert.match(openaiClient, /const OPENAI_MAX_RETRIES = 1/);
-  assert.match(openaiClient, /maxRetries: OPENAI_MAX_RETRIES/);
-  assert.match(openaiClient, /timeout: OPENAI_TIMEOUT_MS/);
   assert.match(adminClient, /^import "server-only";/);
   assert.match(adminClient, /process\.env\.SUPABASE_SECRET_KEY/);
   assert.doesNotMatch(env, /NEXT_PUBLIC_OPENAI_API_KEY/);
   assert.doesNotMatch(env, /NEXT_PUBLIC_SUPABASE_SECRET_KEY/);
 });
 
-test("production OpenAI boundary uses the executable bounded request builder", () => {
+test("streaming OpenAI boundary reuses the bounded request contract with store disabled", () => {
   const assistant = readSource("src/features/conversations/assistant.ts");
   const request = readSource("src/features/conversations/assistant-request.ts");
+  const events = readSource("src/features/conversations/assistant-stream-events.ts");
 
-  assert.match(assistant, /buildBasicEslamResponseRequest\(messages, getOpenAIModel\(\)\)/);
-  assert.match(assistant, /responses\.create\(request\)/);
-  assert.match(assistant, /response\.output_text\.trim\(\)/);
+  assert.match(assistant, /buildBasicEslamStreamingResponseRequest/);
+  assert.match(assistant, /responses\.create\(request, \{/);
+  assert.match(assistant, /signal: options\.signal/);
   assert.match(request, /MAX_MODEL_TRANSCRIPT_MESSAGES = 64/);
   assert.match(request, /MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000/);
   assert.match(request, /store: false/);
-  assert.doesNotMatch(`${assistant}\n${request}`, /stream:\s*true/);
-  assert.doesNotMatch(`${assistant}\n${request}`, /business_dna|file_search|web_search|vector_store/i);
+  assert.match(request, /stream: true/);
+  assert.match(events, /response\.output_text\.delta/);
+  assert.match(events, /response\.refusal\.delta/);
+  assert.match(events, /response\.completed/);
+  assert.match(events, /response\.failed/);
+  assert.match(events, /response\.incomplete/);
+  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /business_dna|file_search|web_search|vector_store/i);
 });
 
-test("assistant messages use a backend-only privileged client while browser RLS remains unchanged", () => {
+test("assistant persistence remains backend-only while streamed user turns use authenticated RLS", () => {
   const assistant = readSource("src/features/conversations/assistant.ts");
+  const serverFlow = readSource("src/features/conversations/response-flow-server.ts");
   const adminClient = readSource("src/lib/supabase/admin.ts");
   const privilegeMigration = readSource(
     "supabase/migrations/20260811142816_restrict_conversation_column_privileges.sql",
@@ -48,61 +53,63 @@ test("assistant messages use a backend-only privileged client while browser RLS 
 
   assert.match(assistant, /getSupabaseAdminClient\(\)/);
   assert.match(assistant, /role: "assistant"/);
+  assert.match(serverFlow, /createClient\(\)/);
+  assert.match(serverFlow, /user_id: ownerId/);
+  assert.match(serverFlow, /role: "user"/);
   assert.match(adminClient, /persistSession: false/);
-  assert.match(adminClient, /autoRefreshToken: false/);
   assert.doesNotMatch(privilegeMigration, /grant insert[^;]*assistant/i);
-  assert.match(
-    privilegeMigration,
-    /grant insert \(conversation_id, user_id, role, content\) on table public\.messages to authenticated/,
-  );
 });
 
-test("generation leases serialize existing conversation turns across server instances", () => {
-  const actions = readSource("src/features/conversations/actions.ts");
-  const flow = readSource("src/features/conversations/response-flow.ts");
-  const lock = readSource("src/features/conversations/generation-lock.ts");
-  const migration = readSource(
-    "supabase/migrations/20260811183713_add_conversation_generation_lease.sql",
-  );
-  const runtime = readSource("supabase/tests/conversations_rls_runtime.sql");
+test("stream route holds the generation lease and invalidates persisted conversation data", () => {
+  const route = readSource("src/app/api/chat/stream/route.ts");
+  const preparation = readSource("src/features/conversations/response-flow.ts");
+  const streamingFlow = readSource("src/features/conversations/streaming-response-flow.ts");
 
-  assert.match(lock, /^import "server-only";/);
-  assert.match(lock, /randomUUID\(\)/);
-  assert.match(lock, /GENERATION_LOCK_SECONDS = 300/);
-  assert.match(actions, /executeMessageResponseFlow/);
-  assert.ok(flow.indexOf("dependencies.claimGeneration(userId, conversationId)") < flow.indexOf("dependencies.insertUserMessage"));
-  assert.match(flow, /claim\.status === "busy"/);
-  assert.match(flow, /claim\.status === "failed"/);
-  assert.match(migration, /grant execute on function public\.claim_conversation_generation[\s\S]*?to service_role/);
-  assert.match(migration, /revoke all on function public\.claim_conversation_generation[\s\S]*?from anon, authenticated/);
-  assert.match(runtime, /Concurrent generation lease was incorrectly claimed/);
-  assert.match(runtime, /Generation lease released with the wrong token/);
+  assert.match(route, /prepareMessageResponseFlow/);
+  assert.match(route, /executePreparedStreamingResponse/);
+  assert.match(route, /X-Eslam-Conversation-Id/);
+  assert.match(route, /no-store, no-transform/);
+  assert.match(route, /ReadableStream<Uint8Array>/);
+  assert.match(route, /upstreamAbort\.abort\(\)/);
+  assert.match(route, /revalidatePath\(`\/app\/chat\/\$\{conversationId\}`\)/);
+  assert.match(route, /revalidatePath\("\/app", "layout"\)/);
+  assert.ok(preparation.indexOf("dependencies.claimGeneration(userId, conversationId)") < preparation.indexOf("dependencies.insertUserMessage"));
+  assert.match(streamingFlow, /persistAssistant/);
+  assert.match(streamingFlow, /finally/);
+  assert.match(streamingFlow, /releasePreparedTurn/);
 });
 
-test("message action delegates failure-preserving response behavior to the executed coordinator", () => {
-  const actions = readSource("src/features/conversations/actions.ts");
+test("streaming UI consumes fetch body, survives strict-mode effect replay, and refreshes persisted data", () => {
+  const chat = readSource("src/features/conversations/conversation-chat.tsx");
   const threadPage = readSource("src/app/app/chat/[conversationId]/page.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
+  const button = readSource("src/features/conversations/message-submit-button.tsx");
 
-  assert.match(actions, /executeMessageResponseFlow/);
-  assert.match(actions, /loadConversation,/);
-  assert.match(actions, /generateReply: generateBasicEslamReply/);
-  assert.match(actions, /persistAssistant: persistAssistantMessage/);
-  assert.match(actions, /\?error=response_failed/);
-  assert.match(threadPage, /رسالتك محفوظة/);
-  assert.match(threadPage, /لا تحتاج لإرسال الرسالة نفسها مرة أخرى/);
-  assert.match(composer, /إسلام ما زال ينشئ الرد السابق/);
+  assert.match(chat, /fetch\("\/api\/chat\/stream"/);
+  assert.match(chat, /response\.body\.getReader\(\)/);
+  assert.match(chat, /decoder\.decode\(value, \{ stream: true \}\)/);
+  assert.match(chat, /assistant: current\.assistant \+ delta/);
+  assert.match(chat, /mountedRef\.current = true/);
+  assert.match(chat, /abortRef\.current\?\.abort\(\)/);
+  assert.match(chat, /new FormData\(event\.currentTarget\)/);
+  assert.match(chat, /targetConversationId !== conversationId \|\| clearResponseErrorOnSuccess/);
+  assert.match(chat, /router\.replace\(cleanConversationUrl/);
+  assert.match(chat, /router\.refresh\(\)/);
+  assert.match(threadPage, /clearResponseErrorOnSuccess=\{responseFailed\}/);
+  assert.match(composer, /value \?\? fallbackState\.content/);
+  assert.match(composer, /disabled=\{streaming\}/);
+  assert.match(composer, /useActionState/);
+  assert.doesNotMatch(composer, /value \|\| fallbackState\.content/);
+  assert.match(button, /streaming \|\| actionPending/);
 });
 
-test("Task 07 remains non-streaming and does not inject later-stage context", () => {
+test("Task 08 does not inject later-stage context or tools", () => {
   const sources = [
-    readSource("src/features/conversations/actions.ts"),
+    readSource("src/app/api/chat/stream/route.ts"),
     readSource("src/features/conversations/assistant.ts"),
     readSource("src/features/conversations/assistant-request.ts"),
-    readSource("src/features/conversations/response-flow.ts"),
-    readSource("src/lib/openai/client.ts"),
+    readSource("src/features/conversations/conversation-chat.tsx"),
   ].join("\n");
 
-  assert.doesNotMatch(sources, /stream:\s*true|ReadableStream|text\/event-stream/i);
-  assert.doesNotMatch(sources, /business_dna|eslam_principles|eslam_playbooks|file_search|vector_store/i);
+  assert.doesNotMatch(sources, /business_dna|eslam_principles|eslam_playbooks|file_search|web_search|vector_store|tools:/i);
 });

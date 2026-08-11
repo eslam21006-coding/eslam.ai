@@ -45,9 +45,11 @@ test("mobile dialog closes when the shell crosses into the desktop breakpoint", 
 });
 
 test("new chat keeps the Arabic composer simple without suppressing focus", () => {
-  const chat = readSource("src/app/app/chat/page.tsx");
+  const page = readSource("src/app/app/chat/page.tsx");
+  const chat = readSource("src/features/conversations/conversation-chat.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
 
+  assert.match(page, /ConversationChat/);
   assert.match(chat, /ConversationComposer/);
   assert.match(chat, /أول رسالة هتبدأ محادثة محفوظة/);
   assert.match(composer, /aria-label="رسالتك"/);

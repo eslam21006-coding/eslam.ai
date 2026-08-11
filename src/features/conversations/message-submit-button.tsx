@@ -2,8 +2,13 @@
 
 import { useFormStatus } from "react-dom";
 
-export function MessageSubmitButton() {
-  const { pending } = useFormStatus();
+type MessageSubmitButtonProps = {
+  streaming?: boolean;
+};
+
+export function MessageSubmitButton({ streaming = false }: MessageSubmitButtonProps) {
+  const { pending: actionPending } = useFormStatus();
+  const pending = streaming || actionPending;
 
   return (
     <button

@@ -1,4 +1,4 @@
-import { ConversationComposer } from "@/features/conversations/conversation-composer";
+import { ConversationChat } from "@/features/conversations/conversation-chat";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
@@ -34,21 +34,7 @@ export default async function ChatPage({ searchParams }: { searchParams: SearchP
         </p>
       ) : null}
 
-      <section aria-label="محادثة جديدة" className="flex flex-1 items-center py-10 sm:py-14">
-        <div className="mx-auto w-full max-w-3xl text-center">
-          <div className="mx-auto grid size-12 place-items-center rounded-full border border-[var(--border-strong)] bg-[var(--gold-soft)] text-lg font-semibold text-[var(--gold-bright)]">
-            إ
-          </div>
-          <h2 className="mt-4 text-xl font-semibold sm:text-2xl">إيه اللي شاغلك دلوقتي؟</h2>
-          <p className="mx-auto mt-2 max-w-lg text-sm leading-7 text-[var(--foreground-muted)]">
-            احكي الوضع بطريقتك. أول رسالة هتبدأ محادثة محفوظة تقدر ترجع لها بعدين.
-          </p>
-        </div>
-      </section>
-
-      <footer className="sticky bottom-0 pb-4 pt-2 sm:pb-6">
-        <ConversationComposer />
-      </footer>
+      <ConversationChat initialMessages={[]} showEmptyState />
     </div>
   );
 }
