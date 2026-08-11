@@ -5,6 +5,9 @@ import test from "node:test";
 const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
+const importSource = (relativePath) =>
+  import(new URL(`../${relativePath}`, import.meta.url).href);
+
 test("OpenAI SDK is pinned and server-only credentials stay private", () => {
   const packageJson = JSON.parse(readSource("package.json"));
   const env = readSource(".env.example");
@@ -40,7 +43,44 @@ test("streaming OpenAI boundary reuses the bounded request contract with store d
   assert.match(events, /response\.completed/);
   assert.match(events, /response\.failed/);
   assert.match(events, /response\.incomplete/);
-  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /business_dna|file_search|web_search|vector_store/i);
+  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /file_search|web_search|vector_store/i);
+});
+
+test("Business DNA is present at runtime in both request modes without enabling tools", async () => {
+  const {
+    buildBasicEslamResponseRequest,
+    buildBasicEslamStreamingResponseRequest,
+  } = await importSource("src/features/conversations/assistant-request.ts");
+  const messages = [
+    { role: "user", content: "قيم العرض الحالي" },
+    { role: "assistant", content: "ما هو السعر الحالي؟" },
+    { role: "user", content: "السعر 1500 دولار" },
+  ];
+  const businessDnaContext =
+    '{"business_name":"Acme Academy","niche":"Executive coaching"}';
+
+  const blocking = buildBasicEslamResponseRequest(
+    messages,
+    "test-model",
+    businessDnaContext,
+  );
+  const streaming = buildBasicEslamStreamingResponseRequest(
+    messages,
+    "test-model",
+    businessDnaContext,
+  );
+
+  assert.ok(blocking.instructions.includes(businessDnaContext));
+  assert.equal(streaming.instructions, blocking.instructions);
+  assert.deepEqual(streaming.input, blocking.input);
+  assert.equal(blocking.store, false);
+  assert.equal(streaming.store, false);
+  assert.equal(streaming.stream, true);
+  assert.equal(Object.hasOwn(blocking, "tools"), false);
+  assert.equal(Object.hasOwn(streaming, "tools"), false);
+
+  const withoutDna = buildBasicEslamResponseRequest(messages, "test-model", null);
+  assert.doesNotMatch(withoutDna.instructions, /Business DNA JSON:/);
 });
 
 test("assistant persistence remains backend-only while streamed user turns use authenticated RLS", () => {
@@ -104,13 +144,15 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(button, /streaming \|\| actionPending/);
 });
 
-test("Task 08 does not inject later-stage context or tools", () => {
+test("Task 10 injects Business DNA without later-stage intelligence or tools", () => {
   const sources = [
     readSource("src/app/api/chat/stream/route.ts"),
     readSource("src/features/conversations/assistant.ts"),
     readSource("src/features/conversations/assistant-request.ts"),
+    readSource("src/features/conversations/actions.ts"),
     readSource("src/features/conversations/conversation-chat.tsx"),
   ].join("\n");
 
-  assert.doesNotMatch(sources, /business_dna|eslam_principles|eslam_playbooks|file_search|web_search|vector_store|tools:/i);
+  assert.match(sources, /businessDnaContext|loadBusinessDnaModelContext/);
+  assert.doesNotMatch(sources, /eslam_principles|eslam_playbooks|file_search|web_search|vector_store|tools:/i);
 });
