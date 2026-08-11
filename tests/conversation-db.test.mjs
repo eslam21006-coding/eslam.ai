@@ -107,11 +107,13 @@ test("message action derives ownership from auth and preserves failed content", 
   const actions = readSource("src/features/conversations/actions.ts");
 
   assert.match(actions, /requireAuthenticatedUser\(\)/);
+  assert.match(actions, /executeMessageResponseFlow/);
+  assert.match(actions, /\{ userId, conversationId, content \}/);
   assert.match(actions, /create_conversation_with_first_message/);
-  assert.match(actions, /user_id: userId/);
+  assert.match(actions, /user_id: ownerId/);
   assert.match(actions, /role: "user"/);
   assert.doesNotMatch(actions, /formData\.get\(["']user_id["']\)/);
-  assert.match(actions, /return failure\("save_failed"\)/);
+  assert.match(actions, /return failure\(result\.error\)/);
   assert.match(actions, /content,/);
   assert.match(actions, /revalidatePath\("\/app", "layout"\)/);
 });
@@ -127,7 +129,7 @@ test("conversation reads are owner-scoped and messages have deterministic orderi
   assert.match(data, /CONVERSATION_LIST_LIMIT/);
 });
 
-test("persisted chat routes and composer are connected without AI generation", () => {
+test("persisted chat routes and composer remain UI-only", () => {
   const newPage = readSource("src/app/app/chat/page.tsx");
   const threadPage = readSource("src/app/app/chat/[conversationId]/page.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
@@ -163,16 +165,20 @@ test("runtime isolation regression is part of CI", () => {
   assert.match(runtime, /RLS leak: user B deleted user A conversation/);
   assert.match(runtime, /foreign_key_violation/);
   assert.match(runtime, /Authenticated client forged an assistant message/);
+  assert.match(runtime, /Concurrent generation lease was incorrectly claimed/);
   assert.match(runtime, /rollback;/);
   assert.match(ci, /conversations_rls_runtime\.sql/);
 });
 
-test("generated database types include conversations messages and atomic RPC", () => {
+test("generated database types include conversations messages and response RPCs", () => {
   const types = readSource("src/types/database.ts");
 
   assert.match(types, /conversations:/);
+  assert.match(types, /generation_lock_token: string \| null/);
   assert.match(types, /messages:/);
   assert.match(types, /messages_conversation_owner_fkey/);
   assert.match(types, /create_conversation_with_first_message:/);
+  assert.match(types, /claim_conversation_generation:/);
+  assert.match(types, /release_conversation_generation:/);
   assert.match(types, /Args: \{ p_content: string \}/);
 });

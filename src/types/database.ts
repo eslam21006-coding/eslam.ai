@@ -71,6 +71,8 @@ export type Database = {
       conversations: {
         Row: {
           created_at: string
+          generation_lock_expires_at: string | null
+          generation_lock_token: string | null
           id: string
           title: string
           updated_at: string
@@ -78,6 +80,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          generation_lock_expires_at?: string | null
+          generation_lock_token?: string | null
           id?: string
           title?: string
           updated_at?: string
@@ -85,6 +89,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          generation_lock_expires_at?: string | null
+          generation_lock_token?: string | null
           id?: string
           title?: string
           updated_at?: string
@@ -153,9 +159,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      claim_conversation_generation: {
+        Args: {
+          p_conversation_id: string
+          p_lock_seconds: number
+          p_token: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       create_conversation_with_first_message: {
         Args: { p_content: string }
         Returns: string
+      }
+      release_conversation_generation: {
+        Args: { p_conversation_id: string; p_token: string; p_user_id: string }
+        Returns: boolean
       }
     }
     Enums: {

@@ -34,7 +34,9 @@ export function ConversationComposer({ conversationId }: ConversationComposerPro
         >
           {state.error === "invalid_input"
             ? "اكتب رسالة قبل الإرسال، وتأكد أنها ليست أطول من الحد المسموح."
-            : "تعذر حفظ الرسالة. احتفظنا بالنص؛ حاول مرة أخرى."}
+            : state.error === "response_in_progress"
+              ? "إسلام ما زال ينشئ الرد السابق. احتفظنا برسالتك هنا؛ أرسلها بعد اكتمال الرد."
+              : "تعذر حفظ الرسالة. احتفظنا بالنص؛ حاول مرة أخرى."}
         </p>
       ) : null}
 

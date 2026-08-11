@@ -10,7 +10,7 @@ export function MessageSubmitButton() {
       type="submit"
       disabled={pending}
       aria-disabled={pending}
-      aria-label={pending ? "جارٍ حفظ الرسالة" : "إرسال الرسالة"}
+      aria-label={pending ? "جارٍ إنشاء الرد" : "إرسال الرسالة"}
       className="grid size-11 place-items-center rounded-full bg-[var(--gold)] text-[#11100d] transition-opacity hover:opacity-90 disabled:cursor-wait disabled:opacity-55"
     >
       {pending ? (

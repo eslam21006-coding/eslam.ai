@@ -5,6 +5,26 @@ values
   ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', 'authenticated', 'authenticated', 'conversation-a@example.test', now(), now()),
   ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'authenticated', 'authenticated', 'conversation-b@example.test', now(), now());
 
+do $$
+begin
+  if has_function_privilege(
+    'authenticated',
+    'public.claim_conversation_generation(uuid,uuid,uuid,integer)',
+    'EXECUTE'
+  ) then
+    raise exception 'Authenticated clients can claim generation leases';
+  end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.release_conversation_generation(uuid,uuid,uuid)',
+    'EXECUTE'
+  ) then
+    raise exception 'Authenticated clients can release generation leases';
+  end if;
+end;
+$$;
+
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -144,6 +164,71 @@ begin
 
   if not assistant_role_blocked then
     raise exception 'Authenticated client forged an assistant message';
+  end if;
+end;
+$$;
+
+reset role;
+set local role service_role;
+
+insert into public.conversations (id, user_id, title)
+values (
+  'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  'Generation lease test'
+);
+
+do $$
+declare
+  claimed boolean;
+  released boolean;
+begin
+  claimed := public.claim_conversation_generation(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    '11111111-1111-4111-8111-111111111111',
+    180
+  );
+  if not claimed then
+    raise exception 'First generation lease was not claimed';
+  end if;
+
+  claimed := public.claim_conversation_generation(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    '22222222-2222-4222-8222-222222222222',
+    180
+  );
+  if claimed then
+    raise exception 'Concurrent generation lease was incorrectly claimed';
+  end if;
+
+  released := public.release_conversation_generation(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    '22222222-2222-4222-8222-222222222222'
+  );
+  if released then
+    raise exception 'Generation lease released with the wrong token';
+  end if;
+
+  released := public.release_conversation_generation(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    '11111111-1111-4111-8111-111111111111'
+  );
+  if not released then
+    raise exception 'Generation lease did not release with the owner token';
+  end if;
+
+  claimed := public.claim_conversation_generation(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+    '22222222-2222-4222-8222-222222222222',
+    180
+  );
+  if not claimed then
+    raise exception 'Generation lease could not be reclaimed after release';
   end if;
 end;
 $$;
