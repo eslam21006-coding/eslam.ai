@@ -2,6 +2,9 @@ import "server-only";
 
 import OpenAI from "openai";
 
+const OPENAI_TIMEOUT_MS = 45_000;
+const OPENAI_MAX_RETRIES = 1;
+
 let openaiClient: OpenAI | null = null;
 
 export function getOpenAIClient() {
@@ -11,7 +14,11 @@ export function getOpenAIClient() {
   }
 
   if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey });
+    openaiClient = new OpenAI({
+      apiKey,
+      maxRetries: OPENAI_MAX_RETRIES,
+      timeout: OPENAI_TIMEOUT_MS,
+    });
   }
 
   return openaiClient;
