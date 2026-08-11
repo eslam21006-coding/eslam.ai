@@ -17,6 +17,9 @@ const privilegeMigration = readSource(
 const ownershipIndexMigration = readSource(
   "supabase/migrations/20260811143116_index_message_conversation_owner.sql",
 );
+const activityMigration = readSource(
+  "supabase/migrations/20260811145416_secure_conversation_activity_timestamp.sql",
+);
 
 test("conversation schema enforces tenant-consistent message ownership", () => {
   assert.match(schema, /create table public\.conversations/);
@@ -39,13 +42,23 @@ test("conversation and message privileges follow the append-only least-privilege
   assert.match(privilegeMigration, /revoke all on table public\.messages from authenticated/);
   assert.match(privilegeMigration, /grant select on table public\.conversations to authenticated/);
   assert.match(privilegeMigration, /grant insert \(user_id, title\) on table public\.conversations to authenticated/);
-  assert.match(privilegeMigration, /grant update \(title, updated_at\) on table public\.conversations to authenticated/);
   assert.match(privilegeMigration, /grant delete on table public\.conversations to authenticated/);
   assert.match(privilegeMigration, /grant select on table public\.messages to authenticated/);
   assert.match(privilegeMigration, /grant insert \(conversation_id, user_id, role, content\) on table public\.messages to authenticated/);
   assert.doesNotMatch(privilegeMigration, /grant[^;]*update[^;]*on table public\.messages/i);
   assert.doesNotMatch(privilegeMigration, /grant[^;]*delete[^;]*on table public\.messages/i);
   assert.doesNotMatch(privilegeMigration, /insert \([^)]*created_at/i);
+
+  assert.match(activityMigration, /security definer/);
+  assert.match(activityMigration, /set search_path = ''/);
+  assert.match(
+    activityMigration,
+    /revoke all on function public\.touch_conversation_after_message_insert\(\) from public, anon, authenticated/,
+  );
+  assert.match(
+    activityMigration,
+    /revoke update \(updated_at\) on table public\.conversations from authenticated/,
+  );
 });
 
 test("RLS restricts every conversation operation and user message append", () => {
@@ -62,7 +75,7 @@ test("RLS restricts every conversation operation and user message append", () =>
 
 test("message insertion updates conversation activity and ordering is indexed", () => {
   assert.match(schema, /create trigger touch_conversation_after_message_insert/);
-  assert.match(schema, /update public\.conversations[\s\S]*?set updated_at = now\(\)/);
+  assert.match(activityMigration, /update public\.conversations[\s\S]*?set updated_at = now\(\)/);
   assert.match(schema, /conversations_user_activity_idx/);
   assert.match(schema, /messages_conversation_order_idx/);
 });
@@ -124,8 +137,20 @@ test("persisted chat routes and composer are connected without AI generation", (
   assert.match(threadPage, /notFound\(\)/);
   assert.match(threadPage, /thread\.messages\.map/);
   assert.match(threadPage, /conversationId=\{conversationId\}/);
+  assert.match(threadPage, /className="sr-only"/);
+  assert.match(threadPage, /isUser \? "أنت:"/);
+  assert.match(threadPage, /message\.role === "assistant" \? "إسلام:" : "النظام:"/);
   assert.match(composer, /useActionState\(persistUserMessageAction, initialState\)/);
   assert.doesNotMatch(`${newPage}\n${threadPage}\n${composer}`, /openai|responses\.create|chat\.completions/i);
+});
+
+test("conversation history exposes a navigation landmark and list semantics", () => {
+  const shell = readSource("src/features/app-shell/app-shell.tsx");
+
+  assert.match(shell, /<nav[\s\S]*?aria-label="المحادثات السابقة"/);
+  assert.match(shell, /<ul className="mt-2 grid list-none gap-1">/);
+  assert.match(shell, /<li key=\{conversation\.id\}/);
+  assert.match(shell, /title=\{conversation\.title\}/);
 });
 
 test("runtime isolation regression is part of CI", () => {
@@ -134,6 +159,8 @@ test("runtime isolation regression is part of CI", () => {
 
   assert.match(runtime, /RLS leak: user B can read user A conversation/);
   assert.match(runtime, /RLS leak: user B can read user A messages/);
+  assert.match(runtime, /RLS leak: user B updated user A conversation/);
+  assert.match(runtime, /RLS leak: user B deleted user A conversation/);
   assert.match(runtime, /foreign_key_violation/);
   assert.match(runtime, /Authenticated client forged an assistant message/);
   assert.match(runtime, /rollback;/);
