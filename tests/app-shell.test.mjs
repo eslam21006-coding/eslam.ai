@@ -49,11 +49,10 @@ test("chat shell keeps mixed Arabic and English readable without suppressing foc
   assert.doesNotMatch(chat, /outline-none/);
 });
 
-test("Business DNA destination stays informational in Task 02", () => {
+test("Business DNA remains a dedicated mentee destination", () => {
   const business = readSource("src/app/app/business/page.tsx");
 
   assert.match(business, /الملف التجاري/);
   assert.match(business, /Business DNA/);
-  assert.match(business, /النشاط والبراند/);
-  assert.doesNotMatch(business, /<form/);
+  assert.match(business, /requireAuthenticatedUser\(\)/);
 });
