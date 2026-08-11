@@ -22,8 +22,8 @@
   --radius-sm: 0.625rem;
   --radius-md: 0.875rem;
   --radius-lg: 1.125rem;
-  --font-arabic: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", Tahoma, Arial, sans-serif;
-  --font-latin: Inter, "Segoe UI", Arial, sans-serif;
+  --font-arabic: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", "Tahoma", "Arial", sans-serif;
+  --font-latin: "Inter", "Segoe UI", "Arial", sans-serif;
 }
 
 * {
@@ -33,7 +33,7 @@
 html {
   min-height: 100%;
   background: var(--background);
-  text-rendering: optimizeLegibility;
+  text-rendering: optimizelegibility;
 }
 
 body {
