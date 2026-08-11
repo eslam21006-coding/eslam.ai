@@ -1,6 +1,12 @@
 import "server-only";
 
-import { CONVERSATION_LIST_LIMIT, type ConversationNavItem, type ConversationRecord, type MessageRecord } from "@/features/conversations/contracts";
+import {
+  CONVERSATION_LIST_LIMIT,
+  isUuid,
+  type ConversationNavItem,
+  type ConversationRecord,
+  type MessageRecord,
+} from "@/features/conversations/contracts";
 import { createClient } from "@/lib/supabase/server";
 
 export async function listConversations(userId: string): Promise<ConversationNavItem[] | null> {
@@ -28,6 +34,8 @@ export async function loadConversation(
   userId: string,
   conversationId: string,
 ): Promise<{ conversation: ConversationRecord; messages: MessageRecord[] } | null> {
+  if (!isUuid(conversationId)) return null;
+
   const supabase = await createClient();
   const { data: conversation, error: conversationError } = await supabase
     .from("conversations")
