@@ -3,7 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  generateBasicEslamReply,
+  persistAssistantMessage,
+} from "@/features/conversations/assistant";
 import { isUuid, MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
+import { loadConversation } from "@/features/conversations/data";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -23,6 +28,34 @@ function readConversationId(formData: FormData): string | null | false {
   if (value === null || value === "") return null;
   if (typeof value !== "string" || !isUuid(value)) return false;
   return value;
+}
+
+async function generateAndPersistReply(userId: string, conversationId: string) {
+  try {
+    const thread = await loadConversation(userId, conversationId);
+    if (!thread) {
+      throw new Error("Conversation disappeared before response generation.");
+    }
+
+    const assistantContent = await generateBasicEslamReply(thread.messages);
+    await persistAssistantMessage(userId, conversationId, assistantContent);
+    return true;
+  } catch (error) {
+    console.error("assistant response failed", {
+      message: error instanceof Error ? error.message : "Unknown assistant response error",
+    });
+    return false;
+  }
+}
+
+function redirectToConversation(conversationId: string, responseSaved: boolean): never {
+  revalidatePath(`/app/chat/${conversationId}`);
+  revalidatePath("/app", "layout");
+  redirect(
+    responseSaved
+      ? `/app/chat/${conversationId}`
+      : `/app/chat/${conversationId}?error=response_failed`,
+  );
 }
 
 export async function persistUserMessageAction(
@@ -62,8 +95,8 @@ export async function persistUserMessageAction(
       return failure("save_failed");
     }
 
-    revalidatePath("/app", "layout");
-    redirect(`/app/chat/${data}`);
+    const responseSaved = await generateAndPersistReply(userId, data);
+    redirectToConversation(data, responseSaved);
   }
 
   const { error } = await supabase.from("messages").insert({
@@ -81,7 +114,6 @@ export async function persistUserMessageAction(
     return failure("save_failed");
   }
 
-  revalidatePath(`/app/chat/${conversationId}`);
-  revalidatePath("/app", "layout");
-  redirect(`/app/chat/${conversationId}`);
+  const responseSaved = await generateAndPersistReply(userId, conversationId);
+  redirectToConversation(conversationId, responseSaved);
 }
