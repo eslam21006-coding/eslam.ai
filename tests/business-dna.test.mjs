@@ -11,6 +11,9 @@ const migration = readSource(
 const lengthMigration = readSource(
   "supabase/migrations/20260811133112_constrain_business_dna_text_length.sql",
 );
+const privilegeMigration = readSource(
+  "supabase/migrations/20260811133756_restrict_business_dna_table_privileges.sql",
+);
 
 const businessDnaFields = [
   "preferred_name",
@@ -69,6 +72,18 @@ test("Business DNA RLS binds every operation to the authenticated owner", () => 
     /create policy "Users can update their own Business DNA"[\s\S]*?for update[\s\S]*?to authenticated[\s\S]*?using \(\(select auth\.uid\(\)\) = user_id\)[\s\S]*?with check \(\(select auth\.uid\(\)\) = user_id\);/,
   );
   assert.doesNotMatch(migration, /security definer/i);
+});
+
+test("Business DNA final grants expose only select insert and update", () => {
+  assert.match(
+    privilegeMigration,
+    /revoke all on table public\.business_dna from anon, authenticated;/,
+  );
+  assert.match(
+    privilegeMigration,
+    /grant select, insert, update on table public\.business_dna to authenticated;/,
+  );
+  assert.doesNotMatch(privilegeMigration, /grant[^;]*delete/i);
 });
 
 test("Business DNA keeps timestamps current on update", () => {
