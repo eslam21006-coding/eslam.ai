@@ -58,7 +58,7 @@ export default function ChatPage() {
             aria-label="رسالتك"
             placeholder="اكتب لإسلام..."
             rows={2}
-            className="block min-h-16 w-full resize-none bg-transparent px-3 py-2 text-sm leading-7 text-[var(--foreground)] outline-none placeholder:text-[var(--foreground-subtle)]"
+            className="block min-h-16 w-full resize-none bg-transparent px-3 py-2 text-sm leading-7 text-[var(--foreground)] placeholder:text-[var(--foreground-subtle)]"
           />
           <div className="flex items-center justify-between gap-3 px-1 pb-1">
             <button
@@ -80,7 +80,6 @@ export default function ChatPage() {
             </button>
           </div>
         </div>
-        <p className="mt-2 text-center text-[11px] text-[var(--foreground-subtle)]">واجهة تجريبية — المحادثات الفعلية تبدأ في المراحل التالية.</p>
       </footer>
     </div>
   );
