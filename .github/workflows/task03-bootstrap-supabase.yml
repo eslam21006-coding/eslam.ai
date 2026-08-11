@@ -1,0 +1,90 @@
+name: Task 03 Supabase Bootstrap
+
+on:
+  push:
+    branches: [agent/03-supabase-foundation]
+    paths:
+      - package.json
+      - .github/workflows/task03-bootstrap-supabase.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+
+      - name: Setup Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install and refresh lockfile
+        run: npm install --ignore-scripts --no-audit --no-fund
+
+      - name: Verify Supabase CLI
+        run: npx supabase --help >/dev/null
+
+      - name: Initialize local Supabase project
+        run: npx supabase init --force
+
+      - name: Create profiles migration with Supabase CLI
+        shell: bash
+        run: |
+          npx supabase migration new create_profiles
+          migration="$(ls supabase/migrations/*_create_profiles.sql)"
+          cat > "$migration" <<'SQL'
+          create table public.profiles (
+            id uuid primary key references auth.users(id) on delete cascade,
+            display_name text,
+            created_at timestamptz not null default now(),
+            updated_at timestamptz not null default now()
+          );
+
+          alter table public.profiles enable row level security;
+
+          revoke all on table public.profiles from anon;
+          grant select, insert, update on table public.profiles to authenticated;
+
+          create policy "Users can read their own profile"
+            on public.profiles
+            for select
+            to authenticated
+            using ((select auth.uid()) = id);
+
+          create policy "Users can create their own profile"
+            on public.profiles
+            for insert
+            to authenticated
+            with check ((select auth.uid()) = id);
+
+          create policy "Users can update their own profile"
+            on public.profiles
+            for update
+            to authenticated
+            using ((select auth.uid()) = id)
+            with check ((select auth.uid()) = id);
+          SQL
+
+      - name: Commit generated foundation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json supabase/
+          if git diff --cached --quiet; then
+            echo "No generated changes"
+            exit 0
+          fi
+          git commit -m "Task 03: generate Supabase project foundation"
+          git push origin HEAD:agent/03-supabase-foundation
