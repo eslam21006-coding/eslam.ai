@@ -13,6 +13,10 @@ import {
   claimConversationGeneration,
   releaseConversationGeneration,
 } from "@/features/conversations/generation-lock";
+import {
+  executeMessageResponseFlow,
+  type GenerationClaim,
+} from "@/features/conversations/response-flow";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -21,11 +25,6 @@ export type MessageActionState = {
   error: "invalid_input" | "save_failed" | "response_in_progress" | null;
   revision: number;
 };
-
-type GenerationClaim =
-  | { status: "claimed"; token: string }
-  | { status: "busy" }
-  | { status: "failed" };
 
 function readContent(formData: FormData) {
   const value = formData.get("content");
@@ -39,24 +38,6 @@ function readConversationId(formData: FormData): string | null | false {
   return value;
 }
 
-async function generateAndPersistReply(userId: string, conversationId: string) {
-  try {
-    const thread = await loadConversation(userId, conversationId);
-    if (!thread) {
-      throw new Error("Conversation disappeared before response generation.");
-    }
-
-    const assistantContent = await generateBasicEslamReply(thread.messages);
-    await persistAssistantMessage(userId, conversationId, assistantContent);
-    return true;
-  } catch (error) {
-    console.error("assistant response failed", {
-      message: error instanceof Error ? error.message : "Unknown assistant response error",
-    });
-    return false;
-  }
-}
-
 function redirectToConversation(conversationId: string, responseSaved: boolean): never {
   revalidatePath(`/app/chat/${conversationId}`);
   revalidatePath("/app", "layout");
@@ -67,7 +48,10 @@ function redirectToConversation(conversationId: string, responseSaved: boolean):
   );
 }
 
-async function claimGeneration(userId: string, conversationId: string): Promise<GenerationClaim> {
+async function claimGeneration(
+  userId: string,
+  conversationId: string,
+): Promise<GenerationClaim> {
   try {
     const token = await claimConversationGeneration(userId, conversationId);
     return token ? { status: "claimed", token } : { status: "busy" };
@@ -102,55 +86,45 @@ export async function persistUserMessageAction(
   const userId = await requireAuthenticatedUser();
   const supabase = await createClient();
 
-  if (conversationId === null) {
-    const { data, error } = await supabase.rpc(
-      "create_conversation_with_first_message",
-      { p_content: content },
-    );
+  const result = await executeMessageResponseFlow(
+    { userId, conversationId, content },
+    {
+      createConversation: async (firstMessage) => {
+        const { data, error } = await supabase.rpc(
+          "create_conversation_with_first_message",
+          { p_content: firstMessage },
+        );
+        if (error || !data) {
+          throw new Error(error?.message || "Conversation creation returned no ID.");
+        }
+        return data;
+      },
+      claimGeneration,
+      releaseGeneration: releaseConversationGeneration,
+      insertUserMessage: async (ownerId, targetConversationId, messageContent) => {
+        const { error } = await supabase.from("messages").insert({
+          conversation_id: targetConversationId,
+          user_id: ownerId,
+          role: "user",
+          content: messageContent,
+        });
+        if (error) throw new Error(error.message);
+      },
+      loadConversation,
+      generateReply: generateBasicEslamReply,
+      persistAssistant: persistAssistantMessage,
+      reportError: (stage, error) => {
+        console.error("message response flow failed", {
+          stage,
+          message: error instanceof Error ? error.message : "Unknown response flow error",
+        });
+      },
+    },
+  );
 
-    if (error || !data) {
-      console.error("conversation creation failed", {
-        code: error?.code,
-        message: error?.message,
-      });
-      return failure("save_failed");
-    }
-
-    const claim = await claimGeneration(userId, data);
-    if (claim.status !== "claimed") {
-      redirectToConversation(data, false);
-    }
-
-    const responseSaved = await generateAndPersistReply(userId, data);
-    await releaseConversationGeneration(userId, data, claim.token);
-    redirectToConversation(data, responseSaved);
+  if (result.kind === "form_error") {
+    return failure(result.error);
   }
 
-  const claim = await claimGeneration(userId, conversationId);
-  if (claim.status === "busy") {
-    return failure("response_in_progress");
-  }
-  if (claim.status === "failed") {
-    return failure("save_failed");
-  }
-
-  const { error } = await supabase.from("messages").insert({
-    conversation_id: conversationId,
-    user_id: userId,
-    role: "user",
-    content,
-  });
-
-  if (error) {
-    await releaseConversationGeneration(userId, conversationId, claim.token);
-    console.error("conversation message insert failed", {
-      code: error.code,
-      message: error.message,
-    });
-    return failure("save_failed");
-  }
-
-  const responseSaved = await generateAndPersistReply(userId, conversationId);
-  await releaseConversationGeneration(userId, conversationId, claim.token);
-  redirectToConversation(conversationId, responseSaved);
+  redirectToConversation(result.conversationId, result.responseSaved);
 }
