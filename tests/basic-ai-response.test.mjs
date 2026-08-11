@@ -40,7 +40,7 @@ test("streaming OpenAI boundary reuses the bounded request contract with store d
   assert.match(events, /response\.completed/);
   assert.match(events, /response\.failed/);
   assert.match(events, /response\.incomplete/);
-  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /business_dna|file_search|web_search|vector_store/i);
+  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /file_search|web_search|vector_store/i);
 });
 
 test("assistant persistence remains backend-only while streamed user turns use authenticated RLS", () => {
@@ -104,13 +104,15 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(button, /streaming \|\| actionPending/);
 });
 
-test("Task 08 does not inject later-stage context or tools", () => {
+test("Task 10 injects Business DNA without later-stage intelligence or tools", () => {
   const sources = [
     readSource("src/app/api/chat/stream/route.ts"),
     readSource("src/features/conversations/assistant.ts"),
     readSource("src/features/conversations/assistant-request.ts"),
+    readSource("src/features/conversations/actions.ts"),
     readSource("src/features/conversations/conversation-chat.tsx"),
   ].join("\n");
 
-  assert.doesNotMatch(sources, /business_dna|eslam_principles|eslam_playbooks|file_search|web_search|vector_store|tools:/i);
+  assert.match(sources, /businessDnaContext|loadBusinessDnaModelContext/);
+  assert.doesNotMatch(sources, /eslam_principles|eslam_playbooks|file_search|web_search|vector_store|tools:/i);
 });
