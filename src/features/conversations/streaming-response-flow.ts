@@ -1,4 +1,8 @@
-import type { PreparedResponseTurn } from "@/features/conversations/response-flow";
+type PreparedStreamingTurn<Message> = {
+  conversationId: string;
+  claimToken: string;
+  messages: Message[];
+};
 
 type StreamingResponseDependencies<Message> = {
   streamReply(
@@ -12,7 +16,7 @@ type StreamingResponseDependencies<Message> = {
 
 type StreamingResponseInput<Message> = {
   userId: string;
-  prepared: PreparedResponseTurn<Message>;
+  prepared: PreparedStreamingTurn<Message>;
   signal: AbortSignal;
   onDelta(delta: string): void;
 };
