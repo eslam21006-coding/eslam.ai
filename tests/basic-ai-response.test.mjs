@@ -5,6 +5,9 @@ import test from "node:test";
 const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
+const importSource = (relativePath) =>
+  import(new URL(`../${relativePath}`, import.meta.url).href);
+
 test("OpenAI SDK is pinned and server-only credentials stay private", () => {
   const packageJson = JSON.parse(readSource("package.json"));
   const env = readSource(".env.example");
@@ -41,6 +44,43 @@ test("streaming OpenAI boundary reuses the bounded request contract with store d
   assert.match(events, /response\.failed/);
   assert.match(events, /response\.incomplete/);
   assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /file_search|web_search|vector_store/i);
+});
+
+test("Business DNA is present at runtime in both request modes without enabling tools", async () => {
+  const {
+    buildBasicEslamResponseRequest,
+    buildBasicEslamStreamingResponseRequest,
+  } = await importSource("src/features/conversations/assistant-request.ts");
+  const messages = [
+    { role: "user", content: "قيم العرض الحالي" },
+    { role: "assistant", content: "ما هو السعر الحالي؟" },
+    { role: "user", content: "السعر 1500 دولار" },
+  ];
+  const businessDnaContext =
+    '{"business_name":"Acme Academy","niche":"Executive coaching"}';
+
+  const blocking = buildBasicEslamResponseRequest(
+    messages,
+    "test-model",
+    businessDnaContext,
+  );
+  const streaming = buildBasicEslamStreamingResponseRequest(
+    messages,
+    "test-model",
+    businessDnaContext,
+  );
+
+  assert.ok(blocking.instructions.includes(businessDnaContext));
+  assert.equal(streaming.instructions, blocking.instructions);
+  assert.deepEqual(streaming.input, blocking.input);
+  assert.equal(blocking.store, false);
+  assert.equal(streaming.store, false);
+  assert.equal(streaming.stream, true);
+  assert.equal(Object.hasOwn(blocking, "tools"), false);
+  assert.equal(Object.hasOwn(streaming, "tools"), false);
+
+  const withoutDna = buildBasicEslamResponseRequest(messages, "test-model", null);
+  assert.doesNotMatch(withoutDna.instructions, /Business DNA JSON:/);
 });
 
 test("assistant persistence remains backend-only while streamed user turns use authenticated RLS", () => {
