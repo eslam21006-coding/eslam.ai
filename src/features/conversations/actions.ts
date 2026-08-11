@@ -9,12 +9,16 @@ import {
 } from "@/features/conversations/assistant";
 import { isUuid, MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
 import { loadConversation } from "@/features/conversations/data";
+import {
+  claimConversationGeneration,
+  releaseConversationGeneration,
+} from "@/features/conversations/generation-lock";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
 export type MessageActionState = {
   content: string;
-  error: "invalid_input" | "save_failed" | null;
+  error: "invalid_input" | "save_failed" | "response_in_progress" | null;
   revision: number;
 };
 
@@ -58,6 +62,17 @@ function redirectToConversation(conversationId: string, responseSaved: boolean):
   );
 }
 
+async function claimGenerationOrNull(userId: string, conversationId: string) {
+  try {
+    return await claimConversationGeneration(userId, conversationId);
+  } catch (error) {
+    console.error("conversation generation lock unavailable", {
+      message: error instanceof Error ? error.message : "Unknown generation lock error",
+    });
+    return null;
+  }
+}
+
 export async function persistUserMessageAction(
   previousState: MessageActionState,
   formData: FormData,
@@ -95,8 +110,19 @@ export async function persistUserMessageAction(
       return failure("save_failed");
     }
 
+    const lockToken = await claimGenerationOrNull(userId, data);
+    if (!lockToken) {
+      redirectToConversation(data, false);
+    }
+
     const responseSaved = await generateAndPersistReply(userId, data);
+    await releaseConversationGeneration(userId, data, lockToken);
     redirectToConversation(data, responseSaved);
+  }
+
+  const lockToken = await claimGenerationOrNull(userId, conversationId);
+  if (!lockToken) {
+    return failure("response_in_progress");
   }
 
   const { error } = await supabase.from("messages").insert({
@@ -107,6 +133,7 @@ export async function persistUserMessageAction(
   });
 
   if (error) {
+    await releaseConversationGeneration(userId, conversationId, lockToken);
     console.error("conversation message insert failed", {
       code: error.code,
       message: error.message,
@@ -115,5 +142,6 @@ export async function persistUserMessageAction(
   }
 
   const responseSaved = await generateAndPersistReply(userId, conversationId);
+  await releaseConversationGeneration(userId, conversationId, lockToken);
   redirectToConversation(conversationId, responseSaved);
 }
