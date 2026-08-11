@@ -1,6 +1,10 @@
 import "server-only";
 
-import { buildBasicEslamResponseRequest } from "@/features/conversations/assistant-request";
+import {
+  buildBasicEslamResponseRequest,
+  buildBasicEslamStreamingResponseRequest,
+} from "@/features/conversations/assistant-request";
+import { consumeBasicEslamStream } from "@/features/conversations/assistant-stream-events";
 import { MAX_MESSAGE_LENGTH, type MessageRecord } from "@/features/conversations/contracts";
 import { getOpenAIClient, getOpenAIModel } from "@/lib/openai/client";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
@@ -15,6 +19,24 @@ export async function generateBasicEslamReply(messages: MessageRecord[]) {
   }
 
   return content;
+}
+
+export async function streamBasicEslamReply(
+  messages: MessageRecord[],
+  options: {
+    signal: AbortSignal;
+    onDelta(delta: string): void;
+  },
+) {
+  const request = buildBasicEslamStreamingResponseRequest(
+    messages,
+    getOpenAIModel(),
+  );
+  const stream = await getOpenAIClient().responses.create(request, {
+    signal: options.signal,
+  });
+
+  return consumeBasicEslamStream(stream, { onDelta: options.onDelta });
 }
 
 export async function persistAssistantMessage(
