@@ -45,6 +45,7 @@ export default async function ConversationPage({
       <ConversationChat
         conversationId={conversationId}
         initialMessages={thread.messages}
+        clearResponseErrorOnSuccess={responseFailed}
       />
     </div>
   );
