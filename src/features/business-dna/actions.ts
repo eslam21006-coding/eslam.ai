@@ -14,6 +14,7 @@ import type { TablesInsert } from "@/types/database";
 
 export type BusinessDnaActionState = {
   error: "invalid_input" | "save_failed" | null;
+  revision: number;
   values: BusinessDnaValues;
 };
 
@@ -27,14 +28,19 @@ function readSubmittedValues(formData: FormData): BusinessDnaValues {
 }
 
 export async function saveBusinessDnaAction(
-  _previousState: BusinessDnaActionState,
+  previousState: BusinessDnaActionState,
   formData: FormData,
 ): Promise<BusinessDnaActionState> {
   const userId = await requireAuthenticatedUser();
   const values = readSubmittedValues(formData);
+  const failureState = (error: BusinessDnaActionState["error"]): BusinessDnaActionState => ({
+    error,
+    revision: previousState.revision + 1,
+    values,
+  });
 
   if (Object.values(values).some((value) => value.length > MAX_FIELD_LENGTH)) {
-    return { error: "invalid_input", values };
+    return failureState("invalid_input");
   }
 
   const payload = {
@@ -54,7 +60,7 @@ export async function saveBusinessDnaAction(
       code: error.code,
       message: error.message,
     });
-    return { error: "save_failed", values };
+    return failureState("save_failed");
   }
 
   revalidatePath("/app/business");
