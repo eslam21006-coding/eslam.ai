@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
-import { MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
+import { isUuid, MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 
@@ -18,9 +18,11 @@ function readContent(formData: FormData) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function readConversationId(formData: FormData) {
+function readConversationId(formData: FormData): string | null | false {
   const value = formData.get("conversation_id");
-  return typeof value === "string" && value.length > 0 ? value : null;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string" || !isUuid(value)) return false;
+  return value;
 }
 
 export async function persistUserMessageAction(
@@ -35,14 +37,18 @@ export async function persistUserMessageAction(
     revision: previousState.revision + 1,
   });
 
-  if (content.length < 1 || content.length > MAX_MESSAGE_LENGTH) {
+  if (
+    content.length < 1 ||
+    content.length > MAX_MESSAGE_LENGTH ||
+    conversationId === false
+  ) {
     return failure("invalid_input");
   }
 
   const userId = await requireAuthenticatedUser();
   const supabase = await createClient();
 
-  if (!conversationId) {
+  if (conversationId === null) {
     const { data, error } = await supabase.rpc(
       "create_conversation_with_first_message",
       { p_content: content },
