@@ -20,13 +20,16 @@ jobs:
     steps:
       - name: Exercise hosted auth and RLS
         env:
-          SMOKE_PASSWORD: ${{ github.token }}Aa1!
+          SMOKE_SEED: ${{ github.token }}
         run: |
           node <<'NODE'
+          const { createHash } = await import("node:crypto");
+          const { setTimeout: sleep } = await import("node:timers/promises");
+
           const base = process.env.SUPABASE_URL;
           const key = process.env.SUPABASE_PUBLISHABLE_KEY;
           const email = `eslam-ai-smoke-${process.env.GITHUB_RUN_ID}@example.com`;
-          const password = process.env.SMOKE_PASSWORD;
+          const password = `${createHash("sha256").update(process.env.SMOKE_SEED).digest("hex").slice(0, 32)}Aa1!`;
           const common = { apikey: key, "Content-Type": "application/json" };
 
           async function jsonFetch(url, init = {}) {
@@ -51,17 +54,28 @@ jobs:
           console.log(`signup_user_created=${Boolean(signup.body.user?.id)}`);
           console.log(`smoke_email=${email}`);
 
-          if (!signup.body.access_token) {
-            throw new Error("Signup succeeded but email confirmation is required; hosted password-login smoke cannot continue until the test user is confirmed.");
+          let login = signup.body.access_token
+            ? { response: signup.response, body: signup.body }
+            : null;
+
+          if (!login) {
+            console.log("awaiting_test_user_confirmation=true");
+            for (let attempt = 0; attempt < 24; attempt += 1) {
+              await sleep(5000);
+              const candidate = await jsonFetch(`${base}/auth/v1/token?grant_type=password`, {
+                method: "POST",
+                headers: common,
+                body: JSON.stringify({ email, password }),
+              });
+              if (candidate.response.ok && candidate.body.access_token && candidate.body.user?.id) {
+                login = candidate;
+                break;
+              }
+            }
           }
 
-          const login = await jsonFetch(`${base}/auth/v1/token?grant_type=password`, {
-            method: "POST",
-            headers: common,
-            body: JSON.stringify({ email, password }),
-          });
-          if (!login.response.ok || !login.body.access_token || !login.body.user?.id) {
-            throw new Error(`Password login failed: ${login.response.status} ${JSON.stringify(login.body)}`);
+          if (!login?.body?.access_token || !login.body.user?.id) {
+            throw new Error("Password login did not become available after test-account confirmation window.");
           }
           console.log("password_login=ok");
 
