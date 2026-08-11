@@ -77,6 +77,19 @@ test("first conversation and message are created atomically as the authenticated
   assert.match(atomicCreate, /grant execute on function public\.create_conversation_with_first_message\(text\) to authenticated/);
 });
 
+test("conversation IDs are validated before database access or append", () => {
+  const contracts = readSource("src/features/conversations/contracts.ts");
+  const data = readSource("src/features/conversations/data.ts");
+  const actions = readSource("src/features/conversations/actions.ts");
+
+  assert.match(contracts, /UUID_PATTERN/);
+  assert.match(contracts, /export function isUuid/);
+  assert.match(data, /if \(!isUuid\(conversationId\)\) return null;/);
+  assert.match(actions, /if \(typeof value !== "string" \|\| !isUuid\(value\)\) return false;/);
+  assert.match(actions, /conversationId === false/);
+  assert.match(actions, /return failure\("invalid_input"\)/);
+});
+
 test("message action derives ownership from auth and preserves failed content", () => {
   const actions = readSource("src/features/conversations/actions.ts");
 
