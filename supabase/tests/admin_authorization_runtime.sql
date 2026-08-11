@@ -57,8 +57,19 @@ begin
     from pg_policies
     where schemaname = 'public'
       and tablename = 'admin_users'
+      and ('anon' = any(roles) or 'authenticated' = any(roles) or 'public' = any(roles))
   ) then
-    raise exception 'admin_users must not expose authenticated RLS policies';
+    raise exception 'admin_users exposes a client RLS policy';
+  end if;
+
+  if (
+    select count(*)
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'admin_users'
+      and 'service_role' = any(roles)
+  ) <> 2 then
+    raise exception 'admin_users must expose exactly two service_role policies';
   end if;
 
   if not exists (
