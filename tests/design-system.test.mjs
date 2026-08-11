@@ -42,3 +42,10 @@ test("UI primitives preserve visible keyboard focus through the global focus rul
   assert.match(primitives, /min-h-11/);
   assert.doesNotMatch(primitives, /focus:outline-none/);
 });
+
+test("dropdown preview buttons cannot accidentally submit a containing form", () => {
+  const primitives = readSource("src/components/ui/primitives.tsx");
+  const optionButtons = primitives.match(/<button type="button"/g) ?? [];
+
+  assert.equal(optionButtons.length, 2);
+});
