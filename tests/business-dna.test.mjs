@@ -6,7 +6,7 @@ const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
 const migration = readSource(
-  "supabase/migrations/20260811130700_create_business_dna.sql",
+  "supabase/migrations/20260811130752_create_business_dna.sql",
 );
 
 test("Business DNA schema contains only slow-changing business context", () => {
