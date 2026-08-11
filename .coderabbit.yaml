@@ -7,6 +7,8 @@ reviews:
   high_level_summary: true
   review_status: true
   poem: false
+  path_filters:
+    - "!package-lock.json"
   auto_review:
     enabled: true
     auto_incremental_review: true
