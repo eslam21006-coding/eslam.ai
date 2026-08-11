@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { loadBusinessDnaModelContext } from "@/features/business-dna/model-context-data";
 import {
   generateBasicEslamReply,
   persistAssistantMessage,
@@ -61,12 +62,14 @@ export async function persistUserMessageAction(
   }
 
   const userId = await requireAuthenticatedUser();
+  const businessDnaContext = await loadBusinessDnaModelContext(userId);
   const preparationDependencies = await createResponsePreparationDependencies();
   const result = await executeMessageResponseFlow(
     { userId, conversationId, content },
     {
       ...preparationDependencies,
-      generateReply: generateBasicEslamReply,
+      generateReply: (messages) =>
+        generateBasicEslamReply(messages, businessDnaContext),
       persistAssistant: persistAssistantMessage,
     },
   );
