@@ -75,9 +75,14 @@ jobs:
               < "$migration"
           done
 
-          docker exec --interactive "$container_name" \
-            psql --set ON_ERROR_STOP=1 --username postgres \
-            < supabase/tests/business_dna_rls_runtime.sql
+          for regression in \
+            supabase/tests/business_dna_rls_runtime.sql \
+            supabase/tests/conversations_rls_runtime.sql; do
+            echo "Running $regression"
+            docker exec --interactive "$container_name" \
+              psql --set ON_ERROR_STOP=1 --username postgres \
+              < "$regression"
+          done
 
       - name: Build
         run: npm run build
