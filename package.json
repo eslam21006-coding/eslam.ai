@@ -12,7 +12,9 @@
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
     "test": "node --test",
-    "supabase": "supabase"
+    "supabase": "supabase",
+    "db:types:local": "supabase gen types typescript --local > src/types/database.ts",
+    "db:types:linked": "supabase gen types typescript --linked > src/types/database.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",
