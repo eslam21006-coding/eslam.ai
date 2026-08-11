@@ -43,5 +43,41 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Database tenant isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_name="eslam-ai-db-test-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker run --detach --name "$container_name" \
+            --env POSTGRES_PASSWORD=postgres \
+            postgres:17-alpine >/dev/null
+          trap 'docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
+
+          for attempt in {1..30}; do
+            if docker exec "$container_name" pg_isready --username postgres >/dev/null 2>&1; then
+              break
+            fi
+            if [[ "$attempt" -eq 30 ]]; then
+              echo "Postgres did not become ready" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+
+          docker exec --interactive "$container_name" \
+            psql --set ON_ERROR_STOP=1 --username postgres \
+            < supabase/tests/bootstrap_auth.sql
+
+          for migration in supabase/migrations/*.sql; do
+            echo "Applying $migration"
+            docker exec --interactive "$container_name" \
+              psql --set ON_ERROR_STOP=1 --username postgres \
+              < "$migration"
+          done
+
+          docker exec --interactive "$container_name" \
+            psql --set ON_ERROR_STOP=1 --username postgres \
+            < supabase/tests/business_dna_rls_runtime.sql
+
       - name: Build
         run: npm run build
