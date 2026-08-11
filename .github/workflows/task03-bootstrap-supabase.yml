@@ -1,8 +1,8 @@
 name: Task 03 Supabase Bootstrap
 
 on:
-  push:
-    branches: [agent/03-supabase-foundation]
+  pull_request:
+    branches: [main]
     paths:
       - package.json
       - .github/workflows/task03-bootstrap-supabase.yml
@@ -20,6 +20,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: agent/03-supabase-foundation
           persist-credentials: true
 
       - name: Setup Node.js
