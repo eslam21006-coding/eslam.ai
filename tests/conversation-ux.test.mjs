@@ -67,7 +67,7 @@ test("conversation history keeps the active thread visible on desktop and when t
   assert.match(shell, /scrollIntoView\(\{ block: "nearest" \}\)/);
   assert.match(shell, /menu\.showModal\(\)/);
   assert.match(shell, /requestAnimationFrame/);
-  assert.match(shell, /#conversations a\[aria-current=\\"page\\"\]/);
+  assert.match(shell, /#conversations a\[aria-current="page"\]/);
   assert.match(shell, /border-\[var\(--gold-muted\)\]/);
   assert.match(shell, /ابدأ أول محادثة/);
 });
