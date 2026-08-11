@@ -3,70 +3,58 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import {
+  MAX_FIELD_LENGTH,
+  businessDnaFieldNames,
+  type BusinessDnaValues,
+} from "@/features/business-dna/fields";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
+import type { TablesInsert } from "@/types/database";
 
-const MAX_FIELD_LENGTH = 4000;
+export type BusinessDnaActionState = {
+  error: "invalid_input" | "save_failed" | null;
+  values: BusinessDnaValues;
+};
 
-const fieldNames = [
-  "preferred_name",
-  "business_name",
-  "niche",
-  "markets",
-  "audiences",
-  "business_model",
-  "offers",
-  "price_ranges",
-  "positioning",
-  "methodology",
-  "delivery",
-  "team_context",
-] as const;
-
-type BusinessDnaField = (typeof fieldNames)[number];
-
-function readOptionalText(formData: FormData, name: BusinessDnaField) {
-  const value = formData.get(name);
-  if (typeof value !== "string") return null;
-
-  const normalized = value.trim();
-  if (normalized.length > MAX_FIELD_LENGTH) return undefined;
-
-  return normalized.length > 0 ? normalized : null;
+function readSubmittedValues(formData: FormData): BusinessDnaValues {
+  return Object.fromEntries(
+    businessDnaFieldNames.map((field) => {
+      const value = formData.get(field);
+      return [field, typeof value === "string" ? value.trim() : ""];
+    }),
+  ) as BusinessDnaValues;
 }
 
-export async function saveBusinessDnaAction(formData: FormData) {
+export async function saveBusinessDnaAction(
+  _previousState: BusinessDnaActionState,
+  formData: FormData,
+): Promise<BusinessDnaActionState> {
   const userId = await requireAuthenticatedUser();
-  const values = Object.fromEntries(
-    fieldNames.map((field) => [field, readOptionalText(formData, field)]),
-  ) as Record<BusinessDnaField, string | null | undefined>;
+  const values = readSubmittedValues(formData);
 
-  if (Object.values(values).some((value) => value === undefined)) {
-    redirect("/app/business?error=invalid_input");
+  if (Object.values(values).some((value) => value.length > MAX_FIELD_LENGTH)) {
+    return { error: "invalid_input", values };
   }
 
+  const payload = {
+    user_id: userId,
+    ...Object.fromEntries(
+      businessDnaFieldNames.map((field) => [field, values[field] || null]),
+    ),
+  } as TablesInsert<"business_dna">;
+
   const supabase = await createClient();
-  const { error } = await supabase.from("business_dna").upsert(
-    {
-      user_id: userId,
-      preferred_name: values.preferred_name ?? null,
-      business_name: values.business_name ?? null,
-      niche: values.niche ?? null,
-      markets: values.markets ?? null,
-      audiences: values.audiences ?? null,
-      business_model: values.business_model ?? null,
-      offers: values.offers ?? null,
-      price_ranges: values.price_ranges ?? null,
-      positioning: values.positioning ?? null,
-      methodology: values.methodology ?? null,
-      delivery: values.delivery ?? null,
-      team_context: values.team_context ?? null,
-    },
-    { onConflict: "user_id" },
-  );
+  const { error } = await supabase
+    .from("business_dna")
+    .upsert(payload, { onConflict: "user_id" });
 
   if (error) {
-    redirect("/app/business?error=save_failed");
+    console.error("business_dna upsert failed", {
+      code: error.code,
+      message: error.message,
+    });
+    return { error: "save_failed", values };
   }
 
   revalidatePath("/app/business");
