@@ -113,6 +113,19 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
   }, [pathname]);
 
+  useEffect(() => {
+    const desktopBreakpoint = window.matchMedia("(min-width: 64rem)");
+    const closeAtDesktop = () => {
+      if (desktopBreakpoint.matches && mobileMenuRef.current?.open) {
+        mobileMenuRef.current.close();
+      }
+    };
+
+    closeAtDesktop();
+    desktopBreakpoint.addEventListener("change", closeAtDesktop);
+    return () => desktopBreakpoint.removeEventListener("change", closeAtDesktop);
+  }, []);
+
   const openMobileMenu = () => mobileMenuRef.current?.showModal();
   const closeMobileMenu = () => mobileMenuRef.current?.close();
 
