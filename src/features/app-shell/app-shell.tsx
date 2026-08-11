@@ -38,6 +38,14 @@ type SidebarContentProps = {
 
 function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: SidebarContentProps) {
   const pathname = usePathname();
+  const activeConversationRef = useRef<HTMLAnchorElement>(null);
+
+  useEffect(() => {
+    const activeConversation = activeConversationRef.current;
+    if (!activeConversation) return;
+
+    activeConversation.scrollIntoView({ block: "nearest" });
+  }, [pathname, conversations.length]);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -86,8 +94,15 @@ function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: 
               تعذر تحميل المحادثات الآن.
             </li>
           ) : conversations.length === 0 ? (
-            <li className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
-              لا توجد محادثات محفوظة بعد.
+            <li className="rounded-[var(--radius-sm)] px-3 py-3 text-xs leading-5 text-[var(--foreground-subtle)]">
+              <p>لا توجد محادثات محفوظة بعد.</p>
+              <Link
+                href="/app/chat"
+                onClick={onNavigate}
+                className="mt-2 inline-flex min-h-9 items-center text-[var(--gold-muted)] hover:text-[var(--gold-bright)]"
+              >
+                ابدأ أول محادثة
+              </Link>
             </li>
           ) : (
             conversations.map((conversation) => {
@@ -96,14 +111,15 @@ function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: 
               return (
                 <li key={conversation.id} className="grid">
                   <Link
+                    ref={active ? activeConversationRef : undefined}
                     href={href}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     title={conversation.title}
-                    className={`block truncate rounded-[var(--radius-sm)] px-3 py-2.5 text-sm transition-colors ${
+                    className={`block truncate rounded-[var(--radius-sm)] border-r-2 px-3 py-2.5 text-sm transition-colors ${
                       active
-                        ? "bg-white/[0.04] text-[var(--foreground)]"
-                        : "text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
+                        ? "border-[var(--gold-muted)] bg-white/[0.04] text-[var(--foreground)]"
+                        : "border-transparent text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
                     }`}
                   >
                     {conversation.title}
@@ -169,7 +185,17 @@ export function AppShell({ children, conversations, conversationsLoadFailed = fa
     return () => desktopBreakpoint.removeEventListener("change", closeAtDesktop);
   }, []);
 
-  const openMobileMenu = () => mobileMenuRef.current?.showModal();
+  const openMobileMenu = () => {
+    const menu = mobileMenuRef.current;
+    if (!menu) return;
+
+    menu.showModal();
+    window.requestAnimationFrame(() => {
+      menu
+        .querySelector<HTMLAnchorElement>('#conversations a[aria-current="page"]')
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  };
   const closeMobileMenu = () => mobileMenuRef.current?.close();
   const sidebarProps = { conversations, conversationsLoadFailed };
 

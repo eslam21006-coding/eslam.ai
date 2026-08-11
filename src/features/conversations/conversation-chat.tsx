@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  COMPOSER_FOCUS_STORAGE_KEY,
   ConversationComposer,
   type ComposerError,
 } from "@/features/conversations/conversation-composer";
@@ -41,11 +42,12 @@ function MessageArticle({
 }) {
   const isUser = role === "user";
   const authorLabel = isUser ? "أنت:" : role === "assistant" ? "إسلام:" : "النظام:";
+  const waitingForFirstToken = streaming && content.length === 0;
 
   return (
     <article
       className={isUser ? "mr-auto max-w-[88%] sm:max-w-[75%]" : "max-w-[92%] sm:max-w-[82%]"}
-      aria-live={streaming ? "polite" : undefined}
+      aria-live={streaming && !waitingForFirstToken ? "polite" : undefined}
     >
       <span className="sr-only">{authorLabel}</span>
       <div
@@ -55,9 +57,23 @@ function MessageArticle({
             : "px-1 py-1"
         }
       >
-        <p className="text-mixed whitespace-pre-wrap text-sm leading-7 sm:text-[0.95rem]">
-          {content || (streaming ? "…" : "")}
-        </p>
+        {waitingForFirstToken ? (
+          <span
+            role="status"
+            aria-label="إسلام يكتب"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--foreground-subtle)]"
+          >
+            <span>إسلام يكتب</span>
+            <span aria-hidden="true" className="animate-pulse text-[var(--gold-muted)]">…</span>
+          </span>
+        ) : (
+          <p
+            dir="auto"
+            className="text-mixed whitespace-pre-wrap break-words text-sm leading-7 [overflow-wrap:anywhere] sm:text-[0.95rem]"
+          >
+            {content}
+          </p>
+        )}
       </div>
     </article>
   );
@@ -70,6 +86,14 @@ function localErrorFromServer(error: string | undefined): ComposerError {
   return "network_uncertain";
 }
 
+function rememberComposerFocus(conversationId: string) {
+  try {
+    window.sessionStorage.setItem(COMPOSER_FOCUS_STORAGE_KEY, conversationId);
+  } catch {
+    // Focus continuity is optional UX; navigation must still succeed if storage is unavailable.
+  }
+}
+
 export function ConversationChat({
   conversationId,
   initialMessages,
@@ -79,10 +103,33 @@ export function ConversationChat({
   const router = useRouter();
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [optimisticTurn, setOptimisticTurn] = useState<OptimisticTurn | null>(null);
+  const [optimisticBaseMessageCount, setOptimisticBaseMessageCount] = useState<number | null>(null);
   const [streamingError, setStreamingError] = useState<ComposerError>(null);
   const [streaming, setStreaming] = useState(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+  const endRef = useRef<HTMLDivElement>(null);
+  const followingLatestRef = useRef(true);
+
+  const optimisticTurnIsPersisted =
+    optimisticTurn !== null &&
+    optimisticBaseMessageCount !== null &&
+    initialMessages.length > optimisticBaseMessageCount;
+  const visibleOptimisticTurn = optimisticTurnIsPersisted ? null : optimisticTurn;
+  const hasMessages = initialMessages.length > 0 || visibleOptimisticTurn !== null;
+  const streamedAssistantLength = visibleOptimisticTurn?.assistant.length ?? 0;
+
+  const clearOptimisticTurn = () => {
+    setOptimisticBaseMessageCount(null);
+    setOptimisticTurn(null);
+  };
+
+  const scrollToLatest = (behavior: ScrollBehavior = "auto") => {
+    followingLatestRef.current = true;
+    setShowJumpToLatest(false);
+    endRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -92,6 +139,43 @@ export function ConversationChat({
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const endNode = endRef.current;
+    if (!endNode || !hasMessages) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const atLatest = entry.isIntersecting;
+        followingLatestRef.current = atLatest;
+        setShowJumpToLatest(!atLatest);
+      },
+      { root: null, threshold: 0.01, rootMargin: "0px 0px 120px 0px" },
+    );
+
+    observer.observe(endNode);
+    return () => observer.disconnect();
+  }, [hasMessages, conversationId]);
+
+  useEffect(() => {
+    if (!hasMessages || !followingLatestRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [hasMessages, initialMessages.length, visibleOptimisticTurn, streamedAssistantLength]);
+
+  useEffect(() => {
+    if (!initialMessages.length) return;
+
+    followingLatestRef.current = true;
+    const frame = window.requestAnimationFrame(() => scrollToLatest("auto"));
+    return () => window.cancelAnimationFrame(frame);
+    // Scroll once when entering a persisted thread; later updates obey the user's follow-latest position.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,6 +194,9 @@ export function ConversationChat({
 
     const abortController = new AbortController();
     abortRef.current = abortController;
+    setOptimisticBaseMessageCount(initialMessages.length);
+    followingLatestRef.current = true;
+    setShowJumpToLatest(false);
     setStreamingError(null);
     setStreaming(true);
     setOptimisticTurn({ user: submittedContent, assistant: "" });
@@ -138,7 +225,7 @@ export function ConversationChat({
         }
 
         if (payload.userMessageSaved && payload.conversationId) {
-          setOptimisticTurn(null);
+          clearOptimisticTurn();
           router.replace(
             `/app/chat/${payload.conversationId}?error=response_failed`,
             { scroll: false },
@@ -146,7 +233,7 @@ export function ConversationChat({
           return;
         }
 
-        setOptimisticTurn(null);
+        clearOptimisticTurn();
         setDraft((current) => current || submittedContent);
         setStreamingError(localErrorFromServer(payload.error));
         return;
@@ -186,9 +273,13 @@ export function ConversationChat({
 
       if (!mountedRef.current) return;
 
-      setOptimisticTurn(null);
       const cleanConversationUrl = `/app/chat/${targetConversationId}`;
-      if (targetConversationId !== conversationId || clearResponseErrorOnSuccess) {
+      const startsNewThread = targetConversationId !== conversationId;
+      if (startsNewThread) {
+        rememberComposerFocus(targetConversationId);
+      }
+
+      if (startsNewThread || clearResponseErrorOnSuccess) {
         router.replace(cleanConversationUrl, { scroll: false });
       } else {
         router.refresh();
@@ -196,7 +287,7 @@ export function ConversationChat({
     } catch (error) {
       if (abortController.signal.aborted || !mountedRef.current) return;
 
-      setOptimisticTurn(null);
+      clearOptimisticTurn();
       if (responseStarted && targetConversationId) {
         router.replace(
           `/app/chat/${targetConversationId}?error=response_failed`,
@@ -220,8 +311,6 @@ export function ConversationChat({
     }
   }
 
-  const hasMessages = initialMessages.length > 0 || optimisticTurn !== null;
-
   return (
     <>
       <section
@@ -234,7 +323,7 @@ export function ConversationChat({
         }
       >
         {hasMessages ? (
-          <div className="mx-auto grid w-full max-w-3xl gap-6">
+          <div className="mx-auto grid w-full max-w-3xl gap-7 sm:gap-8">
             {initialMessages.map((message) => (
               <MessageArticle
                 key={message.id}
@@ -242,16 +331,17 @@ export function ConversationChat({
                 content={message.content}
               />
             ))}
-            {optimisticTurn ? (
+            {visibleOptimisticTurn ? (
               <>
-                <MessageArticle role="user" content={optimisticTurn.user} />
+                <MessageArticle role="user" content={visibleOptimisticTurn.user} />
                 <MessageArticle
                   role="assistant"
-                  content={optimisticTurn.assistant}
-                  streaming
+                  content={visibleOptimisticTurn.assistant}
+                  streaming={streaming}
                 />
               </>
             ) : null}
+            <div ref={endRef} aria-hidden="true" className="h-px scroll-mb-32" />
           </div>
         ) : showEmptyState ? (
           <div className="mx-auto w-full max-w-3xl text-center">
@@ -266,7 +356,20 @@ export function ConversationChat({
         ) : null}
       </section>
 
-      <footer className="sticky bottom-0 pb-4 pt-2 sm:pb-6">
+      {showJumpToLatest && hasMessages ? (
+        <div className="fixed bottom-28 left-1/2 z-20 w-fit -translate-x-1/2 sm:bottom-32 lg:left-[calc(50%-9rem)]">
+          <button
+            type="button"
+            onClick={() => scrollToLatest("smooth")}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--surface)_94%,transparent)] px-3.5 text-xs font-medium text-[var(--foreground-muted)] shadow-[var(--shadow-soft)] backdrop-blur-xl transition-colors hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
+          >
+            <span>آخر رسالة</span>
+            <span aria-hidden="true">↓</span>
+          </button>
+        </div>
+      ) : null}
+
+      <footer className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent pb-4 pt-3 sm:pb-6">
         <ConversationComposer
           conversationId={conversationId}
           value={draft}

@@ -92,7 +92,8 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(chat, /mountedRef\.current = true/);
   assert.match(chat, /abortRef\.current\?\.abort\(\)/);
   assert.match(chat, /new FormData\(event\.currentTarget\)/);
-  assert.match(chat, /targetConversationId !== conversationId \|\| clearResponseErrorOnSuccess/);
+  assert.match(chat, /const startsNewThread = targetConversationId !== conversationId/);
+  assert.match(chat, /if \(startsNewThread \|\| clearResponseErrorOnSuccess\)/);
   assert.match(chat, /router\.replace\(cleanConversationUrl/);
   assert.match(chat, /router\.refresh\(\)/);
   assert.match(threadPage, /clearResponseErrorOnSuccess=\{responseFailed\}/);
