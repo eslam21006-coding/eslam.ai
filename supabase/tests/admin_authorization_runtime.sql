@@ -137,29 +137,12 @@ where email = 'eslam@adscope.net'
   and user_id is null;
 
 do $$
-declare
-  rebound_count integer;
-begin
-  update public.admin_users
-  set user_id = '22222222-2222-4222-8222-222222222222'
-  where email = 'eslam@adscope.net';
-  get diagnostics rebound_count = row_count;
-
-  if rebound_count <> 0 then
-    raise exception 'service_role unexpectedly rebound an admin user';
-  end if;
-end
-$$;
-
-reset role;
-
-do $$
 begin
   begin
     update public.admin_users
     set user_id = '22222222-2222-4222-8222-222222222222'
     where email = 'eslam@adscope.net';
-    raise exception using errcode = 'ZX001', message = 'privileged rebinding unexpectedly succeeded';
+    raise exception using errcode = 'ZX001', message = 'service_role rebinding unexpectedly succeeded';
   exception
     when sqlstate 'P0001' then
       if sqlerrm <> 'admin authorization binding is immutable' then
@@ -175,7 +158,37 @@ begin
     update public.admin_users
     set email = 'changed@example.com'
     where email = 'eslam@adscope.net';
-    raise exception using errcode = 'ZX002', message = 'privileged email change unexpectedly succeeded';
+    raise exception using errcode = 'ZX002', message = 'service_role email change unexpectedly succeeded';
+  exception
+    when insufficient_privilege then null;
+  end;
+end
+$$;
+reset role;
+
+do $$
+begin
+  begin
+    update public.admin_users
+    set user_id = '22222222-2222-4222-8222-222222222222'
+    where email = 'eslam@adscope.net';
+    raise exception using errcode = 'ZX003', message = 'privileged rebinding unexpectedly succeeded';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'admin authorization binding is immutable' then
+        raise;
+      end if;
+  end;
+end
+$$;
+
+do $$
+begin
+  begin
+    update public.admin_users
+    set email = 'changed@example.com'
+    where email = 'eslam@adscope.net';
+    raise exception using errcode = 'ZX004', message = 'privileged email change unexpectedly succeeded';
   exception
     when sqlstate 'P0001' then
       if sqlerrm <> 'admin authorization email is immutable' then
