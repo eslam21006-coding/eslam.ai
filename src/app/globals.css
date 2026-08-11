@@ -2,22 +2,87 @@
 
 :root {
   color-scheme: dark;
-  background: #0b0b0b;
-  color: #f5f5f5;
-  font-family: Arial, Helvetica, sans-serif;
+  --background: #070707;
+  --surface: #0d0d0d;
+  --surface-raised: #14120f;
+  --surface-subtle: #10100f;
+  --foreground: #f6f1e8;
+  --foreground-muted: #aaa39a;
+  --foreground-subtle: #7f7971;
+  --gold: #c7a55b;
+  --gold-bright: #e1c77f;
+  --gold-muted: #8d7543;
+  --gold-soft: rgba(199, 165, 91, 0.1);
+  --border: rgba(199, 165, 91, 0.18);
+  --border-strong: rgba(199, 165, 91, 0.34);
+  --danger: #d9867d;
+  --success: #9fba8f;
+  --focus-ring: #d6b86f;
+  --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.28);
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.125rem;
+  --font-arabic: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", "Tahoma", "Arial", sans-serif;
+  --font-latin: "Inter", "Segoe UI", "Arial", sans-serif;
 }
 
 * {
   box-sizing: border-box;
 }
 
-html,
-body {
-  margin: 0;
+html {
   min-height: 100%;
+  background: var(--background);
+  text-rendering: optimizelegibility;
 }
 
 body {
+  margin: 0;
   min-height: 100vh;
-  background: #0b0b0b;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-arabic);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button,
+a,
+input,
+textarea,
+select,
+summary {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 3px;
+}
+
+::selection {
+  background: rgba(199, 165, 91, 0.28);
+  color: var(--foreground);
+}
+
+[dir="ltr"] {
+  font-family: var(--font-latin);
+}
+
+.text-mixed {
+  unicode-bidi: plaintext;
+}
+
+.surface-grid {
+  background-image:
+    linear-gradient(rgba(199, 165, 91, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(199, 165, 91, 0.025) 1px, transparent 1px);
+  background-size: 32px 32px;
 }
