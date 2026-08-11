@@ -49,3 +49,14 @@ test("dropdown preview buttons cannot accidentally submit a containing form", ()
 
   assert.equal(optionButtons.length, 2);
 });
+
+test("global CSS preserves the lint-safe typography values fixed during review", () => {
+  const styles = readSource("src/app/globals.css");
+
+  assert.match(
+    styles,
+    /--font-arabic:\s*"IBM Plex Sans Arabic",\s*"Noto Sans Arabic",\s*"Segoe UI",\s*"Tahoma",\s*"Arial",\s*sans-serif;/,
+  );
+  assert.match(styles, /--font-latin:\s*"Inter",\s*"Segoe UI",\s*"Arial",\s*sans-serif;/);
+  assert.match(styles, /text-rendering:\s*optimizelegibility;/);
+});
