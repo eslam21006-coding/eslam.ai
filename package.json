@@ -11,9 +11,12 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test"
+    "test": "node --test",
+    "supabase": "supabase"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.4",
+    "@supabase/supabase-js": "2.110.9",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -25,6 +28,7 @@
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.22.0",
     "eslint-config-next": "16.2.12",
+    "supabase": "2.110.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.9.0"
   }
