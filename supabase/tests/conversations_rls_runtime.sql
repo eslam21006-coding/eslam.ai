@@ -66,6 +66,14 @@ begin
     raise exception 'RLS leak: user B updated user A conversation';
   end if;
 
+  delete from public.conversations
+  where id = conversation_a;
+  get diagnostics affected_count = row_count;
+
+  if affected_count <> 0 then
+    raise exception 'RLS leak: user B deleted user A conversation';
+  end if;
+
   begin
     insert into public.messages (conversation_id, user_id, role, content)
     values (
