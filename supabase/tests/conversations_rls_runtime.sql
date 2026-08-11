@@ -110,6 +110,25 @@ begin
 
   conversation_b := public.create_conversation_with_first_message('Tenant B first message');
 
+  insert into public.messages (conversation_id, user_id, role, content)
+  values (
+    conversation_b,
+    'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    'user',
+    'Tenant B follow-up'
+  );
+
+  if not exists (
+    select 1
+    from public.messages
+    where conversation_id = conversation_b
+      and user_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'
+      and role = 'user'
+      and content = 'Tenant B follow-up'
+  ) then
+    raise exception 'Own follow-up insert failed after activity hardening';
+  end if;
+
   begin
     insert into public.messages (conversation_id, user_id, role, content)
     values (
