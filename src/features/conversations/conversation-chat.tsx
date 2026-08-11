@@ -83,6 +83,8 @@ export function ConversationChat({
   const mountedRef = useRef(true);
 
   useEffect(() => {
+    mountedRef.current = true;
+
     return () => {
       mountedRef.current = false;
       abortRef.current?.abort();
@@ -181,7 +183,11 @@ export function ConversationChat({
       if (!mountedRef.current) return;
 
       setOptimisticTurn(null);
-      router.replace(`/app/chat/${targetConversationId}`, { scroll: false });
+      if (targetConversationId === conversationId) {
+        router.refresh();
+      } else {
+        router.replace(`/app/chat/${targetConversationId}`, { scroll: false });
+      }
     } catch (error) {
       if (abortController.signal.aborted || !mountedRef.current) return;
 
