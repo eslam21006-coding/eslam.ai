@@ -30,7 +30,7 @@ export default function DesignSystemPage() {
         <header className="flex flex-col gap-6 border-b border-[var(--border)] pb-8 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <StatusPill>مرجع داخلي</StatusPill>
-            <p dir="ltr" className="mt-5 text-sm font-semibold tracking-[0.28em] text-[var(--gold)]">
+            <p lang="en" dir="ltr" className="mt-5 text-sm font-semibold tracking-[0.28em] text-[var(--gold)]">
               ESLAM.AI
             </p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">نظام التصميم</h1>
@@ -49,7 +49,7 @@ export default function DesignSystemPage() {
         <div className="mt-10 grid gap-8">
           <Surface className="p-6 sm:p-8">
             <div className="mb-6">
-              <p className="text-xs font-semibold tracking-[0.2em] text-[var(--gold)]">FOUNDATION</p>
+              <p className="text-xs font-semibold tracking-[0.16em] text-[var(--gold)]">الأساس</p>
               <h2 className="mt-2 text-xl font-semibold sm:text-2xl">الألوان والسطوح</h2>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -65,8 +65,8 @@ export default function DesignSystemPage() {
           <Surface className="p-6 sm:p-8">
             <div className="grid gap-8 lg:grid-cols-[1fr_0.8fr]">
               <div>
-                <p className="text-xs font-semibold tracking-[0.2em] text-[var(--gold)]">TYPE</p>
-                <h2 className="mt-2 text-xl font-semibold sm:text-2xl">الطباعة والـ RTL</h2>
+                <p className="text-xs font-semibold tracking-[0.16em] text-[var(--gold)]">الطباعة</p>
+                <h2 className="mt-2 text-xl font-semibold sm:text-2xl">الخط واتجاه النص</h2>
                 <div className="mt-6 space-y-4">
                   <p className="text-3xl font-semibold leading-tight sm:text-5xl">إسلام يفهم السياق قبل ما ينصحك.</p>
                   <p className="max-w-2xl text-base leading-8 text-[var(--foreground-muted)]">
@@ -78,16 +78,16 @@ export default function DesignSystemPage() {
                 </div>
               </div>
               <div className="grid content-start gap-3 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-subtle)] p-5">
-                <span className="text-xs text-[var(--foreground-subtle)]">Hierarchy</span>
+                <span className="text-xs text-[var(--foreground-subtle)]">التدرج البصري</span>
                 <span className="text-2xl font-semibold">عنوان رئيسي</span>
                 <span className="text-lg font-semibold">عنوان فرعي</span>
-                <span className="text-sm leading-6 text-[var(--foreground-muted)]">نص مساعد واضح وهادئ بدون contrast مبالغ فيه.</span>
+                <span className="text-sm leading-6 text-[var(--foreground-muted)]">نص مساعد واضح وهادئ بدون تباين مبالغ فيه.</span>
               </div>
             </div>
           </Surface>
 
           <Surface className="p-6 sm:p-8">
-            <p className="text-xs font-semibold tracking-[0.2em] text-[var(--gold)]">CONTROLS</p>
+            <p className="text-xs font-semibold tracking-[0.16em] text-[var(--gold)]">عناصر التحكم</p>
             <h2 className="mt-2 text-xl font-semibold sm:text-2xl">الأزرار والحقول</h2>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button>إجراء رئيسي</Button>
@@ -113,8 +113,8 @@ export default function DesignSystemPage() {
 
           <div className="grid gap-8 lg:grid-cols-2">
             <Surface className="p-6 sm:p-8">
-              <p className="text-xs font-semibold tracking-[0.2em] text-[var(--gold)]">LAYERS</p>
-              <h2 className="mt-2 text-xl font-semibold sm:text-2xl">Dropdown و Dialog</h2>
+              <p className="text-xs font-semibold tracking-[0.16em] text-[var(--gold)]">الطبقات</p>
+              <h2 className="mt-2 text-xl font-semibold sm:text-2xl">القوائم والنوافذ</h2>
               <div className="mt-6 grid gap-8">
                 <DropdownPreview />
                 <DialogPreview />
@@ -122,8 +122,8 @@ export default function DesignSystemPage() {
             </Surface>
 
             <Surface className="p-6 sm:p-8">
-              <p className="text-xs font-semibold tracking-[0.2em] text-[var(--gold)]">FEEDBACK</p>
-              <h2 className="mt-2 text-xl font-semibold sm:text-2xl">الحالات والتغذية الراجعة</h2>
+              <p className="text-xs font-semibold tracking-[0.16em] text-[var(--gold)]">التغذية الراجعة</p>
+              <h2 className="mt-2 text-xl font-semibold sm:text-2xl">الحالات والتنبيهات</h2>
               <div className="mt-6 grid gap-5">
                 <Notice title="معلومة مهمة">هذا النمط مخصص للتوضيح بدون خلق إحساس بالخطر أو الإزعاج.</Notice>
                 <ToastPreview />
