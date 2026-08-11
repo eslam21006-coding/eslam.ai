@@ -77,7 +77,7 @@ test("stream route holds the generation lease through final assistant persistenc
   assert.match(streamingFlow, /releasePreparedTurn/);
 });
 
-test("streaming UI consumes fetch body incrementally and locks concurrent local submit", () => {
+test("streaming UI consumes fetch body, survives strict-mode effect replay, and refreshes persisted data", () => {
   const chat = readSource("src/features/conversations/conversation-chat.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
   const button = readSource("src/features/conversations/message-submit-button.tsx");
@@ -86,7 +86,10 @@ test("streaming UI consumes fetch body incrementally and locks concurrent local 
   assert.match(chat, /response\.body\.getReader\(\)/);
   assert.match(chat, /decoder\.decode\(value, \{ stream: true \}\)/);
   assert.match(chat, /assistant: current\.assistant \+ delta/);
+  assert.match(chat, /mountedRef\.current = true/);
   assert.match(chat, /abortRef\.current\?\.abort\(\)/);
+  assert.match(chat, /targetConversationId === conversationId/);
+  assert.match(chat, /router\.refresh\(\)/);
   assert.match(composer, /disabled=\{streaming\}/);
   assert.match(composer, /useActionState/);
   assert.match(button, /streaming \|\| actionPending/);
