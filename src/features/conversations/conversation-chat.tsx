@@ -16,6 +16,7 @@ type ConversationChatProps = {
   conversationId?: string;
   initialMessages: MessageRecord[];
   showEmptyState?: boolean;
+  clearResponseErrorOnSuccess?: boolean;
 };
 
 type OptimisticTurn = {
@@ -73,6 +74,7 @@ export function ConversationChat({
   conversationId,
   initialMessages,
   showEmptyState = false,
+  clearResponseErrorOnSuccess = false,
 }: ConversationChatProps) {
   const router = useRouter();
   const [draft, setDraft] = useState("");
@@ -183,10 +185,11 @@ export function ConversationChat({
       if (!mountedRef.current) return;
 
       setOptimisticTurn(null);
-      if (targetConversationId === conversationId) {
-        router.refresh();
+      const cleanConversationUrl = `/app/chat/${targetConversationId}`;
+      if (targetConversationId !== conversationId || clearResponseErrorOnSuccess) {
+        router.replace(cleanConversationUrl, { scroll: false });
       } else {
-        router.replace(`/app/chat/${targetConversationId}`, { scroll: false });
+        router.refresh();
       }
     } catch (error) {
       if (abortController.signal.aborted || !mountedRef.current) return;
