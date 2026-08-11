@@ -19,6 +19,23 @@ test("Business DNA model context is owner-scoped and server-only", () => {
   assert.doesNotMatch(data, /getSupabaseAdminClient|SUPABASE_SECRET_KEY/);
 });
 
+test("Business DNA loader degrades returned and thrown failures to no context", () => {
+  const data = readSource("src/features/business-dna/model-context-data.ts");
+  const tryStart = data.indexOf("try {");
+  const clientLoad = data.indexOf("await createClient()", tryStart);
+  const queryLoad = data.indexOf(".maybeSingle()", clientLoad);
+  const serialization = data.indexOf("buildBusinessDnaModelContext", queryLoad);
+  const catchStart = data.indexOf("} catch (error) {", serialization);
+
+  assert.ok(tryStart >= 0, "loader should guard the full operation with try/catch");
+  assert.ok(clientLoad > tryStart, "client creation should be inside the guarded operation");
+  assert.ok(queryLoad > clientLoad, "query execution should be inside the guarded operation");
+  assert.ok(serialization > queryLoad, "context serialization should be inside the guarded operation");
+  assert.ok(catchStart > serialization, "thrown failures should reach the loader catch path");
+  assert.match(data.slice(catchStart), /reportBusinessDnaLoadFailure\(error\);\s*return null;/);
+  assert.match(data, /if \(error\) \{[\s\S]*?return null;/);
+});
+
 test("Business DNA model context is deterministic, bounded, and empty-safe", () => {
   const context = readSource("src/features/business-dna/model-context.ts");
 
