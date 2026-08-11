@@ -13,8 +13,8 @@
     "typecheck": "tsc --noEmit",
     "test": "node --test",
     "supabase": "supabase",
-    "db:types:local": "supabase gen types typescript --local > src/types/database.ts",
-    "db:types:linked": "supabase gen types typescript --linked > src/types/database.ts"
+    "db:types:local": "node scripts/generate-database-types.mjs --local",
+    "db:types:linked": "node scripts/generate-database-types.mjs --linked"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.4",
