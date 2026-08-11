@@ -13,7 +13,7 @@ export type ComposerError = MessageActionState["error"] | "network_uncertain";
 
 type ConversationComposerProps = {
   conversationId?: string;
-  value: string;
+  value?: string;
   onValueChange(value: string): void;
   onStreamingSubmit(event: FormEvent<HTMLFormElement>): void;
   streaming: boolean;
@@ -54,7 +54,7 @@ export function ConversationComposer({
     initialState,
   );
   const displayedError = streamingError ?? fallbackState.error;
-  const displayedValue = value || fallbackState.content;
+  const displayedValue = value ?? fallbackState.content;
   const message = errorMessage(displayedError);
 
   return (
