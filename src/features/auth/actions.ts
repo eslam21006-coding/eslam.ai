@@ -6,22 +6,35 @@ import { createClient } from "@/lib/supabase/server";
 
 function readCredential(formData: FormData, name: "email" | "password") {
   const value = formData.get(name);
-  return typeof value === "string" ? value.trim() : "";
+  if (typeof value !== "string") return "";
+  return name === "email" ? value.trim() : value;
 }
 
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-async function ensureProfile(userId: string) {
-  const supabase = await createClient();
+type ServerSupabaseClient = Awaited<ReturnType<typeof createClient>>;
+
+async function ensureProfile(
+  supabase: ServerSupabaseClient,
+  userId: string,
+) {
   const { error } = await supabase
     .from("profiles")
     .upsert({ id: userId }, { onConflict: "id", ignoreDuplicates: true });
 
+  return !error;
+}
+
+async function recoverFromProfileFailure(supabase: ServerSupabaseClient) {
+  const { error } = await supabase.auth.signOut();
+
   if (error) {
-    throw new Error("Unable to initialize the user profile.");
+    redirect("/app/chat?error=profile_init_failed");
   }
+
+  redirect("/auth/login?error=profile_init_failed");
 }
 
 export async function loginAction(formData: FormData) {
@@ -39,7 +52,10 @@ export async function loginAction(formData: FormData) {
     redirect("/auth/login?error=invalid_credentials");
   }
 
-  await ensureProfile(data.user.id);
+  if (!(await ensureProfile(supabase, data.user.id))) {
+    await recoverFromProfileFailure(supabase);
+  }
+
   redirect("/app/chat");
 }
 
@@ -62,12 +78,20 @@ export async function signupAction(formData: FormData) {
     redirect("/auth/login?status=check_email");
   }
 
-  await ensureProfile(data.user.id);
+  if (!(await ensureProfile(supabase, data.user.id))) {
+    await recoverFromProfileFailure(supabase);
+  }
+
   redirect("/app/chat");
 }
 
 export async function logoutAction() {
   const supabase = await createClient();
-  await supabase.auth.signOut();
+  const { error } = await supabase.auth.signOut();
+
+  if (error) {
+    redirect("/app/chat?error=logout_failed");
+  }
+
   redirect("/auth/login?status=signed_out");
 }
