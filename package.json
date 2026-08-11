@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "engines": {
-    "node": ">=20.9.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "dev": "next dev",
@@ -11,9 +11,14 @@
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "node --test"
+    "test": "node --test",
+    "supabase": "supabase",
+    "db:types:local": "node scripts/generate-database-types.mjs --local",
+    "db:types:linked": "node scripts/generate-database-types.mjs --linked"
   },
   "dependencies": {
+    "@supabase/ssr": "0.12.4",
+    "@supabase/supabase-js": "2.111.0",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8"
@@ -25,6 +30,7 @@
     "@types/react-dom": "^19.0.0",
     "eslint": "^9.22.0",
     "eslint-config-next": "16.2.12",
+    "supabase": "2.110.0",
     "tailwindcss": "^4.1.0",
     "typescript": "^5.9.0"
   }
