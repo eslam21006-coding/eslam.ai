@@ -11,6 +11,9 @@ const schema = readSource(
 const atomicCreate = readSource(
   "supabase/migrations/20260811141801_create_conversation_with_first_message.sql",
 );
+const privilegeMigration = readSource(
+  "supabase/migrations/20260811142816_restrict_conversation_column_privileges.sql",
+);
 
 test("conversation schema enforces tenant-consistent message ownership", () => {
   assert.match(schema, /create table public\.conversations/);
@@ -24,13 +27,18 @@ test("conversation schema enforces tenant-consistent message ownership", () => {
   assert.match(schema, /messages_role_check check \(role in \('user', 'assistant', 'system'\)\)/);
 });
 
-test("conversation and message privileges follow the append-only contract", () => {
-  assert.match(schema, /revoke all on table public\.conversations from anon, authenticated/);
-  assert.match(schema, /revoke all on table public\.messages from anon, authenticated/);
-  assert.match(schema, /grant select, insert, update, delete on table public\.conversations to authenticated/);
-  assert.match(schema, /grant select, insert on table public\.messages to authenticated/);
-  assert.doesNotMatch(schema, /grant[^;]*update[^;]*on table public\.messages/i);
-  assert.doesNotMatch(schema, /grant[^;]*delete[^;]*on table public\.messages/i);
+test("conversation and message privileges follow the append-only least-privilege contract", () => {
+  assert.match(privilegeMigration, /revoke all on table public\.conversations from authenticated/);
+  assert.match(privilegeMigration, /revoke all on table public\.messages from authenticated/);
+  assert.match(privilegeMigration, /grant select on table public\.conversations to authenticated/);
+  assert.match(privilegeMigration, /grant insert \(user_id, title\) on table public\.conversations to authenticated/);
+  assert.match(privilegeMigration, /grant update \(title, updated_at\) on table public\.conversations to authenticated/);
+  assert.match(privilegeMigration, /grant delete on table public\.conversations to authenticated/);
+  assert.match(privilegeMigration, /grant select on table public\.messages to authenticated/);
+  assert.match(privilegeMigration, /grant insert \(conversation_id, user_id, role, content\) on table public\.messages to authenticated/);
+  assert.doesNotMatch(privilegeMigration, /grant[^;]*update[^;]*on table public\.messages/i);
+  assert.doesNotMatch(privilegeMigration, /grant[^;]*delete[^;]*on table public\.messages/i);
+  assert.doesNotMatch(privilegeMigration, /insert \([^)]*created_at/i);
 });
 
 test("RLS restricts every conversation operation and user message append", () => {
