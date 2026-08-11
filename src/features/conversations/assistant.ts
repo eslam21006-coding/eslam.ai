@@ -36,7 +36,10 @@ export async function streamBasicEslamReply(
     signal: options.signal,
   });
 
-  return consumeBasicEslamStream(stream, { onDelta: options.onDelta });
+  return consumeBasicEslamStream(stream, {
+    maxMessageLength: MAX_MESSAGE_LENGTH,
+    onDelta: options.onDelta,
+  });
 }
 
 export async function persistAssistantMessage(
