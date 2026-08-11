@@ -46,6 +46,7 @@ function MessageArticle({
   return (
     <article
       className={isUser ? "mr-auto max-w-[88%] sm:max-w-[75%]" : "max-w-[92%] sm:max-w-[82%]"}
+      aria-live={streaming && !waitingForFirstToken ? "polite" : undefined}
     >
       <span className="sr-only">{authorLabel}</span>
       <div
@@ -342,7 +343,7 @@ export function ConversationChat({
       </section>
 
       {showJumpToLatest && hasMessages ? (
-        <div className="sticky bottom-28 z-10 mx-auto -mt-4 w-fit pb-2 sm:bottom-32">
+        <div className="fixed bottom-28 left-1/2 z-20 w-fit -translate-x-1/2 sm:bottom-32 lg:left-[calc(50%-9rem)]">
           <button
             type="button"
             onClick={() => scrollToLatest("smooth")}
