@@ -1,3 +1,5 @@
+import { revalidatePath } from "next/cache";
+
 import {
   persistAssistantMessage,
   streamBasicEslamReply,
@@ -53,6 +55,11 @@ function parseStreamInput(body: StreamRequestBody) {
   return { content, conversationId: body.conversationId };
 }
 
+function invalidateConversation(conversationId: string) {
+  revalidatePath(`/app/chat/${conversationId}`);
+  revalidatePath("/app", "layout");
+}
+
 export async function POST(request: Request) {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
@@ -85,11 +92,14 @@ export async function POST(request: Request) {
   }
 
   if (prepared.kind === "saved_error") {
+    invalidateConversation(prepared.conversationId);
     return errorResponse(503, "response_failed", {
       conversationId: prepared.conversationId,
       userMessageSaved: true,
     });
   }
+
+  invalidateConversation(prepared.conversationId);
 
   const encoder = new TextEncoder();
   const upstreamAbort = new AbortController();
@@ -128,6 +138,7 @@ export async function POST(request: Request) {
         },
       )
         .then(() => {
+          invalidateConversation(prepared.conversationId);
           if (!cancelled) controller.close();
         })
         .catch((error) => {
