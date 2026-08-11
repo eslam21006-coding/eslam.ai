@@ -26,11 +26,13 @@ export default async function ConversationPage({ params }: { params: PageParams 
         <div className="mx-auto grid w-full max-w-3xl gap-6">
           {thread.messages.map((message) => {
             const isUser = message.role === "user";
+            const authorLabel = isUser ? "أنت:" : message.role === "assistant" ? "إسلام:" : "النظام:";
             return (
               <article
                 key={message.id}
                 className={isUser ? "mr-auto max-w-[88%] sm:max-w-[75%]" : "max-w-[92%] sm:max-w-[82%]"}
               >
+                <span className="sr-only">{authorLabel}</span>
                 <div
                   className={
                     isUser
