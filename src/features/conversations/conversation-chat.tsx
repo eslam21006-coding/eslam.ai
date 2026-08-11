@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  COMPOSER_FOCUS_STORAGE_KEY,
   ConversationComposer,
   type ComposerError,
 } from "@/features/conversations/conversation-composer";
@@ -83,6 +84,14 @@ function localErrorFromServer(error: string | undefined): ComposerError {
   if (error === "response_in_progress") return "response_in_progress";
   if (error === "save_failed") return "save_failed";
   return "network_uncertain";
+}
+
+function rememberComposerFocus(conversationId: string) {
+  try {
+    window.sessionStorage.setItem(COMPOSER_FOCUS_STORAGE_KEY, conversationId);
+  } catch {
+    // Focus continuity is optional UX; navigation must still succeed if storage is unavailable.
+  }
 }
 
 export function ConversationChat({
@@ -265,7 +274,12 @@ export function ConversationChat({
       if (!mountedRef.current) return;
 
       const cleanConversationUrl = `/app/chat/${targetConversationId}`;
-      if (targetConversationId !== conversationId || clearResponseErrorOnSuccess) {
+      const startsNewThread = targetConversationId !== conversationId;
+      if (startsNewThread) {
+        rememberComposerFocus(targetConversationId);
+      }
+
+      if (startsNewThread || clearResponseErrorOnSuccess) {
         router.replace(cleanConversationUrl, { scroll: false });
       } else {
         router.refresh();
