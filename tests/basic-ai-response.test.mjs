@@ -70,11 +70,13 @@ test("generation leases serialize existing conversation turns across server inst
 
   assert.match(lock, /^import "server-only";/);
   assert.match(lock, /randomUUID\(\)/);
-  assert.match(lock, /GENERATION_LOCK_SECONDS = 180/);
+  assert.match(lock, /GENERATION_LOCK_SECONDS = 300/);
   assert.match(lock, /claim_conversation_generation/);
   assert.match(lock, /release_conversation_generation/);
   assert.match(actions, /response_in_progress/);
-  assert.ok(actions.indexOf("claimGenerationOrNull(userId, conversationId)") < actions.indexOf('.from("messages").insert'));
+  assert.ok(actions.indexOf("claimGeneration(userId, conversationId)") < actions.indexOf('.from("messages").insert'));
+  assert.match(actions, /claim\.status === "busy"/);
+  assert.match(actions, /claim\.status === "failed"/);
   assert.match(migration, /grant execute on function public\.claim_conversation_generation[\s\S]*?to service_role/);
   assert.match(migration, /revoke all on function public\.claim_conversation_generation[\s\S]*?from anon, authenticated/);
   assert.match(runtime, /Concurrent generation lease was incorrectly claimed/);
