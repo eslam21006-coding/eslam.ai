@@ -185,7 +185,17 @@ export function AppShell({ children, conversations, conversationsLoadFailed = fa
     return () => desktopBreakpoint.removeEventListener("change", closeAtDesktop);
   }, []);
 
-  const openMobileMenu = () => mobileMenuRef.current?.showModal();
+  const openMobileMenu = () => {
+    const menu = mobileMenuRef.current;
+    if (!menu) return;
+
+    menu.showModal();
+    window.requestAnimationFrame(() => {
+      menu
+        .querySelector<HTMLAnchorElement>('#conversations a[aria-current="page"]')
+        ?.scrollIntoView({ block: "nearest" });
+    });
+  };
   const closeMobileMenu = () => mobileMenuRef.current?.close();
   const sidebarProps = { conversations, conversationsLoadFailed };
 
