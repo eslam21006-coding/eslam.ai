@@ -213,7 +213,7 @@ test("admin role data is private, immutable, and restricted to one-time binding"
   assert.match(hardeningMigration, /with check \(user_id is not null\)/);
   assert.match(runtime, /grantee in \('PUBLIC', 'anon', 'authenticated'\)/);
   assert.match(runtime, /service_role UPDATE must be limited to admin_users\.user_id/);
-  assert.match(runtime, /service_role unexpectedly rebound an admin user/);
+  assert.match(runtime, /service_role rebinding unexpectedly succeeded/);
   assert.match(runtime, /admin authorization binding is immutable/);
   assert.match(runtime, /authenticated role unexpectedly read admin_users/);
   assert.match(runtime, /authenticated role unexpectedly mutated admin_users/);
