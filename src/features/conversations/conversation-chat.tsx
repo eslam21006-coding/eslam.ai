@@ -100,9 +100,20 @@ export function ConversationChat({
   const mountedRef = useRef(true);
   const endRef = useRef<HTMLDivElement>(null);
   const followingLatestRef = useRef(true);
+  const optimisticBaseMessageCountRef = useRef<number | null>(null);
 
-  const hasMessages = initialMessages.length > 0 || optimisticTurn !== null;
-  const streamedAssistantLength = optimisticTurn?.assistant.length ?? 0;
+  const optimisticTurnIsPersisted =
+    optimisticTurn !== null &&
+    optimisticBaseMessageCountRef.current !== null &&
+    initialMessages.length > optimisticBaseMessageCountRef.current;
+  const visibleOptimisticTurn = optimisticTurnIsPersisted ? null : optimisticTurn;
+  const hasMessages = initialMessages.length > 0 || visibleOptimisticTurn !== null;
+  const streamedAssistantLength = visibleOptimisticTurn?.assistant.length ?? 0;
+
+  const clearOptimisticTurn = () => {
+    optimisticBaseMessageCountRef.current = null;
+    setOptimisticTurn(null);
+  };
 
   const scrollToLatest = (behavior: ScrollBehavior = "auto") => {
     followingLatestRef.current = true;
@@ -118,6 +129,13 @@ export function ConversationChat({
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    if (!optimisticTurnIsPersisted) return;
+
+    optimisticBaseMessageCountRef.current = null;
+    setOptimisticTurn(null);
+  }, [optimisticTurnIsPersisted]);
 
   useEffect(() => {
     const endNode = endRef.current;
@@ -144,7 +162,7 @@ export function ConversationChat({
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [hasMessages, initialMessages.length, optimisticTurn, streamedAssistantLength]);
+  }, [hasMessages, initialMessages.length, visibleOptimisticTurn, streamedAssistantLength]);
 
   useEffect(() => {
     if (!initialMessages.length) return;
@@ -173,6 +191,7 @@ export function ConversationChat({
 
     const abortController = new AbortController();
     abortRef.current = abortController;
+    optimisticBaseMessageCountRef.current = initialMessages.length;
     followingLatestRef.current = true;
     setShowJumpToLatest(false);
     setStreamingError(null);
@@ -203,7 +222,7 @@ export function ConversationChat({
         }
 
         if (payload.userMessageSaved && payload.conversationId) {
-          setOptimisticTurn(null);
+          clearOptimisticTurn();
           router.replace(
             `/app/chat/${payload.conversationId}?error=response_failed`,
             { scroll: false },
@@ -211,7 +230,7 @@ export function ConversationChat({
           return;
         }
 
-        setOptimisticTurn(null);
+        clearOptimisticTurn();
         setDraft((current) => current || submittedContent);
         setStreamingError(localErrorFromServer(payload.error));
         return;
@@ -251,7 +270,6 @@ export function ConversationChat({
 
       if (!mountedRef.current) return;
 
-      setOptimisticTurn(null);
       const cleanConversationUrl = `/app/chat/${targetConversationId}`;
       if (targetConversationId !== conversationId || clearResponseErrorOnSuccess) {
         router.replace(cleanConversationUrl, { scroll: false });
@@ -261,7 +279,7 @@ export function ConversationChat({
     } catch (error) {
       if (abortController.signal.aborted || !mountedRef.current) return;
 
-      setOptimisticTurn(null);
+      clearOptimisticTurn();
       if (responseStarted && targetConversationId) {
         router.replace(
           `/app/chat/${targetConversationId}?error=response_failed`,
@@ -305,13 +323,13 @@ export function ConversationChat({
                 content={message.content}
               />
             ))}
-            {optimisticTurn ? (
+            {visibleOptimisticTurn ? (
               <>
-                <MessageArticle role="user" content={optimisticTurn.user} />
+                <MessageArticle role="user" content={visibleOptimisticTurn.user} />
                 <MessageArticle
                   role="assistant"
-                  content={optimisticTurn.assistant}
-                  streaming
+                  content={visibleOptimisticTurn.assistant}
+                  streaming={streaming}
                 />
               </>
             ) : null}
