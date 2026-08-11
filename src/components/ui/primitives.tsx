@@ -52,7 +52,7 @@ export function Surface({
 export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
-      className={`min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3.5 py-2.5 text-start text-sm text-[var(--foreground)] caret-[var(--gold)] placeholder:text-[var(--foreground-subtle)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--gold-muted)] focus:outline-none ${className}`}
+      className={`min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3.5 py-2.5 text-start text-sm text-[var(--foreground)] caret-[var(--gold)] placeholder:text-[var(--foreground-subtle)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--gold-muted)] ${className}`}
       {...props}
     />
   );
@@ -61,7 +61,7 @@ export function TextInput({ className = "", ...props }: InputHTMLAttributes<HTML
 export function TextArea({ className = "", ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea
-      className={`min-h-28 w-full resize-y rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3.5 py-3 text-start text-sm leading-7 text-[var(--foreground)] caret-[var(--gold)] placeholder:text-[var(--foreground-subtle)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--gold-muted)] focus:outline-none ${className}`}
+      className={`min-h-28 w-full resize-y rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3.5 py-3 text-start text-sm leading-7 text-[var(--foreground)] caret-[var(--gold)] placeholder:text-[var(--foreground-subtle)] transition-colors hover:border-[var(--border-strong)] focus:border-[var(--gold-muted)] ${className}`}
       {...props}
     />
   );
