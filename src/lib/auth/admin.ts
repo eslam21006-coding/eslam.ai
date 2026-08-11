@@ -96,15 +96,17 @@ export async function requireAdmin() {
     redirect("/auth/login");
   }
 
+  let authorization;
   try {
-    const authorization = await authorizeCandidate(candidate);
-    if (!authorization.authorized) {
-      notFound();
-    }
-
-    return authorization;
+    authorization = await authorizeCandidate(candidate);
   } catch (error) {
     reportAdminAuthorizationFailure(error);
     notFound();
   }
+
+  if (!authorization.authorized) {
+    notFound();
+  }
+
+  return authorization;
 }
