@@ -13,6 +13,10 @@ export type BasicEslamResponseRequest = {
   store: false;
 };
 
+export type BasicEslamStreamingResponseRequest = BasicEslamResponseRequest & {
+  stream: true;
+};
+
 const MAX_MODEL_TRANSCRIPT_MESSAGES = 64;
 const MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000;
 const ESTIMATED_MESSAGE_OVERHEAD_TOKENS = 8;
@@ -74,5 +78,15 @@ export function buildBasicEslamResponseRequest(
     input,
     max_output_tokens: 1800,
     store: false,
+  };
+}
+
+export function buildBasicEslamStreamingResponseRequest(
+  messages: ReplayMessage[],
+  model: string,
+): BasicEslamStreamingResponseRequest {
+  return {
+    ...buildBasicEslamResponseRequest(messages, model),
+    stream: true,
   };
 }
