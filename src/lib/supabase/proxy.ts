@@ -19,7 +19,9 @@ export async function updateSession(request: NextRequest) {
         cookiesToSet.forEach(({ name, value, options }) => {
           response.cookies.set(name, value, options);
         });
-        responseHeaders?.forEach((value, key) => response.headers.set(key, value));
+        Object.entries(responseHeaders).forEach(([key, value]) => {
+          response.headers.set(key, value);
+        });
       },
     },
   });
