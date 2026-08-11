@@ -7,11 +7,23 @@ export type ResponseFlowResult =
   | { kind: "redirect"; conversationId: string; responseSaved: boolean }
   | { kind: "form_error"; error: "save_failed" | "response_in_progress" };
 
+export type PreparedResponseTurn<Message> = {
+  kind: "ready";
+  conversationId: string;
+  claimToken: string;
+  messages: Message[];
+};
+
+export type ResponsePreparationResult<Message> =
+  | PreparedResponseTurn<Message>
+  | { kind: "saved_error"; conversationId: string }
+  | { kind: "form_error"; error: "save_failed" | "response_in_progress" };
+
 type ConversationThread<Message> = {
   messages: Message[];
 };
 
-export type ResponseFlowDependencies<Message> = {
+export type ResponsePreparationDependencies<Message> = {
   createConversation(content: string): Promise<string>;
   claimGeneration(userId: string, conversationId: string): Promise<GenerationClaim>;
   releaseGeneration(userId: string, conversationId: string, token: string): Promise<void>;
@@ -20,42 +32,25 @@ export type ResponseFlowDependencies<Message> = {
     userId: string,
     conversationId: string,
   ): Promise<ConversationThread<Message> | null>;
-  generateReply(messages: Message[]): Promise<string>;
-  persistAssistant(userId: string, conversationId: string, content: string): Promise<void>;
   reportError(stage: string, error: unknown): void;
 };
 
-type MessageResponseInput = {
+export type ResponseFlowDependencies<Message> = ResponsePreparationDependencies<Message> & {
+  generateReply(messages: Message[]): Promise<string>;
+  persistAssistant(userId: string, conversationId: string, content: string): Promise<void>;
+};
+
+export type MessageResponseInput = {
   userId: string;
   conversationId: string | null;
   content: string;
 };
 
-async function generateAndPersist<Message>(
-  userId: string,
-  conversationId: string,
-  dependencies: ResponseFlowDependencies<Message>,
-) {
-  try {
-    const thread = await dependencies.loadConversation(userId, conversationId);
-    if (!thread) {
-      throw new Error("Conversation disappeared before response generation.");
-    }
-
-    const assistantContent = await dependencies.generateReply(thread.messages);
-    await dependencies.persistAssistant(userId, conversationId, assistantContent);
-    return true;
-  } catch (error) {
-    dependencies.reportError("assistant_response", error);
-    return false;
-  }
-}
-
 async function releaseClaim<Message>(
   userId: string,
   conversationId: string,
   token: string,
-  dependencies: ResponseFlowDependencies<Message>,
+  dependencies: ResponsePreparationDependencies<Message>,
 ) {
   try {
     await dependencies.releaseGeneration(userId, conversationId, token);
@@ -64,10 +59,35 @@ async function releaseClaim<Message>(
   }
 }
 
-export async function executeMessageResponseFlow<Message>(
+async function loadPreparedThread<Message>(
+  userId: string,
+  conversationId: string,
+  token: string,
+  dependencies: ResponsePreparationDependencies<Message>,
+): Promise<ResponsePreparationResult<Message>> {
+  try {
+    const thread = await dependencies.loadConversation(userId, conversationId);
+    if (!thread) {
+      throw new Error("Conversation disappeared before response generation.");
+    }
+
+    return {
+      kind: "ready",
+      conversationId,
+      claimToken: token,
+      messages: thread.messages,
+    };
+  } catch (error) {
+    dependencies.reportError("conversation_load", error);
+    await releaseClaim(userId, conversationId, token, dependencies);
+    return { kind: "saved_error", conversationId };
+  }
+}
+
+export async function prepareMessageResponseFlow<Message>(
   input: MessageResponseInput,
-  dependencies: ResponseFlowDependencies<Message>,
-): Promise<ResponseFlowResult> {
+  dependencies: ResponsePreparationDependencies<Message>,
+): Promise<ResponsePreparationResult<Message>> {
   const { userId, content } = input;
 
   if (input.conversationId === null) {
@@ -81,12 +101,10 @@ export async function executeMessageResponseFlow<Message>(
 
     const claim = await dependencies.claimGeneration(userId, conversationId);
     if (claim.status !== "claimed") {
-      return { kind: "redirect", conversationId, responseSaved: false };
+      return { kind: "saved_error", conversationId };
     }
 
-    const responseSaved = await generateAndPersist(userId, conversationId, dependencies);
-    await releaseClaim(userId, conversationId, claim.token, dependencies);
-    return { kind: "redirect", conversationId, responseSaved };
+    return loadPreparedThread(userId, conversationId, claim.token, dependencies);
   }
 
   const conversationId = input.conversationId;
@@ -106,7 +124,49 @@ export async function executeMessageResponseFlow<Message>(
     return { kind: "form_error", error: "save_failed" };
   }
 
-  const responseSaved = await generateAndPersist(userId, conversationId, dependencies);
-  await releaseClaim(userId, conversationId, claim.token, dependencies);
-  return { kind: "redirect", conversationId, responseSaved };
+  return loadPreparedThread(userId, conversationId, claim.token, dependencies);
+}
+
+export async function executeMessageResponseFlow<Message>(
+  input: MessageResponseInput,
+  dependencies: ResponseFlowDependencies<Message>,
+): Promise<ResponseFlowResult> {
+  const prepared = await prepareMessageResponseFlow(input, dependencies);
+
+  if (prepared.kind === "form_error") {
+    return prepared;
+  }
+  if (prepared.kind === "saved_error") {
+    return {
+      kind: "redirect",
+      conversationId: prepared.conversationId,
+      responseSaved: false,
+    };
+  }
+
+  let responseSaved = false;
+  try {
+    const assistantContent = await dependencies.generateReply(prepared.messages);
+    await dependencies.persistAssistant(
+      input.userId,
+      prepared.conversationId,
+      assistantContent,
+    );
+    responseSaved = true;
+  } catch (error) {
+    dependencies.reportError("assistant_response", error);
+  } finally {
+    await releaseClaim(
+      input.userId,
+      prepared.conversationId,
+      prepared.claimToken,
+      dependencies,
+    );
+  }
+
+  return {
+    kind: "redirect",
+    conversationId: prepared.conversationId,
+    responseSaved,
+  };
 }
