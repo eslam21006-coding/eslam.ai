@@ -40,4 +40,5 @@ test("UI primitives preserve visible keyboard focus through the global focus rul
   assert.match(styles, /:focus-visible\s*\{/);
   assert.match(styles, /outline:\s*2px solid var\(--focus-ring\)/);
   assert.match(primitives, /min-h-11/);
+  assert.doesNotMatch(primitives, /focus:outline-none/);
 });
