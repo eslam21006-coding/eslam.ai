@@ -20,7 +20,7 @@ test("Supabase packages are pinned, locked, and use the supported Node runtime",
   const lock = JSON.parse(readSource("package-lock.json"));
   const rootLock = lock.packages[""];
 
-  assert.equal(pkg.engines.node, ">=22.0.0");
+  assert.equal(pkg.engines.node, ">=22.18.0");
   assert.equal(pkg.dependencies["@supabase/ssr"], "0.12.4");
   assert.equal(pkg.dependencies["@supabase/supabase-js"], "2.111.0");
   assert.equal(pkg.devDependencies.supabase, "2.110.0");
