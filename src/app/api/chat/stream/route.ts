@@ -1,5 +1,6 @@
 import { revalidatePath } from "next/cache";
 
+import { loadBusinessDnaModelContext } from "@/features/business-dna/model-context-data";
 import {
   persistAssistantMessage,
   streamBasicEslamReply,
@@ -78,6 +79,7 @@ export async function POST(request: Request) {
     return errorResponse(400, "invalid_input");
   }
 
+  const businessDnaContext = await loadBusinessDnaModelContext(userId);
   const preparationDependencies = await createResponsePreparationDependencies();
   const prepared = await prepareMessageResponseFlow(
     { userId, conversationId: input.conversationId, content: input.content },
@@ -131,7 +133,8 @@ export async function POST(request: Request) {
           },
         },
         {
-          streamReply: streamBasicEslamReply,
+          streamReply: (messages, options) =>
+            streamBasicEslamReply(messages, options, businessDnaContext),
           persistAssistant: persistAssistantMessage,
           releaseGeneration: preparationDependencies.releaseGeneration,
           reportError: preparationDependencies.reportError,
