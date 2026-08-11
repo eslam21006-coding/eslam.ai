@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const GENERATION_LOCK_SECONDS = 180;
+const GENERATION_LOCK_SECONDS = 300;
 
 export async function claimConversationGeneration(
   userId: string,
