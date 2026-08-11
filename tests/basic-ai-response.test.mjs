@@ -15,6 +15,10 @@ test("OpenAI SDK is pinned and server-only credentials stay private", () => {
   assert.match(openaiClient, /^import "server-only";/);
   assert.match(openaiClient, /process\.env\.OPENAI_API_KEY/);
   assert.match(openaiClient, /"gpt-5-mini"/);
+  assert.match(openaiClient, /const OPENAI_TIMEOUT_MS = 45_000/);
+  assert.match(openaiClient, /const OPENAI_MAX_RETRIES = 1/);
+  assert.match(openaiClient, /maxRetries: OPENAI_MAX_RETRIES/);
+  assert.match(openaiClient, /timeout: OPENAI_TIMEOUT_MS/);
   assert.match(adminClient, /^import "server-only";/);
   assert.match(adminClient, /process\.env\.SUPABASE_SECRET_KEY/);
   assert.doesNotMatch(env, /NEXT_PUBLIC_OPENAI_API_KEY/);
