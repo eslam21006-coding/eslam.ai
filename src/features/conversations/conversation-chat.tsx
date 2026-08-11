@@ -41,11 +41,11 @@ function MessageArticle({
 }) {
   const isUser = role === "user";
   const authorLabel = isUser ? "أنت:" : role === "assistant" ? "إسلام:" : "النظام:";
+  const waitingForFirstToken = streaming && content.length === 0;
 
   return (
     <article
       className={isUser ? "mr-auto max-w-[88%] sm:max-w-[75%]" : "max-w-[92%] sm:max-w-[82%]"}
-      aria-live={streaming ? "polite" : undefined}
     >
       <span className="sr-only">{authorLabel}</span>
       <div
@@ -55,9 +55,23 @@ function MessageArticle({
             : "px-1 py-1"
         }
       >
-        <p className="text-mixed whitespace-pre-wrap text-sm leading-7 sm:text-[0.95rem]">
-          {content || (streaming ? "…" : "")}
-        </p>
+        {waitingForFirstToken ? (
+          <span
+            role="status"
+            aria-label="إسلام يكتب"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--foreground-subtle)]"
+          >
+            <span>إسلام يكتب</span>
+            <span aria-hidden="true" className="animate-pulse text-[var(--gold-muted)]">…</span>
+          </span>
+        ) : (
+          <p
+            dir="auto"
+            className="text-mixed whitespace-pre-wrap break-words text-sm leading-7 [overflow-wrap:anywhere] sm:text-[0.95rem]"
+          >
+            {content}
+          </p>
+        )}
       </div>
     </article>
   );
@@ -81,8 +95,20 @@ export function ConversationChat({
   const [optimisticTurn, setOptimisticTurn] = useState<OptimisticTurn | null>(null);
   const [streamingError, setStreamingError] = useState<ComposerError>(null);
   const [streaming, setStreaming] = useState(false);
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
+  const endRef = useRef<HTMLDivElement>(null);
+  const followingLatestRef = useRef(true);
+
+  const hasMessages = initialMessages.length > 0 || optimisticTurn !== null;
+  const streamedAssistantLength = optimisticTurn?.assistant.length ?? 0;
+
+  const scrollToLatest = (behavior: ScrollBehavior = "auto") => {
+    followingLatestRef.current = true;
+    setShowJumpToLatest(false);
+    endRef.current?.scrollIntoView({ behavior, block: "end" });
+  };
 
   useEffect(() => {
     mountedRef.current = true;
@@ -92,6 +118,43 @@ export function ConversationChat({
       abortRef.current?.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const endNode = endRef.current;
+    if (!endNode || !hasMessages) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        const atLatest = entry.isIntersecting;
+        followingLatestRef.current = atLatest;
+        setShowJumpToLatest(!atLatest);
+      },
+      { root: null, threshold: 0.01, rootMargin: "0px 0px 120px 0px" },
+    );
+
+    observer.observe(endNode);
+    return () => observer.disconnect();
+  }, [hasMessages, conversationId]);
+
+  useEffect(() => {
+    if (!hasMessages || !followingLatestRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      endRef.current?.scrollIntoView({ behavior: "auto", block: "end" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [hasMessages, initialMessages.length, optimisticTurn, streamedAssistantLength]);
+
+  useEffect(() => {
+    if (!initialMessages.length) return;
+
+    followingLatestRef.current = true;
+    const frame = window.requestAnimationFrame(() => scrollToLatest("auto"));
+    return () => window.cancelAnimationFrame(frame);
+    // Scroll once when entering a persisted thread; later updates obey the user's follow-latest position.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -110,6 +173,8 @@ export function ConversationChat({
 
     const abortController = new AbortController();
     abortRef.current = abortController;
+    followingLatestRef.current = true;
+    setShowJumpToLatest(false);
     setStreamingError(null);
     setStreaming(true);
     setOptimisticTurn({ user: submittedContent, assistant: "" });
@@ -220,8 +285,6 @@ export function ConversationChat({
     }
   }
 
-  const hasMessages = initialMessages.length > 0 || optimisticTurn !== null;
-
   return (
     <>
       <section
@@ -234,7 +297,7 @@ export function ConversationChat({
         }
       >
         {hasMessages ? (
-          <div className="mx-auto grid w-full max-w-3xl gap-6">
+          <div className="mx-auto grid w-full max-w-3xl gap-7 sm:gap-8">
             {initialMessages.map((message) => (
               <MessageArticle
                 key={message.id}
@@ -252,6 +315,7 @@ export function ConversationChat({
                 />
               </>
             ) : null}
+            <div ref={endRef} aria-hidden="true" className="h-px scroll-mb-32" />
           </div>
         ) : showEmptyState ? (
           <div className="mx-auto w-full max-w-3xl text-center">
@@ -266,7 +330,20 @@ export function ConversationChat({
         ) : null}
       </section>
 
-      <footer className="sticky bottom-0 pb-4 pt-2 sm:pb-6">
+      {showJumpToLatest && hasMessages ? (
+        <div className="sticky bottom-28 z-10 mx-auto -mt-4 w-fit pb-2 sm:bottom-32">
+          <button
+            type="button"
+            onClick={() => scrollToLatest("smooth")}
+            className="inline-flex min-h-10 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[color-mix(in_srgb,var(--surface)_94%,transparent)] px-3.5 text-xs font-medium text-[var(--foreground-muted)] shadow-[var(--shadow-soft)] backdrop-blur-xl transition-colors hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
+          >
+            <span>آخر رسالة</span>
+            <span aria-hidden="true">↓</span>
+          </button>
+        </div>
+      ) : null}
+
+      <footer className="sticky bottom-0 z-10 bg-gradient-to-t from-[var(--background)] via-[var(--background)] to-transparent pb-4 pt-3 sm:pb-6">
         <ConversationComposer
           conversationId={conversationId}
           value={draft}
