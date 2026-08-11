@@ -9,8 +9,15 @@ import { MAX_MESSAGE_LENGTH, type MessageRecord } from "@/features/conversations
 import { getOpenAIClient, getOpenAIModel } from "@/lib/openai/client";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
-export async function generateBasicEslamReply(messages: MessageRecord[]) {
-  const request = buildBasicEslamResponseRequest(messages, getOpenAIModel());
+export async function generateBasicEslamReply(
+  messages: MessageRecord[],
+  businessDnaContext: string | null = null,
+) {
+  const request = buildBasicEslamResponseRequest(
+    messages,
+    getOpenAIModel(),
+    businessDnaContext,
+  );
   const response = await getOpenAIClient().responses.create(request);
 
   const content = response.output_text.trim();
@@ -27,10 +34,12 @@ export async function streamBasicEslamReply(
     signal: AbortSignal;
     onDelta(delta: string): void;
   },
+  businessDnaContext: string | null = null,
 ) {
   const request = buildBasicEslamStreamingResponseRequest(
     messages,
     getOpenAIModel(),
+    businessDnaContext,
   );
   const stream = await getOpenAIClient().responses.create(request, {
     signal: options.signal,
