@@ -156,6 +156,9 @@ test("admin role data is private to server credentials and pre-authorizes the pr
   const bindMigration = readSource(
     "supabase/migrations/20260811214459_bind_admin_users_to_auth_users.sql",
   );
+  const privilegeMigration = readSource(
+    "supabase/migrations/20260811214951_restrict_admin_users_service_privileges.sql",
+  );
   const runtime = readSource("supabase/tests/admin_authorization_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
 
@@ -164,14 +167,20 @@ test("admin role data is private to server credentials and pre-authorizes the pr
     createMigration,
     /revoke all on table public\.admin_users from public, anon, authenticated/,
   );
-  assert.match(
-    createMigration,
-    /grant select, insert, update, delete on table public\.admin_users to service_role/,
-  );
   assert.match(createMigration, /'eslam@adscope\.net'/);
   assert.match(bindMigration, /user_id uuid unique references auth\.users\(id\) on delete cascade/);
+  assert.match(
+    privilegeMigration,
+    /revoke all on table public\.admin_users from service_role/,
+  );
+  assert.match(
+    privilegeMigration,
+    /grant select, update on table public\.admin_users to service_role/,
+  );
+  assert.doesNotMatch(privilegeMigration, /grant[^;]*(insert|delete|truncate|trigger)/i);
   assert.match(runtime, /authenticated role unexpectedly read admin_users/);
   assert.match(runtime, /authenticated role unexpectedly mutated admin_users/);
+  assert.match(runtime, /service_role has unnecessary admin_users privileges/);
   assert.match(runtime, /service_role could not bind primary admin to auth user/);
   assert.match(ci, /admin_authorization_runtime\.sql/);
 });
