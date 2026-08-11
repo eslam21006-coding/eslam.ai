@@ -16,6 +16,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   let message: string | null = null;
   if (error === "invalid_input") message = "راجع البريد الإلكتروني وكلمة المرور.";
   if (error === "invalid_credentials") message = "بيانات الدخول غير صحيحة.";
+  if (error === "profile_init_failed") message = "تعذر تجهيز حسابك الآن. حاول تسجيل الدخول مرة أخرى.";
   if (status === "check_email") message = "تحقق من بريدك الإلكتروني لتأكيد الحساب ثم سجل الدخول.";
   if (status === "signed_out") message = "تم تسجيل الخروج.";
 
