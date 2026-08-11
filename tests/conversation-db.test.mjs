@@ -94,28 +94,31 @@ test("conversation IDs are validated before database access or append", () => {
   const contracts = readSource("src/features/conversations/contracts.ts");
   const data = readSource("src/features/conversations/data.ts");
   const actions = readSource("src/features/conversations/actions.ts");
+  const streamRoute = readSource("src/app/api/chat/stream/route.ts");
 
   assert.match(contracts, /UUID_PATTERN/);
   assert.match(contracts, /export function isUuid/);
   assert.match(data, /if \(!isUuid\(conversationId\)\) return null;/);
   assert.match(actions, /if \(typeof value !== "string" \|\| !isUuid\(value\)\) return false;/);
   assert.match(actions, /conversationId === false/);
-  assert.match(actions, /return failure\("invalid_input"\)/);
+  assert.match(streamRoute, /!isUuid\(body\.conversationId\)/);
+  assert.match(streamRoute, /errorResponse\(400, "invalid_input"\)/);
 });
 
-test("message action derives ownership from auth and preserves failed content", () => {
+test("server response dependencies derive ownership from auth-scoped Supabase client", () => {
   const actions = readSource("src/features/conversations/actions.ts");
+  const serverFlow = readSource("src/features/conversations/response-flow-server.ts");
+  const streamRoute = readSource("src/app/api/chat/stream/route.ts");
 
   assert.match(actions, /requireAuthenticatedUser\(\)/);
-  assert.match(actions, /executeMessageResponseFlow/);
+  assert.match(actions, /createResponsePreparationDependencies\(\)/);
   assert.match(actions, /\{ userId, conversationId, content \}/);
-  assert.match(actions, /create_conversation_with_first_message/);
-  assert.match(actions, /user_id: ownerId/);
-  assert.match(actions, /role: "user"/);
   assert.doesNotMatch(actions, /formData\.get\(["']user_id["']\)/);
-  assert.match(actions, /return failure\(result\.error\)/);
-  assert.match(actions, /content,/);
-  assert.match(actions, /revalidatePath\("\/app", "layout"\)/);
+  assert.match(serverFlow, /create_conversation_with_first_message/);
+  assert.match(serverFlow, /user_id: ownerId/);
+  assert.match(serverFlow, /role: "user"/);
+  assert.match(streamRoute, /getAuthenticatedUserId\(\)/);
+  assert.match(streamRoute, /\{ userId, conversationId: input\.conversationId, content: input\.content \}/);
 });
 
 test("conversation reads are owner-scoped and messages have deterministic ordering", () => {
@@ -129,21 +132,22 @@ test("conversation reads are owner-scoped and messages have deterministic orderi
   assert.match(data, /CONVERSATION_LIST_LIMIT/);
 });
 
-test("persisted chat routes and composer remain UI-only", () => {
+test("persisted chat pages delegate rendering and streaming transport to the client conversation component", () => {
   const newPage = readSource("src/app/app/chat/page.tsx");
   const threadPage = readSource("src/app/app/chat/[conversationId]/page.tsx");
+  const chat = readSource("src/features/conversations/conversation-chat.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
 
-  assert.match(newPage, /<ConversationComposer \/>/);
+  assert.match(newPage, /<ConversationChat initialMessages=\{\[\]\} showEmptyState \/>/);
   assert.match(threadPage, /loadConversation\(userId, conversationId\)/);
   assert.match(threadPage, /notFound\(\)/);
-  assert.match(threadPage, /thread\.messages\.map/);
+  assert.match(threadPage, /initialMessages=\{thread\.messages\}/);
   assert.match(threadPage, /conversationId=\{conversationId\}/);
-  assert.match(threadPage, /className="sr-only"/);
-  assert.match(threadPage, /isUser \? "أنت:"/);
-  assert.match(threadPage, /message\.role === "assistant" \? "إسلام:" : "النظام:"/);
-  assert.match(composer, /useActionState\(persistUserMessageAction, initialState\)/);
-  assert.doesNotMatch(`${newPage}\n${threadPage}\n${composer}`, /openai|responses\.create|chat\.completions/i);
+  assert.match(chat, /initialMessages\.map/);
+  assert.match(chat, /fetch\("\/api\/chat\/stream"/);
+  assert.match(chat, /role === "assistant" \? "إسلام:" : "النظام:"/);
+  assert.match(composer, /useActionState/);
+  assert.doesNotMatch(`${newPage}\n${threadPage}\n${chat}\n${composer}`, /responses\.create|chat\.completions/i);
 });
 
 test("conversation history exposes a navigation landmark and list semantics", () => {
