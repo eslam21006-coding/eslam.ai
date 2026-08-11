@@ -53,12 +53,22 @@ jobs:
             postgres:17-alpine >/dev/null
           trap 'docker rm --force "$container_name" >/dev/null 2>&1 || true' EXIT
 
-          for attempt in {1..30}; do
-            if docker exec "$container_name" pg_isready --username postgres >/dev/null 2>&1; then
-              break
+          ready_streak=0
+          for attempt in {1..60}; do
+            if docker exec "$container_name" \
+              psql --username postgres --dbname postgres --tuples-only --no-align \
+              --command 'select 1' >/dev/null 2>&1; then
+              ready_streak=$((ready_streak + 1))
+              if [[ "$ready_streak" -ge 3 ]]; then
+                break
+              fi
+            else
+              ready_streak=0
             fi
-            if [[ "$attempt" -eq 30 ]]; then
-              echo "Postgres did not become ready" >&2
+
+            if [[ "$attempt" -eq 60 ]]; then
+              echo "Postgres did not become stably ready" >&2
+              docker logs "$container_name" >&2 || true
               exit 1
             fi
             sleep 1
@@ -75,9 +85,14 @@ jobs:
               < "$migration"
           done
 
-          docker exec --interactive "$container_name" \
-            psql --set ON_ERROR_STOP=1 --username postgres \
-            < supabase/tests/business_dna_rls_runtime.sql
+          for regression in \
+            supabase/tests/business_dna_rls_runtime.sql \
+            supabase/tests/conversations_rls_runtime.sql; do
+            echo "Running $regression"
+            docker exec --interactive "$container_name" \
+              psql --set ON_ERROR_STOP=1 --username postgres \
+              < "$regression"
+          done
 
       - name: Build
         run: npm run build

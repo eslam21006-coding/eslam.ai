@@ -81,9 +81,9 @@ test("server Supabase client uses cookie-aware SSR plumbing and stays server-onl
   assert.match(serverClient, /setAll\(cookiesToSet\)/);
 });
 
-test("profiles migration enforces owner-only RLS per operation", () => {
+test("profiles migration version matches the hosted Eslam AI history", () => {
   const migration = readSource(
-    "supabase/migrations/20260811120255_create_profiles.sql",
+    "supabase/migrations/20260811123929_create_profiles.sql",
   );
   const selectPolicy = extractPolicy(migration, "Users can read their own profile");
   const insertPolicy = extractPolicy(migration, "Users can create their own profile");
@@ -111,7 +111,7 @@ test("profiles migration enforces owner-only RLS per operation", () => {
 
 test("profiles migration maintains updated_at on every update", () => {
   const migration = readSource(
-    "supabase/migrations/20260811120255_create_profiles.sql",
+    "supabase/migrations/20260811123929_create_profiles.sql",
   );
 
   assert.match(migration, /create function public\.set_profiles_updated_at\(\)/i);
