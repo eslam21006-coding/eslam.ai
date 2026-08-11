@@ -138,7 +138,6 @@ export async function POST(request: Request) {
         },
       )
         .then(() => {
-          invalidateConversation(prepared.conversationId);
           if (!cancelled) controller.close();
         })
         .catch((error) => {
