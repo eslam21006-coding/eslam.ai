@@ -14,15 +14,18 @@ test("conversation follows the latest message without trapping users at the bott
   assert.match(chat, /setShowJumpToLatest\(!atLatest\)/);
   assert.match(chat, /آخر رسالة/);
   assert.match(chat, /scrollToLatest\("smooth"\)/);
+  assert.match(chat, /fixed bottom-28 left-1\/2/);
+  assert.match(chat, /lg:left-\[calc\(50%-9rem\)\]/);
   assert.match(chat, /window\.requestAnimationFrame/);
 });
 
-test("streaming assistant has a clear pre-token state and robust mixed-text wrapping", () => {
+test("streaming assistant has a clear pre-token state, live updates, and robust mixed-text wrapping", () => {
   const chat = readSource("src/features/conversations/conversation-chat.tsx");
 
   assert.match(chat, /waitingForFirstToken/);
   assert.match(chat, /aria-label="إسلام يكتب"/);
   assert.match(chat, /role="status"/);
+  assert.match(chat, /aria-live=\{streaming && !waitingForFirstToken \? "polite" : undefined\}/);
   assert.match(chat, /dir="auto"/);
   assert.match(chat, /overflow-wrap:anywhere/);
 });
