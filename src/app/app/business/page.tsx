@@ -19,12 +19,12 @@ export default function BusinessPage() {
           </div>
           <h2 className="mt-5 text-xl font-semibold">لسه مفيش ملف تجاري</h2>
           <p className="mt-3 max-w-xl text-sm leading-7 text-[var(--foreground-muted)]">
-            في مرحلة لاحقة هتقدر تضيف البراند، السوق، الجمهور، العروض، الأسعار، الـ positioning وطريقة تقديم الخدمة من هنا.
+            هتقدر تضيف البراند، السوق، الجمهور، العروض، الأسعار، الـ positioning وطريقة تقديم الخدمة من هنا.
           </p>
           <div className="mt-7 rounded-[var(--radius-md)] border border-dashed border-[var(--border-strong)] bg-[var(--surface-subtle)] p-5">
-            <p className="text-sm font-medium">التعديل غير متاح في النسخة الحالية.</p>
+            <p className="text-sm font-medium">إعداد الملف التجاري هيكون متاح قريباً.</p>
             <p className="mt-2 text-xs leading-6 text-[var(--foreground-subtle)]">
-              Task 02 مخصص لبناء هيكل التطبيق فقط. حفظ وتعديل Business DNA يأتي في Task 05.
+              المعلومات هنا هتكون ثابتة نسبياً، بينما أرقام الحملات والنتائج المتغيرة تفضل مرتبطة بالمحادثات والسياق الحالي.
             </p>
           </div>
         </div>
