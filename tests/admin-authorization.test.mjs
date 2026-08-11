@@ -133,7 +133,25 @@ test("a lost bootstrap race fails closed", async () => {
   assert.deepEqual(result, { authorized: false });
 });
 
-test("server guard uses authentic Auth user data and a backend-only role lookup", () => {
+test("a mismatched bootstrap binding fails closed", async () => {
+  const deps = dependencies({
+    byEmail: { email: "eslam@adscope.net", user_id: null },
+    bound: { email: "eslam@adscope.net", user_id: "other-user" },
+  });
+
+  const result = await resolveAdminAuthorization(
+    {
+      id: "candidate",
+      email: "eslam@adscope.net",
+      emailConfirmedAt: "2026-08-12T00:00:00.000Z",
+    },
+    deps.value,
+  );
+
+  assert.deepEqual(result, { authorized: false });
+});
+
+test("server guard uses authentic Auth user data and fails closed around candidate resolution", () => {
   const admin = readSource("src/lib/auth/admin.ts");
   const layout = readSource("src/app/admin/layout.tsx");
 
@@ -143,13 +161,19 @@ test("server guard uses authentic Auth user data and a backend-only role lookup"
   assert.match(admin, /getSupabaseAdminClient\(\)/);
   assert.match(admin, /from\("admin_users"\)/);
   assert.match(admin, /\.is\("user_id", null\)/);
+  assert.match(admin, /let candidate: AdminCandidate \| null;/);
+  assert.match(
+    admin,
+    /candidate = await getCurrentAdminCandidate\(\);[\s\S]*?reportAdminAuthorizationFailure\(error\);[\s\S]*?return false;/,
+  );
   assert.match(admin, /redirect\("\/auth\/login"\)/);
   assert.match(admin, /notFound\(\)/);
   assert.doesNotMatch(admin, /user_metadata|raw_user_meta_data/);
   assert.match(layout, /await requireAdmin\(\)/);
 });
 
-test("admin role data is private to server credentials and pre-authorizes the primary email", () => {
+test("admin role data is private, immutable, and restricted to one-time binding", () => {
+  const packageJson = JSON.parse(readSource("package.json"));
   const createMigration = readSource(
     "supabase/migrations/20260811214336_create_admin_users.sql",
   );
@@ -159,9 +183,16 @@ test("admin role data is private to server credentials and pre-authorizes the pr
   const privilegeMigration = readSource(
     "supabase/migrations/20260811214951_restrict_admin_users_service_privileges.sql",
   );
+  const policyMigration = readSource(
+    "supabase/migrations/20260811215320_document_admin_users_service_policies.sql",
+  );
+  const hardeningMigration = readSource(
+    "supabase/migrations/20260811220610_harden_admin_user_binding.sql",
+  );
   const runtime = readSource("supabase/tests/admin_authorization_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
 
+  assert.equal(packageJson.engines.node, ">=22.18.0");
   assert.match(createMigration, /alter table public\.admin_users enable row level security/);
   assert.match(
     createMigration,
@@ -173,14 +204,18 @@ test("admin role data is private to server credentials and pre-authorizes the pr
     privilegeMigration,
     /revoke all on table public\.admin_users from service_role/,
   );
-  assert.match(
-    privilegeMigration,
-    /grant select, update on table public\.admin_users to service_role/,
-  );
-  assert.doesNotMatch(privilegeMigration, /grant[^;]*(insert|delete|truncate|trigger)/i);
+  assert.match(policyMigration, /to service_role/);
+  assert.match(hardeningMigration, /enforce_admin_user_binding_immutability/);
+  assert.match(hardeningMigration, /admin authorization email is immutable/);
+  assert.match(hardeningMigration, /admin authorization binding is immutable/);
+  assert.match(hardeningMigration, /grant update \(user_id\) on public\.admin_users to service_role/);
+  assert.match(hardeningMigration, /using \(user_id is null\)/);
+  assert.match(hardeningMigration, /with check \(user_id is not null\)/);
+  assert.match(runtime, /grantee in \('PUBLIC', 'anon', 'authenticated'\)/);
+  assert.match(runtime, /service_role UPDATE must be limited to admin_users\.user_id/);
+  assert.match(runtime, /service_role unexpectedly rebound an admin user/);
+  assert.match(runtime, /admin authorization binding is immutable/);
   assert.match(runtime, /authenticated role unexpectedly read admin_users/);
   assert.match(runtime, /authenticated role unexpectedly mutated admin_users/);
-  assert.match(runtime, /service_role has unnecessary admin_users privileges/);
-  assert.match(runtime, /service_role could not bind primary admin to auth user/);
   assert.match(ci, /admin_authorization_runtime\.sql/);
 });
