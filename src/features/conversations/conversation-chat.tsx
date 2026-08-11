@@ -77,7 +77,7 @@ export function ConversationChat({
   clearResponseErrorOnSuccess = false,
 }: ConversationChatProps) {
   const router = useRouter();
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState<string | undefined>(undefined);
   const [optimisticTurn, setOptimisticTurn] = useState<OptimisticTurn | null>(null);
   const [streamingError, setStreamingError] = useState<ComposerError>(null);
   const [streaming, setStreaming] = useState(false);
@@ -97,7 +97,9 @@ export function ConversationChat({
     event.preventDefault();
     if (streaming) return;
 
-    const submittedContent = draft.trim();
+    const formData = new FormData(event.currentTarget);
+    const rawContent = formData.get("content");
+    const submittedContent = typeof rawContent === "string" ? rawContent.trim() : "";
     if (
       submittedContent.length < 1 ||
       submittedContent.length > MAX_MESSAGE_LENGTH
