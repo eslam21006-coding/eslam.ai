@@ -25,21 +25,18 @@ test("OpenAI SDK is pinned and server-only credentials stay private", () => {
   assert.doesNotMatch(env, /NEXT_PUBLIC_SUPABASE_SECRET_KEY/);
 });
 
-test("basic Eslam reply uses a bounded persisted transcript with Responses API and no OpenAI storage", () => {
+test("production OpenAI boundary uses the executable bounded request builder", () => {
   const assistant = readSource("src/features/conversations/assistant.ts");
+  const request = readSource("src/features/conversations/assistant-request.ts");
 
-  assert.match(assistant, /ResponseInputItem/);
-  assert.match(assistant, /MAX_MODEL_TRANSCRIPT_MESSAGES = 64/);
-  assert.match(assistant, /MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000/);
-  assert.match(assistant, /estimateMessageTokens/);
-  assert.match(assistant, /for \(let index = replayable\.length - 1/);
-  assert.match(assistant, /selected\.reverse\(\)\.map/);
-  assert.match(assistant, /responses\.create\(/);
-  assert.match(assistant, /instructions: BASIC_ESLAM_INSTRUCTIONS/);
-  assert.match(assistant, /store: false/);
+  assert.match(assistant, /buildBasicEslamResponseRequest\(messages, getOpenAIModel\(\)\)/);
+  assert.match(assistant, /responses\.create\(request\)/);
   assert.match(assistant, /response\.output_text\.trim\(\)/);
-  assert.doesNotMatch(assistant, /stream:\s*true/);
-  assert.doesNotMatch(assistant, /business_dna|file_search|web_search|vector_store/i);
+  assert.match(request, /MAX_MODEL_TRANSCRIPT_MESSAGES = 64/);
+  assert.match(request, /MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000/);
+  assert.match(request, /store: false/);
+  assert.doesNotMatch(`${assistant}\n${request}`, /stream:\s*true/);
+  assert.doesNotMatch(`${assistant}\n${request}`, /business_dna|file_search|web_search|vector_store/i);
 });
 
 test("assistant messages use a backend-only privileged client while browser RLS remains unchanged", () => {
@@ -62,6 +59,7 @@ test("assistant messages use a backend-only privileged client while browser RLS 
 
 test("generation leases serialize existing conversation turns across server instances", () => {
   const actions = readSource("src/features/conversations/actions.ts");
+  const flow = readSource("src/features/conversations/response-flow.ts");
   const lock = readSource("src/features/conversations/generation-lock.ts");
   const migration = readSource(
     "supabase/migrations/20260811183713_add_conversation_generation_lease.sql",
@@ -71,26 +69,25 @@ test("generation leases serialize existing conversation turns across server inst
   assert.match(lock, /^import "server-only";/);
   assert.match(lock, /randomUUID\(\)/);
   assert.match(lock, /GENERATION_LOCK_SECONDS = 300/);
-  assert.match(lock, /claim_conversation_generation/);
-  assert.match(lock, /release_conversation_generation/);
-  assert.match(actions, /response_in_progress/);
-  assert.ok(actions.indexOf("claimGeneration(userId, conversationId)") < actions.indexOf('.from("messages").insert'));
-  assert.match(actions, /claim\.status === "busy"/);
-  assert.match(actions, /claim\.status === "failed"/);
+  assert.match(actions, /executeMessageResponseFlow/);
+  assert.ok(flow.indexOf("dependencies.claimGeneration(userId, conversationId)") < flow.indexOf("dependencies.insertUserMessage"));
+  assert.match(flow, /claim\.status === "busy"/);
+  assert.match(flow, /claim\.status === "failed"/);
   assert.match(migration, /grant execute on function public\.claim_conversation_generation[\s\S]*?to service_role/);
   assert.match(migration, /revoke all on function public\.claim_conversation_generation[\s\S]*?from anon, authenticated/);
   assert.match(runtime, /Concurrent generation lease was incorrectly claimed/);
   assert.match(runtime, /Generation lease released with the wrong token/);
 });
 
-test("message action preserves the user turn when AI fails and preserves unsaved text when busy", () => {
+test("message action delegates failure-preserving response behavior to the executed coordinator", () => {
   const actions = readSource("src/features/conversations/actions.ts");
   const threadPage = readSource("src/app/app/chat/[conversationId]/page.tsx");
   const composer = readSource("src/features/conversations/conversation-composer.tsx");
 
-  assert.match(actions, /loadConversation\(userId, conversationId\)/);
-  assert.match(actions, /generateBasicEslamReply\(thread\.messages\)/);
-  assert.match(actions, /persistAssistantMessage\(userId, conversationId, assistantContent\)/);
+  assert.match(actions, /executeMessageResponseFlow/);
+  assert.match(actions, /loadConversation,/);
+  assert.match(actions, /generateReply: generateBasicEslamReply/);
+  assert.match(actions, /persistAssistant: persistAssistantMessage/);
   assert.match(actions, /\?error=response_failed/);
   assert.match(threadPage, /رسالتك محفوظة/);
   assert.match(threadPage, /لا تحتاج لإرسال الرسالة نفسها مرة أخرى/);
@@ -101,6 +98,8 @@ test("Task 07 remains non-streaming and does not inject later-stage context", ()
   const sources = [
     readSource("src/features/conversations/actions.ts"),
     readSource("src/features/conversations/assistant.ts"),
+    readSource("src/features/conversations/assistant-request.ts"),
+    readSource("src/features/conversations/response-flow.ts"),
     readSource("src/lib/openai/client.ts"),
   ].join("\n");
 
