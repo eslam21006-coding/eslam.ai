@@ -14,6 +14,9 @@ const atomicCreate = readSource(
 const privilegeMigration = readSource(
   "supabase/migrations/20260811142816_restrict_conversation_column_privileges.sql",
 );
+const ownershipIndexMigration = readSource(
+  "supabase/migrations/20260811143116_index_message_conversation_owner.sql",
+);
 
 test("conversation schema enforces tenant-consistent message ownership", () => {
   assert.match(schema, /create table public\.conversations/);
@@ -25,6 +28,10 @@ test("conversation schema enforces tenant-consistent message ownership", () => {
   );
   assert.match(schema, /messages_content_length check \(char_length\(content\) between 1 and 20000\)/);
   assert.match(schema, /messages_role_check check \(role in \('user', 'assistant', 'system'\)\)/);
+  assert.match(
+    ownershipIndexMigration,
+    /create index messages_conversation_owner_idx[\s\S]*?on public\.messages\(conversation_id, user_id\)/,
+  );
 });
 
 test("conversation and message privileges follow the append-only least-privilege contract", () => {
