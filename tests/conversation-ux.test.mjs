@@ -30,11 +30,12 @@ test("streaming assistant has a clear pre-token state and robust mixed-text wrap
 test("successful streaming keeps the optimistic turn visible until persisted props catch up", () => {
   const chat = readSource("src/features/conversations/conversation-chat.tsx");
 
-  assert.match(chat, /optimisticBaseMessageCountRef/);
-  assert.match(chat, /initialMessages\.length > optimisticBaseMessageCountRef\.current/);
+  assert.match(chat, /optimisticBaseMessageCount/);
+  assert.match(chat, /initialMessages\.length > optimisticBaseMessageCount/);
   assert.match(chat, /visibleOptimisticTurn = optimisticTurnIsPersisted \? null : optimisticTurn/);
   assert.match(chat, /streaming=\{streaming\}/);
   assert.doesNotMatch(chat, /setOptimisticTurn\(null\);\n\s*const cleanConversationUrl/);
+  assert.doesNotMatch(chat, /optimisticBaseMessageCountRef/);
 });
 
 test("composer supports chat keyboard semantics, auto-grow, and desktop focus recovery", () => {
