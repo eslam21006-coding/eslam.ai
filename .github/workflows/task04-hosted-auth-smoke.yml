@@ -28,7 +28,7 @@ jobs:
 
           const base = process.env.SUPABASE_URL;
           const key = process.env.SUPABASE_PUBLISHABLE_KEY;
-          const email = `eslam-ai-smoke-${process.env.GITHUB_RUN_ID}@example.com`;
+          const email = `eslam.ai.smoke.${process.env.GITHUB_RUN_ID}@gmail.com`;
           const password = `${createHash("sha256").update(process.env.SMOKE_SEED).digest("hex").slice(0, 32)}Aa1!`;
           const common = { apikey: key, "Content-Type": "application/json" };
 
