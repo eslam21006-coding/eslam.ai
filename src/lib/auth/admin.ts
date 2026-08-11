@@ -79,7 +79,14 @@ function reportAdminAuthorizationFailure(error: unknown) {
 }
 
 export async function isAdmin() {
-  const candidate = await getCurrentAdminCandidate();
+  let candidate: AdminCandidate | null;
+  try {
+    candidate = await getCurrentAdminCandidate();
+  } catch (error) {
+    reportAdminAuthorizationFailure(error);
+    return false;
+  }
+
   if (!candidate) return false;
 
   try {
@@ -91,7 +98,14 @@ export async function isAdmin() {
 }
 
 export async function requireAdmin() {
-  const candidate = await getCurrentAdminCandidate();
+  let candidate: AdminCandidate | null;
+  try {
+    candidate = await getCurrentAdminCandidate();
+  } catch (error) {
+    reportAdminAuthorizationFailure(error);
+    notFound();
+  }
+
   if (!candidate) {
     redirect("/auth/login");
   }
