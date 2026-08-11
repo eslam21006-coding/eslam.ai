@@ -72,42 +72,48 @@ function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: 
         })}
       </nav>
 
-      <div id="conversations" className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)] px-3 py-4">
+      <nav
+        id="conversations"
+        aria-label="المحادثات السابقة"
+        className="min-h-0 flex-1 overflow-y-auto border-t border-[var(--border)] px-3 py-4"
+      >
         <div className="flex items-center justify-between px-3">
-          <p className="text-xs font-medium text-[var(--foreground-subtle)]">المحادثات السابقة</p>
+          <h2 className="text-xs font-medium text-[var(--foreground-subtle)]">المحادثات السابقة</h2>
         </div>
-        <div className="mt-2 grid gap-1">
+        <ul className="mt-2 grid list-none gap-1">
           {conversationsLoadFailed ? (
-            <p className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
+            <li className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
               تعذر تحميل المحادثات الآن.
-            </p>
+            </li>
           ) : conversations.length === 0 ? (
-            <p className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
+            <li className="px-3 py-2.5 text-xs leading-5 text-[var(--foreground-subtle)]">
               لا توجد محادثات محفوظة بعد.
-            </p>
+            </li>
           ) : (
             conversations.map((conversation) => {
               const href = `/app/chat/${conversation.id}`;
               const active = pathname === href;
               return (
-                <Link
-                  key={conversation.id}
-                  href={href}
-                  onClick={onNavigate}
-                  aria-current={active ? "page" : undefined}
-                  className={`truncate rounded-[var(--radius-sm)] px-3 py-2.5 text-sm transition-colors ${
-                    active
-                      ? "bg-white/[0.04] text-[var(--foreground)]"
-                      : "text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
-                  }`}
-                >
-                  {conversation.title}
-                </Link>
+                <li key={conversation.id} className="grid">
+                  <Link
+                    href={href}
+                    onClick={onNavigate}
+                    aria-current={active ? "page" : undefined}
+                    title={conversation.title}
+                    className={`block truncate rounded-[var(--radius-sm)] px-3 py-2.5 text-sm transition-colors ${
+                      active
+                        ? "bg-white/[0.04] text-[var(--foreground)]"
+                        : "text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
+                    }`}
+                  >
+                    {conversation.title}
+                  </Link>
+                </li>
               );
             })
           )}
-        </div>
-      </div>
+        </ul>
+      </nav>
 
       <div className="border-t border-[var(--border)] p-4">
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
