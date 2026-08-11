@@ -107,7 +107,17 @@ test("Business DNA page loads and edits the owner-scoped record", () => {
   assert.match(page, /\.eq\("user_id", userId\)/);
   assert.match(page, /action=\{saveBusinessDnaAction\}/);
   assert.match(page, /name=\{field\.name\}/);
-  assert.match(page, /حفظ الملف التجاري/);
+  assert.match(page, /<BusinessDnaSubmitButton \/>/);
+});
+
+test("Business DNA save button exposes a pending state and blocks duplicate submission", () => {
+  const button = readSource("src/features/business-dna/submit-button.tsx");
+
+  assert.match(button, /useFormStatus\(\)/);
+  assert.match(button, /disabled=\{pending\}/);
+  assert.match(button, /aria-disabled=\{pending\}/);
+  assert.match(button, /جارٍ الحفظ/);
+  assert.match(button, /حفظ الملف التجاري/);
 });
 
 test("generated database types include Business DNA", () => {
