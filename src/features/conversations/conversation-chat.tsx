@@ -93,6 +93,7 @@ export function ConversationChat({
   const router = useRouter();
   const [draft, setDraft] = useState<string | undefined>(undefined);
   const [optimisticTurn, setOptimisticTurn] = useState<OptimisticTurn | null>(null);
+  const [optimisticBaseMessageCount, setOptimisticBaseMessageCount] = useState<number | null>(null);
   const [streamingError, setStreamingError] = useState<ComposerError>(null);
   const [streaming, setStreaming] = useState(false);
   const [showJumpToLatest, setShowJumpToLatest] = useState(false);
@@ -100,18 +101,17 @@ export function ConversationChat({
   const mountedRef = useRef(true);
   const endRef = useRef<HTMLDivElement>(null);
   const followingLatestRef = useRef(true);
-  const optimisticBaseMessageCountRef = useRef<number | null>(null);
 
   const optimisticTurnIsPersisted =
     optimisticTurn !== null &&
-    optimisticBaseMessageCountRef.current !== null &&
-    initialMessages.length > optimisticBaseMessageCountRef.current;
+    optimisticBaseMessageCount !== null &&
+    initialMessages.length > optimisticBaseMessageCount;
   const visibleOptimisticTurn = optimisticTurnIsPersisted ? null : optimisticTurn;
   const hasMessages = initialMessages.length > 0 || visibleOptimisticTurn !== null;
   const streamedAssistantLength = visibleOptimisticTurn?.assistant.length ?? 0;
 
   const clearOptimisticTurn = () => {
-    optimisticBaseMessageCountRef.current = null;
+    setOptimisticBaseMessageCount(null);
     setOptimisticTurn(null);
   };
 
@@ -129,13 +129,6 @@ export function ConversationChat({
       abortRef.current?.abort();
     };
   }, []);
-
-  useEffect(() => {
-    if (!optimisticTurnIsPersisted) return;
-
-    optimisticBaseMessageCountRef.current = null;
-    setOptimisticTurn(null);
-  }, [optimisticTurnIsPersisted]);
 
   useEffect(() => {
     const endNode = endRef.current;
@@ -191,7 +184,7 @@ export function ConversationChat({
 
     const abortController = new AbortController();
     abortRef.current = abortController;
-    optimisticBaseMessageCountRef.current = initialMessages.length;
+    setOptimisticBaseMessageCount(initialMessages.length);
     followingLatestRef.current = true;
     setShowJumpToLatest(false);
     setStreamingError(null);
