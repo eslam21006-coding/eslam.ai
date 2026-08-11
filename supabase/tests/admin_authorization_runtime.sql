@@ -18,9 +18,15 @@ begin
     from information_schema.role_table_grants
     where table_schema = 'public'
       and table_name = 'admin_users'
-      and grantee in ('anon', 'authenticated')
+      and grantee in ('PUBLIC', 'anon', 'authenticated')
+  ) or exists (
+    select 1
+    from information_schema.column_privileges
+    where table_schema = 'public'
+      and table_name = 'admin_users'
+      and grantee in ('PUBLIC', 'anon', 'authenticated')
   ) then
-    raise exception 'client roles must have no admin_users privileges';
+    raise exception 'client roles or PUBLIC must have no admin_users privileges';
   end if;
 
   if not exists (
@@ -30,15 +36,8 @@ begin
       and table_name = 'admin_users'
       and grantee = 'service_role'
       and privilege_type = 'SELECT'
-  ) or not exists (
-    select 1
-    from information_schema.role_table_grants
-    where table_schema = 'public'
-      and table_name = 'admin_users'
-      and grantee = 'service_role'
-      and privilege_type = 'UPDATE'
   ) then
-    raise exception 'service_role must have select and update on admin_users';
+    raise exception 'service_role must be able to read admin_users';
   end if;
 
   if exists (
@@ -47,9 +46,29 @@ begin
     where table_schema = 'public'
       and table_name = 'admin_users'
       and grantee = 'service_role'
-      and privilege_type not in ('SELECT', 'UPDATE')
+      and privilege_type <> 'SELECT'
   ) then
-    raise exception 'service_role has unnecessary admin_users privileges';
+    raise exception 'service_role has unnecessary table-level admin_users privileges';
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.column_privileges
+    where table_schema = 'public'
+      and table_name = 'admin_users'
+      and grantee = 'service_role'
+      and privilege_type = 'UPDATE'
+      and column_name = 'user_id'
+  ) or exists (
+    select 1
+    from information_schema.column_privileges
+    where table_schema = 'public'
+      and table_name = 'admin_users'
+      and grantee = 'service_role'
+      and privilege_type = 'UPDATE'
+      and column_name <> 'user_id'
+  ) then
+    raise exception 'service_role UPDATE must be limited to admin_users.user_id';
   end if;
 
   if exists (
@@ -73,6 +92,19 @@ begin
   end if;
 
   if not exists (
+    select 1
+    from pg_policies
+    where schemaname = 'public'
+      and tablename = 'admin_users'
+      and policyname = 'Server can bind admin users'
+      and cmd = 'UPDATE'
+      and qual like '%user_id IS NULL%'
+      and with_check like '%user_id IS NOT NULL%'
+  ) then
+    raise exception 'admin binding policy must only allow null-to-bound transitions';
+  end if;
+
+  if not exists (
     select 1 from public.admin_users where email = 'eslam@adscope.net'
   ) then
     raise exception 'primary admin email must be pre-authorized';
@@ -81,7 +113,9 @@ end
 $$;
 
 insert into auth.users (id, email)
-values ('11111111-1111-4111-8111-111111111111', 'eslam@adscope.net');
+values
+  ('11111111-1111-4111-8111-111111111111', 'eslam@adscope.net'),
+  ('22222222-2222-4222-8222-222222222222', 'other@example.com');
 
 set local role authenticated;
 do $$
@@ -103,6 +137,55 @@ where email = 'eslam@adscope.net'
   and user_id is null;
 
 do $$
+declare
+  rebound_count integer;
+begin
+  update public.admin_users
+  set user_id = '22222222-2222-4222-8222-222222222222'
+  where email = 'eslam@adscope.net';
+  get diagnostics rebound_count = row_count;
+
+  if rebound_count <> 0 then
+    raise exception 'service_role unexpectedly rebound an admin user';
+  end if;
+end
+$$;
+
+reset role;
+
+do $$
+begin
+  begin
+    update public.admin_users
+    set user_id = '22222222-2222-4222-8222-222222222222'
+    where email = 'eslam@adscope.net';
+    raise exception using errcode = 'ZX001', message = 'privileged rebinding unexpectedly succeeded';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'admin authorization binding is immutable' then
+        raise;
+      end if;
+  end;
+end
+$$;
+
+do $$
+begin
+  begin
+    update public.admin_users
+    set email = 'changed@example.com'
+    where email = 'eslam@adscope.net';
+    raise exception using errcode = 'ZX002', message = 'privileged email change unexpectedly succeeded';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'admin authorization email is immutable' then
+        raise;
+      end if;
+  end;
+end
+$$;
+
+do $$
 begin
   if not exists (
     select 1
@@ -110,11 +193,10 @@ begin
     where email = 'eslam@adscope.net'
       and user_id = '11111111-1111-4111-8111-111111111111'
   ) then
-    raise exception 'service_role could not bind primary admin to auth user';
+    raise exception 'primary admin binding changed after immutability checks';
   end if;
 end
 $$;
-reset role;
 
 set local role authenticated;
 do $$
