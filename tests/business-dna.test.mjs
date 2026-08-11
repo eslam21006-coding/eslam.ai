@@ -8,6 +8,24 @@ const readSource = (relativePath) =>
 const migration = readSource(
   "supabase/migrations/20260811130752_create_business_dna.sql",
 );
+const lengthMigration = readSource(
+  "supabase/migrations/20260811133112_constrain_business_dna_text_length.sql",
+);
+
+const businessDnaFields = [
+  "preferred_name",
+  "business_name",
+  "niche",
+  "markets",
+  "audiences",
+  "business_model",
+  "offers",
+  "price_ranges",
+  "positioning",
+  "methodology",
+  "delivery",
+  "team_context",
+];
 
 test("Business DNA schema contains only slow-changing business context", () => {
   const createTable = migration.match(
@@ -16,20 +34,7 @@ test("Business DNA schema contains only slow-changing business context", () => {
 
   assert.ok(createTable, "business_dna table definition should exist");
 
-  for (const field of [
-    "preferred_name",
-    "business_name",
-    "niche",
-    "markets",
-    "audiences",
-    "business_model",
-    "offers",
-    "price_ranges",
-    "positioning",
-    "methodology",
-    "delivery",
-    "team_context",
-  ]) {
+  for (const field of businessDnaFields) {
     assert.match(createTable, new RegExp(`\\b${field}\\b`));
   }
 
@@ -64,6 +69,23 @@ test("Business DNA RLS binds every operation to the authenticated owner", () => 
     /create policy "Users can update their own Business DNA"[\s\S]*?for update[\s\S]*?to authenticated[\s\S]*?using \(\(select auth\.uid\(\)\) = user_id\)[\s\S]*?with check \(\(select auth\.uid\(\)\) = user_id\);/,
   );
   assert.doesNotMatch(migration, /security definer/i);
+});
+
+test("Business DNA keeps timestamps current on update", () => {
+  assert.match(migration, /create trigger set_business_dna_updated_at/);
+  assert.match(migration, /before update on public\.business_dna/);
+  assert.match(migration, /new\.updated_at = now\(\)/);
+});
+
+test("Business DNA length limits are enforced in Postgres as well as the form", () => {
+  for (const field of businessDnaFields) {
+    assert.match(
+      lengthMigration,
+      new RegExp(
+        `add constraint business_dna_${field}_length check \\(${field} is null or char_length\\(${field}\\) <= 4000\\)`,
+      ),
+    );
+  }
 });
 
 test("save action derives ownership from auth rather than form input", () => {
