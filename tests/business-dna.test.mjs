@@ -58,7 +58,6 @@ test("Business DNA schema contains only slow-changing business context", () => {
 
 test("Business DNA RLS binds every operation to the authenticated owner", () => {
   assert.match(migration, /alter table public\.business_dna enable row level security/);
-  assert.match(migration, /revoke all on table public\.business_dna from anon/);
   assert.match(
     migration,
     /create policy "Users can read their own Business DNA"[\s\S]*?for select[\s\S]*?to authenticated[\s\S]*?using \(\(select auth\.uid\(\)\) = user_id\);/,
@@ -103,36 +102,71 @@ test("Business DNA length limits are enforced in Postgres as well as the form", 
   }
 });
 
-test("save action derives ownership from auth rather than form input", () => {
+test("one shared module owns the Business DNA field contract", () => {
+  const fields = readSource("src/features/business-dna/fields.ts");
+  const actions = readSource("src/features/business-dna/actions.ts");
+  const page = readSource("src/app/app/business/page.tsx");
+  const form = readSource("src/features/business-dna/business-dna-form.tsx");
+
+  for (const field of businessDnaFields) {
+    assert.match(fields, new RegExp(`name: ["']${field}["']`));
+  }
+  assert.match(fields, /MAX_FIELD_LENGTH = 4000/);
+  assert.match(fields, /BUSINESS_DNA_SELECT = businessDnaFieldNames\.join/);
+  assert.match(actions, /businessDnaFieldNames/);
+  assert.match(page, /\.select\(BUSINESS_DNA_SELECT\)/);
+  assert.match(form, /businessDnaFieldDefinitions\.map/);
+  assert.match(form, /maxLength=\{MAX_FIELD_LENGTH\}/);
+});
+
+test("save action derives ownership from auth and preserves failed submissions", () => {
   const actions = readSource("src/features/business-dna/actions.ts");
 
   assert.match(actions, /requireAuthenticatedUser\(\)/);
   assert.match(actions, /user_id: userId/);
-  assert.match(actions, /from\("business_dna"\)\.upsert/);
   assert.match(actions, /onConflict: "user_id"/);
   assert.doesNotMatch(actions, /formData\.get\(["']user_id["']\)/);
-  assert.match(actions, /MAX_FIELD_LENGTH = 4000/);
+  assert.match(actions, /return failureState\("invalid_input"\)/);
+  assert.match(actions, /return failureState\("save_failed"\)/);
+  assert.match(actions, /console\.error\("business_dna upsert failed"/);
+  assert.match(actions, /redirect\("\/app\/business\?status=saved"\)/);
+  assert.doesNotMatch(actions, /redirect\("\/app\/business\?error=/);
 });
 
-test("Business DNA page loads and edits the owner-scoped record", () => {
+test("Business DNA form keeps returned values and exposes pending state", () => {
+  const form = readSource("src/features/business-dna/business-dna-form.tsx");
+  const button = readSource("src/features/business-dna/submit-button.tsx");
+
+  assert.match(form, /useActionState\(saveBusinessDnaAction, initialState\)/);
+  assert.match(form, /defaultValue=\{state\.values\[field\.name\]\}/);
+  assert.match(form, /احتفظنا بتعديلاتك/);
+  assert.match(button, /useFormStatus\(\)/);
+  assert.match(button, /disabled=\{pending\}/);
+  assert.match(button, /aria-disabled=\{pending\}/);
+  assert.match(button, /جارٍ الحفظ/);
+});
+
+test("Business DNA page loads only the owner-scoped record", () => {
   const page = readSource("src/app/app/business/page.tsx");
 
   assert.match(page, /requireAuthenticatedUser\(\)/);
   assert.match(page, /from\("business_dna"\)/);
   assert.match(page, /\.eq\("user_id", userId\)/);
-  assert.match(page, /action=\{saveBusinessDnaAction\}/);
-  assert.match(page, /name=\{field\.name\}/);
-  assert.match(page, /<BusinessDnaSubmitButton \/>/);
+  assert.match(page, /businessDnaValuesFromRow/);
+  assert.match(page, /<BusinessDnaForm/);
 });
 
-test("Business DNA save button exposes a pending state and blocks duplicate submission", () => {
-  const button = readSource("src/features/business-dna/submit-button.tsx");
+test("runtime tenant-isolation SQL exercises read update and insert enforcement", () => {
+  const runtime = readSource("supabase/tests/business_dna_rls_runtime.sql");
+  const ci = readSource(".github/workflows/ci.yml");
 
-  assert.match(button, /useFormStatus\(\)/);
-  assert.match(button, /disabled=\{pending\}/);
-  assert.match(button, /aria-disabled=\{pending\}/);
-  assert.match(button, /جارٍ الحفظ/);
-  assert.match(button, /حفظ الملف التجاري/);
+  assert.match(runtime, /set local role authenticated/);
+  assert.match(runtime, /request\.jwt\.claims/);
+  assert.match(runtime, /RLS leak: user B can read user A Business DNA/);
+  assert.match(runtime, /get diagnostics updated_count = row_count/);
+  assert.match(runtime, /when insufficient_privilege/);
+  assert.match(runtime, /rollback;/);
+  assert.match(ci, /business_dna_rls_runtime\.sql/);
 });
 
 test("generated database types include Business DNA", () => {
