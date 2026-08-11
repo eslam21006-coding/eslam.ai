@@ -22,6 +22,11 @@ export type MessageActionState = {
   revision: number;
 };
 
+type GenerationClaim =
+  | { status: "claimed"; token: string }
+  | { status: "busy" }
+  | { status: "failed" };
+
 function readContent(formData: FormData) {
   const value = formData.get("content");
   return typeof value === "string" ? value.trim() : "";
@@ -62,14 +67,15 @@ function redirectToConversation(conversationId: string, responseSaved: boolean):
   );
 }
 
-async function claimGenerationOrNull(userId: string, conversationId: string) {
+async function claimGeneration(userId: string, conversationId: string): Promise<GenerationClaim> {
   try {
-    return await claimConversationGeneration(userId, conversationId);
+    const token = await claimConversationGeneration(userId, conversationId);
+    return token ? { status: "claimed", token } : { status: "busy" };
   } catch (error) {
     console.error("conversation generation lock unavailable", {
       message: error instanceof Error ? error.message : "Unknown generation lock error",
     });
-    return null;
+    return { status: "failed" };
   }
 }
 
@@ -110,19 +116,22 @@ export async function persistUserMessageAction(
       return failure("save_failed");
     }
 
-    const lockToken = await claimGenerationOrNull(userId, data);
-    if (!lockToken) {
+    const claim = await claimGeneration(userId, data);
+    if (claim.status !== "claimed") {
       redirectToConversation(data, false);
     }
 
     const responseSaved = await generateAndPersistReply(userId, data);
-    await releaseConversationGeneration(userId, data, lockToken);
+    await releaseConversationGeneration(userId, data, claim.token);
     redirectToConversation(data, responseSaved);
   }
 
-  const lockToken = await claimGenerationOrNull(userId, conversationId);
-  if (!lockToken) {
+  const claim = await claimGeneration(userId, conversationId);
+  if (claim.status === "busy") {
     return failure("response_in_progress");
+  }
+  if (claim.status === "failed") {
+    return failure("save_failed");
   }
 
   const { error } = await supabase.from("messages").insert({
@@ -133,7 +142,7 @@ export async function persistUserMessageAction(
   });
 
   if (error) {
-    await releaseConversationGeneration(userId, conversationId, lockToken);
+    await releaseConversationGeneration(userId, conversationId, claim.token);
     console.error("conversation message insert failed", {
       code: error.code,
       message: error.message,
@@ -142,6 +151,6 @@ export async function persistUserMessageAction(
   }
 
   const responseSaved = await generateAndPersistReply(userId, conversationId);
-  await releaseConversationGeneration(userId, conversationId, lockToken);
+  await releaseConversationGeneration(userId, conversationId, claim.token);
   redirectToConversation(conversationId, responseSaved);
 }
