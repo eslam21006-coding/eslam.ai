@@ -60,7 +60,7 @@ test("assistant persistence remains backend-only while streamed user turns use a
   assert.doesNotMatch(privilegeMigration, /grant insert[^;]*assistant/i);
 });
 
-test("stream route holds the generation lease through final assistant persistence", () => {
+test("stream route holds the generation lease and invalidates persisted conversation data", () => {
   const route = readSource("src/app/api/chat/stream/route.ts");
   const preparation = readSource("src/features/conversations/response-flow.ts");
   const streamingFlow = readSource("src/features/conversations/streaming-response-flow.ts");
@@ -71,6 +71,8 @@ test("stream route holds the generation lease through final assistant persistenc
   assert.match(route, /no-store, no-transform/);
   assert.match(route, /ReadableStream<Uint8Array>/);
   assert.match(route, /upstreamAbort\.abort\(\)/);
+  assert.match(route, /revalidatePath\(`\/app\/chat\/\$\{conversationId\}`\)/);
+  assert.match(route, /revalidatePath\("\/app", "layout"\)/);
   assert.ok(preparation.indexOf("dependencies.claimGeneration(userId, conversationId)") < preparation.indexOf("dependencies.insertUserMessage"));
   assert.match(streamingFlow, /persistAssistant/);
   assert.match(streamingFlow, /finally/);
@@ -89,12 +91,15 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(chat, /assistant: current\.assistant \+ delta/);
   assert.match(chat, /mountedRef\.current = true/);
   assert.match(chat, /abortRef\.current\?\.abort\(\)/);
+  assert.match(chat, /new FormData\(event\.currentTarget\)/);
   assert.match(chat, /targetConversationId !== conversationId \|\| clearResponseErrorOnSuccess/);
   assert.match(chat, /router\.replace\(cleanConversationUrl/);
   assert.match(chat, /router\.refresh\(\)/);
   assert.match(threadPage, /clearResponseErrorOnSuccess=\{responseFailed\}/);
+  assert.match(composer, /value \?\? fallbackState\.content/);
   assert.match(composer, /disabled=\{streaming\}/);
   assert.match(composer, /useActionState/);
+  assert.doesNotMatch(composer, /value \|\| fallbackState\.content/);
   assert.match(button, /streaming \|\| actionPending/);
 });
 
