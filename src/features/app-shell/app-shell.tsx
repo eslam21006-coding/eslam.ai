@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 
+import { logoutAction } from "@/features/auth/actions";
+
 const navigation = [
   { href: "/app/chat", label: "محادثة جديدة", icon: "chat" },
   { href: "/app/business", label: "الملف التجاري", icon: "business" },
@@ -89,14 +91,24 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="border-t border-[var(--border)] p-4">
-        <div className="flex items-center gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
-          <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--gold-soft)] text-sm font-semibold text-[var(--gold-bright)]">
-            إ
+        <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
+          <div className="flex items-center gap-3">
+            <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--gold-soft)] text-sm font-semibold text-[var(--gold-bright)]">
+              إ
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">حساب المتدرب</p>
+              <p className="truncate text-xs text-[var(--foreground-subtle)]">Eslam.AI</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="truncate text-sm font-medium">حساب المتدرب</p>
-            <p className="truncate text-xs text-[var(--foreground-subtle)]">Eslam.AI</p>
-          </div>
+          <form action={logoutAction} className="mt-3">
+            <button
+              type="submit"
+              className="min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--border)] px-3 text-sm text-[var(--foreground-muted)] transition-colors hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
+            >
+              تسجيل الخروج
+            </button>
+          </form>
         </div>
       </div>
     </div>
