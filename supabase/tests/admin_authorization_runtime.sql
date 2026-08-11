@@ -30,8 +30,26 @@ begin
       and table_name = 'admin_users'
       and grantee = 'service_role'
       and privilege_type = 'SELECT'
+  ) or not exists (
+    select 1
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and table_name = 'admin_users'
+      and grantee = 'service_role'
+      and privilege_type = 'UPDATE'
   ) then
-    raise exception 'service_role must be able to read admin_users';
+    raise exception 'service_role must have select and update on admin_users';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.role_table_grants
+    where table_schema = 'public'
+      and table_name = 'admin_users'
+      and grantee = 'service_role'
+      and privilege_type not in ('SELECT', 'UPDATE')
+  ) then
+    raise exception 'service_role has unnecessary admin_users privileges';
   end if;
 
   if exists (
