@@ -189,7 +189,7 @@ export async function finalizeVoiceRecordingUploadAction(
   return { ok: false, error: "finalize-failed" };
 }
 
-/** Removes only an owner-scoped pending upload, keeping finalized recordings immutable here. */
+/** Claims pending cleanup atomically so cancellation cannot delete a concurrently finalized object. */
 export async function cancelVoiceRecordingUploadAction(
   input: unknown,
 ): Promise<VoiceCancelResult> {
@@ -198,24 +198,46 @@ export async function cancelVoiceRecordingUploadAction(
   if (!recordingId) return { ok: false, error: "invalid-request" };
 
   const admin = getSupabaseAdminClient();
-  const { data: recording, error: loadError } = await admin
+  const { data: claimed, error: claimError } = await admin
     .from("voice_recordings")
-    .select("id,storage_bucket,storage_path")
+    .update({ status: "cancelling" })
     .eq("id", recordingId)
     .eq("created_by", authorization.userId)
     .eq("status", "pending")
+    .select("id,storage_bucket,storage_path,status")
     .maybeSingle();
 
-  if (loadError) {
+  if (claimError) {
     console.error("Voice recording cancellation failed", {
-      stage: "load",
-      code: loadError.code,
-      message: loadError.message,
+      stage: "claim",
+      code: claimError.code,
+      message: claimError.message,
     });
     return { ok: false, error: "cancel-failed" };
   }
 
-  if (!recording) return { ok: true };
+  let recording = claimed;
+  if (!recording) {
+    const { data: existing, error: loadError } = await admin
+      .from("voice_recordings")
+      .select("id,storage_bucket,storage_path,status")
+      .eq("id", recordingId)
+      .eq("created_by", authorization.userId)
+      .maybeSingle();
+
+    if (loadError) {
+      console.error("Voice recording cancellation failed", {
+        stage: "load",
+        code: loadError.code,
+        message: loadError.message,
+      });
+      return { ok: false, error: "cancel-failed" };
+    }
+
+    if (!existing || existing.status === "uploaded") return { ok: true };
+    if (existing.status !== "cancelling") return { ok: false, error: "cancel-failed" };
+    recording = existing;
+  }
 
   const { error: storageError } = await admin.storage
     .from(recording.storage_bucket)
@@ -225,20 +247,23 @@ export async function cancelVoiceRecordingUploadAction(
     console.warn("Voice recording object cleanup did not complete", {
       message: storageError.message,
     });
+    return { ok: false, error: "cancel-failed" };
   }
 
-  const { error: deleteError } = await admin
+  const { data: deleted, error: deleteError } = await admin
     .from("voice_recordings")
     .delete()
     .eq("id", recording.id)
     .eq("created_by", authorization.userId)
-    .eq("status", "pending");
+    .eq("status", "cancelling")
+    .select("id")
+    .maybeSingle();
 
-  if (deleteError) {
+  if (deleteError || !deleted) {
     console.error("Voice recording cancellation failed", {
       stage: "metadata-delete",
-      code: deleteError.code,
-      message: deleteError.message,
+      code: deleteError?.code,
+      message: deleteError?.message ?? "Cancellation metadata row was not deleted",
     });
     return { ok: false, error: "cancel-failed" };
   }
