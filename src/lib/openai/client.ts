@@ -2,9 +2,12 @@ import "server-only";
 
 import OpenAI from "openai";
 
+import { resolveVoiceTranscriptionModel } from "@/features/voice-transcription/core";
+
 const OPENAI_TIMEOUT_MS = 45_000;
-const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 240_000;
+const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 225_000;
 const OPENAI_MAX_RETRIES = 1;
+const OPENAI_TRANSCRIPTION_MAX_RETRIES = 0;
 
 let openaiClient: OpenAI | null = null;
 let openaiTranscriptionClient: OpenAI | null = null;
@@ -32,7 +35,7 @@ export function getOpenAITranscriptionClient() {
   if (!openaiTranscriptionClient) {
     openaiTranscriptionClient = new OpenAI({
       apiKey: getApiKey(),
-      maxRetries: OPENAI_MAX_RETRIES,
+      maxRetries: OPENAI_TRANSCRIPTION_MAX_RETRIES,
       timeout: OPENAI_TRANSCRIPTION_TIMEOUT_MS,
     });
   }
@@ -44,5 +47,5 @@ export function getOpenAIModel() {
 }
 
 export function getOpenAITranscriptionModel() {
-  return process.env.OPENAI_TRANSCRIPTION_MODEL?.trim() || "gpt-4o-transcribe";
+  return resolveVoiceTranscriptionModel(process.env.OPENAI_TRANSCRIPTION_MODEL);
 }
