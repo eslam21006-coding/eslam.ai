@@ -118,6 +118,7 @@ export type Database = {
       }
       eslam_brain_items: {
         Row: {
+          approved_version_number: number | null
           created_at: string
           created_by: string | null
           id: string
@@ -129,6 +130,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          approved_version_number?: number | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -140,6 +142,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          approved_version_number?: number | null
           created_at?: string
           created_by?: string | null
           id?: string
@@ -151,6 +154,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "eslam_brain_items_approved_version_fk"
+            columns: ["id", "approved_version_number"]
+            isOneToOne: false
+            referencedRelation: "eslam_brain_versions"
+            referencedColumns: ["item_id", "version_number"]
+          },
           {
             foreignKeyName: "eslam_brain_items_published_version_fk"
             columns: ["id", "published_version_number"]
@@ -382,6 +392,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      bulk_approve_eslam_brain_items: {
+        Args: { p_created_by: string; p_item_ids: string[] }
+        Returns: number
+      }
       claim_conversation_generation: {
         Args: {
           p_conversation_id: string
@@ -396,9 +410,22 @@ export type Database = {
         Returns: string
       }
       create_eslam_brain_draft: { Args: { p_payload: Json }; Returns: string }
+      create_eslam_brain_review_version: {
+        Args: { p_payload: Json }
+        Returns: number
+      }
       release_conversation_generation: {
         Args: { p_conversation_id: string; p_token: string; p_user_id: string }
         Returns: boolean
+      }
+      review_eslam_brain_item: {
+        Args: {
+          p_action: string
+          p_created_by: string
+          p_item_id: string
+          p_version_number: number
+        }
+        Returns: string
       }
     }
     Enums: {
@@ -456,14 +483,14 @@ export type TablesInsert<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-    Insert: infer I
-  }
+      Insert: infer I
+    }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-      Insert: infer I
-    }
+        Insert: infer I
+      }
       ? I
       : never
     : never
@@ -481,14 +508,14 @@ export type TablesUpdate<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-    Update: infer U
-  }
+      Update: infer U
+    }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-      Update: infer U
-    }
+        Update: infer U
+      }
       ? U
       : never
     : never
@@ -519,7 +546,7 @@ export type CompositeTypes<
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
+> = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
