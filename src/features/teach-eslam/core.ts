@@ -76,16 +76,16 @@ export type ValidTeachEslamDraft = {
 };
 
 export function normalizeTeachEslamTopics(input: string) {
-  const unique = new Set<string>();
+  const unique = new Map<string, string>();
 
   for (const rawTopic of input.split(/[\n,،]+/u)) {
     const topic = rawTopic.trim();
     if (!topic) continue;
     const key = topic.toLocaleLowerCase("en-US");
-    if (!unique.has(key)) unique.add(key);
+    if (!unique.has(key)) unique.set(key, topic);
   }
 
-  return Array.from(unique);
+  return Array.from(unique.values());
 }
 
 export function validateTeachEslamDraft(values: TeachEslamValues):
