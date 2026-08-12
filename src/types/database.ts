@@ -281,6 +281,7 @@ export type Database = {
         Args: { p_content: string }
         Returns: string
       }
+      create_eslam_brain_draft: { Args: { p_payload: Json }; Returns: string }
       release_conversation_generation: {
         Args: { p_conversation_id: string; p_token: string; p_user_id: string }
         Returns: boolean
