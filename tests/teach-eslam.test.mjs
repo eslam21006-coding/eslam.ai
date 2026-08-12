@@ -79,17 +79,19 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(actions, /requireAdmin\(\)/g);
   assert.match(actions, /getSupabaseAdminClient\(\)/);
   assert.match(actions, /create_eslam_brain_draft/);
-  assert.match(actions, /status:\s*"published"/);
-  assert.match(actions, /published_version_number:\s*versionNumber/);
-  assert.match(actions, /\.eq\("created_by", authorization\.userId\)/);
-  assert.match(actions, /\.eq\("status", "draft"\)/);
+  assert.match(actions, /publish_eslam_brain_draft_direct/);
+  assert.match(actions, /p_created_by: authorization\.userId/);
+  assert.match(actions, /p_version_number: versionNumber/);
+  assert.match(actions, /published !== "published"/);
 
   assert.match(data, /^import "server-only";/);
   assert.match(data, /requireAdmin\(\)/);
   assert.match(data, /getSupabaseAdminClient\(\)/);
   assert.match(data, /\.eq\("created_by", authorization\.userId\)/);
   assert.match(data, /\.eq\("status", "draft"\)/);
-  assert.match(data, /\.eq\("version_number", 1\)/);
+  assert.match(data, /\.order\("version_number", \{ ascending: false \}\)/);
+  assert.match(data, /\.limit\(1\)/);
+  assert.match(data, /directPublishEligible: latestVersion\.versionNumber === 1/);
   assert.match(data, /TEACH_ESLAM_DRAFT_PAGE_SIZE = 20/);
   assert.match(data, /\.range\(offset, offset \+ TEACH_ESLAM_DRAFT_PAGE_SIZE\)/);
 
@@ -98,9 +100,11 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(page, />\s*Teach Eslam\s*</);
   assert.match(page, /loadTeachEslamDrafts\(draftPageNumber\)/);
   assert.match(page, /draftPage\.drafts\.map/);
+  assert.match(page, /draft\.directPublishEligible/);
   assert.match(page, /action=\{publishTeachEslamDraftAction\}/);
   assert.match(page, /name="item_id" value=\{draft\.id\}/);
   assert.match(page, /name="version_number" value=\{draft\.versionNumber\}/);
+  assert.match(page, /راجع النسخة المعدلة/);
   assert.match(navigation, /label: "Teach Eslam"/);
 });
 
@@ -114,12 +118,14 @@ test("Teach Eslam persisted drafts remain reachable through pagination", () => {
   assert.match(data, /\.order\("id", \{ ascending: false \}\)/);
   assert.match(data, /rows\.length > TEACH_ESLAM_DRAFT_PAGE_SIZE/);
   assert.match(data, /rows\.slice\(0, TEACH_ESLAM_DRAFT_PAGE_SIZE\)/);
-  assert.match(page, /كل المسودات المحفوظة تظل قابلة للوصول والنشر/);
+  assert.match(page, /المسودة الجديدة غير المعدلة يمكن نشرها مباشرة/);
+  assert.match(page, /بعد أي تعديل أو إعادة تصنيف من مركز المراجعة/);
   assert.match(page, /draftPage\.hasPreviousPage/);
   assert.match(page, /draftPage\.hasNextPage/);
   assert.match(page, /draftPage=\$\{draftPage\.page - 1\}/);
   assert.match(page, /draftPage=\$\{draftPage\.page \+ 1\}/);
   assert.match(page, /publishTeachEslamDraftAction/);
+  assert.match(page, /راجع النسخة المعدلة/);
 });
 
 test("Teach Eslam draft RPC is transactional and client-inaccessible", () => {
