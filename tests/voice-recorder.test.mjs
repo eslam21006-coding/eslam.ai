@@ -140,6 +140,16 @@ test("browser recorder turns rejected finalization requests into a retryable sta
   assert.match(recorder, /مشكلة اتصال[\s\S]*إعادة محاولة تثبيت الحفظ/);
 });
 
+test("browser recorder returns expired finalization intents to local preview", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(
+    recorder,
+    /if \(finalization\.error === "not-found"\) \{[\s\S]*setPendingIntent\(null\);[\s\S]*setStatus\("preview"\)/,
+  );
+  assert.match(recorder, /انتهت محاولة الحفظ السابقة[\s\S]*إنشاء محاولة رفع جديدة/);
+});
+
 test("browser recorder recovers rejected intent, cleanup, and Storage upload requests", () => {
   const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
 
