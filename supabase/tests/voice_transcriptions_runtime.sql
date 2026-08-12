@@ -81,6 +81,28 @@ reset role;
 
 set local role service_role;
 
+do $$
+begin
+  begin
+    perform public.claim_voice_transcription(
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '11111111-1111-4111-8111-111111111111',
+      'gpt-4o-transcribe',
+      null
+    );
+    raise exception 'null transcription lease unexpectedly accepted';
+  exception
+    when others then
+      if sqlerrm = 'null transcription lease unexpectedly accepted' then
+        raise;
+      end if;
+      if position('invalid transcription lease' in sqlerrm) = 0 then
+        raise exception 'null transcription lease returned unexpected error: %', sqlerrm;
+      end if;
+  end;
+end;
+$$;
+
 insert into public.voice_recordings (
   id,
   created_by,
@@ -90,16 +112,27 @@ insert into public.voice_recordings (
   size_bytes,
   duration_ms,
   uploaded_at
-) values (
-  'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-  '11111111-1111-4111-8111-111111111111',
-  '11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webm',
-  'uploaded',
-  'audio/webm',
-  1048576,
-  65000,
-  now()
-);
+) values
+  (
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '11111111-1111-4111-8111-111111111111',
+    '11111111-1111-4111-8111-111111111111/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.webm',
+    'uploaded',
+    'audio/webm',
+    1048576,
+    65000,
+    now()
+  ),
+  (
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '11111111-1111-4111-8111-111111111111',
+    '11111111-1111-4111-8111-111111111111/cccccccc-cccc-4ccc-8ccc-cccccccccccc.webm',
+    'uploaded',
+    'audio/webm',
+    1048576,
+    45000,
+    now()
+  );
 
 create temporary table first_claim as
 select * from public.claim_voice_transcription(
@@ -139,6 +172,49 @@ begin
       and attempt_count = 1
   ) then
     raise exception 'active transcription lease did not prevent a duplicate claim';
+  end if;
+end;
+$$;
+
+create temporary table expiring_first_claim as
+select * from public.claim_voice_transcription(
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  '11111111-1111-4111-8111-111111111111',
+  'gpt-4o-transcribe',
+  300
+);
+
+update public.voice_transcriptions
+set lease_expires_at = now() - interval '1 minute'
+where voice_recording_id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc'
+  and status = 'processing';
+
+create temporary table expired_retry_claim as
+select * from public.claim_voice_transcription(
+  'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+  '11111111-1111-4111-8111-111111111111',
+  'gpt-4o-transcribe',
+  300
+);
+
+do $$
+begin
+  if not exists (
+    select 1 from expired_retry_claim
+    where claim_state = 'claimed'
+      and attempt_count = 2
+      and claim_token is not null
+  ) then
+    raise exception 'expired processing lease was not reclaimed';
+  end if;
+
+  if exists (
+    select 1
+    from expiring_first_claim first
+    cross join expired_retry_claim retry
+    where first.claim_token = retry.claim_token
+  ) then
+    raise exception 'expired lease retry did not rotate the worker token';
   end if;
 end;
 $$;
