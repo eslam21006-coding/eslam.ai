@@ -93,7 +93,7 @@ export function TeachEslamForm({ publishStatus }: TeachEslamFormProps) {
         </p>
       ) : null}
 
-      {state.created ? (
+      {state.created && publishStatus !== "published" ? (
         <aside className="rounded-[var(--radius-lg)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] p-5 sm:p-6">
           <p className="text-xs font-medium text-[var(--gold-muted)]">Draft saved</p>
           <h2 className="mt-2 text-lg font-semibold text-[var(--gold-bright)]">
