@@ -75,6 +75,20 @@ test("voice upload actions stay admin-only and verify Storage before finalizatio
   assert.doesNotMatch(actions, /OPENAI_API_KEY|SUPABASE_SECRET_KEY|eslam_brain_items/);
 });
 
+test("voice cancellation atomically claims cleanup and retains metadata on Storage failure", () => {
+  const actions = readSource("src/features/voice-recorder/actions.ts");
+  const hardening = readSource(
+    "supabase/migrations/20260812171710_harden_voice_recording_cancellation.sql",
+  );
+
+  assert.match(actions, /update\(\{ status: "cancelling" \}\)/);
+  assert.match(actions, /\.eq\("status", "pending"\)[\s\S]*\.select\("id,storage_bucket,storage_path,status"\)/);
+  assert.match(actions, /if \(storageError\)[\s\S]*return \{ ok: false, error: "cancel-failed" \}/);
+  assert.match(actions, /\.eq\("status", "cancelling"\)[\s\S]*\.select\("id"\)/);
+  assert.match(hardening, /status in \('pending', 'cancelling', 'uploaded'\)/);
+  assert.match(hardening, /status in \('pending', 'cancelling'\)/);
+});
+
 test("browser recorder supports capture controls, local preview, and signed direct upload", () => {
   const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
 
@@ -105,9 +119,12 @@ test("voice recorder route is protected and linked from Teach Eslam", () => {
   assert.match(navigation, /label: "Teach Eslam"/);
 });
 
-test("voice recording migration is private, bounded, and service-only", () => {
+test("voice recording migrations are private, bounded, and service-only", () => {
   const migration = readSource(
     "supabase/migrations/20260812170332_create_voice_recordings.sql",
+  );
+  const servicePolicy = readSource(
+    "supabase/migrations/20260812171346_document_voice_recordings_service_only_policy.sql",
   );
   const runtime = readSource("supabase/tests/voice_recordings_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
@@ -121,8 +138,12 @@ test("voice recording migration is private, bounded, and service-only", () => {
   assert.match(migration, /26214400/);
   assert.match(migration, /array\['audio\/webm', 'audio\/mp4', 'audio\/ogg', 'audio\/mpeg', 'audio\/wav'\]/);
   assert.match(migration, /public,\s*file_size_limit,\s*allowed_mime_types/);
+  assert.match(servicePolicy, /to anon, authenticated/);
+  assert.match(servicePolicy, /using \(false\)/);
+  assert.match(servicePolicy, /with check \(false\)/);
   assert.match(runtime, /authenticated role unexpectedly read voice recordings/);
   assert.match(runtime, /anon role unexpectedly inserted a voice recording/);
+  assert.match(runtime, /cancelling voice recording did not retain retryable cleanup metadata/);
   assert.match(ci, /supabase\/tests\/voice_recordings_runtime\.sql/);
   assert.match(types, /voice_recordings:/);
 });
