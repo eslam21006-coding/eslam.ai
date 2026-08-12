@@ -62,6 +62,7 @@ type LineageRow = {
 const LINEAGE_BATCH_SIZE = 500;
 const ID_QUERY_CHUNK_SIZE = 200;
 
+/** Records bounded review-data load failures without leaking privileged query details to the client. */
 function logReviewLoadError(stage: string, error: { code?: string; message?: string } | null) {
   console.error("Teaching review load failed", {
     stage,
@@ -70,10 +71,12 @@ function logReviewLoadError(stage: string, error: { code?: string; message?: str
   });
 }
 
+/** Returns a complete zeroed lifecycle-count object for fail-closed review rendering. */
 function emptyCounts(): Record<TeachingLifecycleStatus, number> {
   return { draft: 0, approved: 0, published: 0, archived: 0 };
 }
 
+/** Splits identifier lists into bounded PostgREST query batches. */
 function chunks<T>(values: T[], size: number) {
   const result: T[][] = [];
   for (let index = 0; index < values.length; index += size) {
@@ -82,6 +85,7 @@ function chunks<T>(values: T[], size: number) {
   return result;
 }
 
+/** Loads owner-scoped counts for each persisted teaching lifecycle state. */
 async function loadStatusCounts(userId: string) {
   const admin = getSupabaseAdminClient();
   const statuses: TeachingLifecycleStatus[] = ["draft", "approved", "published", "archived"];
@@ -101,6 +105,7 @@ async function loadStatusCounts(userId: string) {
   return Object.fromEntries(results) as Record<TeachingLifecycleStatus, number>;
 }
 
+/** Loads exactly one latest immutable Brain version per rendered item. */
 async function loadLatestVersions(admin: AdminClient, itemIds: string[]) {
   const results = await Promise.all(
     itemIds.map(async (itemId) => {
@@ -140,6 +145,7 @@ async function loadLatestVersions(admin: AdminClient, itemIds: string[]) {
   return { latestVersionByItem, failed };
 }
 
+/** Paginates every provenance link attached to one exact immutable Brain version. */
 async function loadExactVersionLineage(
   admin: AdminClient,
   brainItemId: string,
@@ -170,6 +176,7 @@ async function loadExactVersionLineage(
   return { rows, failed: false };
 }
 
+/** Loads one owner-scoped review page with latest content, lifecycle counts, and complete latest-version provenance. */
 export async function loadTeachingReviewPage(
   status: TeachingReviewStatus,
   page: number,
