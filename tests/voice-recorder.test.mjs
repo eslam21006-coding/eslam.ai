@@ -122,10 +122,7 @@ test("browser recorder clamps duration and preserves the local blob after cleanu
   );
   assert.match(recorder, /cleanupPurposeRef\.current = "preserve-local"/);
   assert.match(recorder, /if \(purpose === "preserve-local"\) \{[\s\S]*setStatus\("preview"\)/);
-  assert.match(
-    recorder,
-    /التسجيل المحلي محفوظ ويمكنك محاولة الحفظ مرة أخرى/,
-  );
+  assert.match(recorder, /التسجيل المحلي محفوظ ويمكنك محاولة الحفظ مرة أخرى/);
 });
 
 test("browser recorder turns rejected finalization requests into a retryable state", () => {
@@ -141,6 +138,23 @@ test("browser recorder turns rejected finalization requests into a retryable sta
     /catch \(error\) \{[\s\S]*setPendingIntent\(intent\);[\s\S]*setStatus\("finalize-error"\)/,
   );
   assert.match(recorder, /مشكلة اتصال[\s\S]*إعادة محاولة تثبيت الحفظ/);
+});
+
+test("browser recorder recovers rejected intent, cleanup, and Storage upload requests", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(recorder, /Voice recording upload intent request failed/);
+  assert.match(
+    recorder,
+    /createVoiceRecordingUploadAction[\s\S]*catch \(error\)[\s\S]*setStatus\("preview"\)/,
+  );
+  assert.match(recorder, /Voice recording cleanup request failed/);
+  assert.match(
+    recorder,
+    /cancelVoiceRecordingUploadAction[\s\S]*catch \(error\)[\s\S]*setPendingIntent\(intent\);[\s\S]*setStatus\("cleanup-error"\)/,
+  );
+  assert.match(recorder, /let uploadErrorMessage: string \| null = null/);
+  assert.match(recorder, /uploadToSignedUrl[\s\S]*catch \(error\)[\s\S]*uploadErrorMessage =/);
 });
 
 test("browser recorder supports capture controls, local preview, and signed direct upload", () => {
