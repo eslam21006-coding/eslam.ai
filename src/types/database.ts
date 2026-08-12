@@ -14,6 +14,24 @@ export type Database = {
   }
   public: {
     Tables: {
+      admin_users: {
+        Row: {
+          created_at: string
+          email: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       business_dna: {
         Row: {
           audiences: string | null
