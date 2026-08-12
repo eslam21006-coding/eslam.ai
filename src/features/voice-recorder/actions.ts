@@ -1,5 +1,7 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
+
 import { requireAdmin } from "@/lib/auth/admin";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -25,6 +27,12 @@ type CleanupRecording = {
 
 const STALE_PENDING_UPLOAD_MS = 3 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 50;
+const VOICE_ADMIN_PATH = "/admin/teach/voice";
+
+function finalizedVoiceRecording(recordingId: string, sizeBytes: number): VoiceFinalizeResult {
+  revalidatePath(VOICE_ADMIN_PATH);
+  return { ok: true, recordingId, sizeBytes };
+}
 
 async function removeClaimedVoiceRecording(
   admin: SupabaseAdminClient,
@@ -206,11 +214,7 @@ export async function finalizeVoiceRecordingUploadAction(
 
   if (!recording) return { ok: false, error: "not-found" };
   if (recording.status === "uploaded" && recording.size_bytes) {
-    return {
-      ok: true,
-      recordingId: recording.id,
-      sizeBytes: recording.size_bytes,
-    };
+    return finalizedVoiceRecording(recording.id, recording.size_bytes);
   }
   if (recording.status !== "pending") return { ok: false, error: "not-found" };
 
@@ -266,11 +270,7 @@ export async function finalizeVoiceRecordingUploadAction(
   }
 
   if (finalized?.size_bytes) {
-    return {
-      ok: true,
-      recordingId: finalized.id,
-      sizeBytes: finalized.size_bytes,
-    };
+    return finalizedVoiceRecording(finalized.id, finalized.size_bytes);
   }
 
   const { data: concurrent } = await admin
@@ -281,11 +281,7 @@ export async function finalizeVoiceRecordingUploadAction(
     .maybeSingle();
 
   if (concurrent?.status === "uploaded" && concurrent.size_bytes) {
-    return {
-      ok: true,
-      recordingId: concurrent.id,
-      sizeBytes: concurrent.size_bytes,
-    };
+    return finalizedVoiceRecording(concurrent.id, concurrent.size_bytes);
   }
 
   return { ok: false, error: "finalize-failed" };
