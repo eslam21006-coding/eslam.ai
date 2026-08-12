@@ -6,18 +6,18 @@ declare
 begin
   foreach table_name in array array['teaching_sources', 'teaching_items', 'teaching_versions'] loop
     if has_table_privilege('anon', format('public.%I', table_name), 'SELECT')
-       or has_table_privilege('anon', format('public.%I', table_name), 'INSERT')
+       or has_any_column_privilege('anon', format('public.%I', table_name), 'INSERT')
        or has_table_privilege('authenticated', format('public.%I', table_name), 'SELECT')
-       or has_table_privilege('authenticated', format('public.%I', table_name), 'INSERT') then
+       or has_any_column_privilege('authenticated', format('public.%I', table_name), 'INSERT') then
       raise exception 'client role unexpectedly has teaching lineage privileges on %', table_name;
     end if;
 
     if not has_table_privilege('service_role', format('public.%I', table_name), 'SELECT')
-       or not has_table_privilege('service_role', format('public.%I', table_name), 'INSERT') then
+       or not has_any_column_privilege('service_role', format('public.%I', table_name), 'INSERT') then
       raise exception 'service_role is missing teaching lineage privileges on %', table_name;
     end if;
 
-    if has_table_privilege('service_role', format('public.%I', table_name), 'UPDATE')
+    if has_any_column_privilege('service_role', format('public.%I', table_name), 'UPDATE')
        or has_table_privilege('service_role', format('public.%I', table_name), 'DELETE') then
       raise exception 'service_role unexpectedly can mutate immutable teaching lineage on %', table_name;
     end if;
