@@ -14,11 +14,13 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
+/** Revalidates both admin surfaces that can display teaching lifecycle state. */
 function revalidateTeachingAdmin() {
   revalidatePath("/admin/brain");
   revalidatePath("/admin/teach");
 }
 
+/** Extracts and validates the submitted Brain item/version identity inputs. */
 function readReviewIdentity(formData: FormData) {
   const rawItemId = formData.get("item_id");
   const itemId = typeof rawItemId === "string" ? rawItemId : "";
@@ -26,6 +28,7 @@ function readReviewIdentity(formData: FormData) {
   return { itemId, versionNumber };
 }
 
+/** Runs an owner-scoped atomic lifecycle transition and redirects with a bounded status notice. */
 async function runLifecycleAction(
   formData: FormData,
   action: "approve" | "publish" | "archive",
@@ -59,6 +62,7 @@ async function runLifecycleAction(
   redirect(teachingReviewReturnHref(formData, successNotice));
 }
 
+/** Creates the next immutable Brain version for a validated draft edit or reclassification. */
 export async function editTeachingDraftAction(formData: FormData) {
   const authorization = await requireAdmin();
   const { itemId, versionNumber } = readReviewIdentity(formData);
@@ -101,18 +105,22 @@ export async function editTeachingDraftAction(formData: FormData) {
   redirect(teachingReviewReturnHref(formData, "edited", `version=${data}`));
 }
 
+/** Approves the submitted latest immutable draft version for later publication. */
 export async function approveTeachingAction(formData: FormData) {
   await runLifecycleAction(formData, "approve", "approved");
 }
 
+/** Publishes only the exact version previously approved by the review workflow. */
 export async function publishTeachingAction(formData: FormData) {
   await runLifecycleAction(formData, "publish", "published");
 }
 
+/** Archives an active teaching without deleting its immutable content or provenance. */
 export async function archiveTeachingAction(formData: FormData) {
   await runLifecycleAction(formData, "archive", "archived");
 }
 
+/** Atomically approves one to fifty unique owner-scoped draft teachings. */
 export async function bulkApproveTeachingsAction(formData: FormData) {
   const authorization = await requireAdmin();
   const rawIds = formData.getAll("item_id");
