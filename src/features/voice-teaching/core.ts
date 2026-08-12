@@ -125,7 +125,7 @@ export function validateVoiceTeachingExtractionInput(input: unknown) {
   return { transcriptionId };
 }
 
-function candidateToTeachValues(candidate: Record<string, unknown>): TeachEslamValues | null {
+function modelCandidateToTeachValues(candidate: Record<string, unknown>): TeachEslamValues | null {
   if (
     typeof candidate.title !== "string" ||
     typeof candidate.content !== "string" ||
@@ -145,6 +145,32 @@ function candidateToTeachValues(candidate: Record<string, unknown>): TeachEslamV
     summary: candidate.summary ?? "",
     topics: (candidate.topics as string[]).join("\n"),
     change_note: "",
+    semantic_layer: candidate.semantic_layer,
+    item_type: candidate.item_type,
+    priority: String(candidate.priority),
+  };
+}
+
+function editedCandidateToTeachValues(candidate: Record<string, unknown>): TeachEslamValues | null {
+  if (
+    typeof candidate.title !== "string" ||
+    typeof candidate.content !== "string" ||
+    typeof candidate.summary !== "string" ||
+    typeof candidate.topics !== "string" ||
+    typeof candidate.semantic_layer !== "string" ||
+    typeof candidate.item_type !== "string" ||
+    !(typeof candidate.priority === "string" || Number.isInteger(candidate.priority)) ||
+    !(candidate.change_note === undefined || typeof candidate.change_note === "string")
+  ) {
+    return null;
+  }
+
+  return {
+    title: candidate.title,
+    content: candidate.content,
+    summary: candidate.summary,
+    topics: candidate.topics,
+    change_note: typeof candidate.change_note === "string" ? candidate.change_note : "",
     semantic_layer: candidate.semantic_layer,
     item_type: candidate.item_type,
     priority: String(candidate.priority),
@@ -174,7 +200,7 @@ export function parseVoiceTeachingCandidates(outputText: string, transcriptText:
   for (const rawCandidate of rawCandidates) {
     if (!rawCandidate || typeof rawCandidate !== "object") return { ok: false };
     const candidate = rawCandidate as Record<string, unknown>;
-    const values = candidateToTeachValues(candidate);
+    const values = modelCandidateToTeachValues(candidate);
     const validated = values ? validateTeachEslamDraft(values) : { ok: false as const };
     if (!validated.ok) return { ok: false };
 
@@ -221,9 +247,8 @@ export function validateVoiceTeachingDraftSelections(input: unknown):
     }
     seenCandidateIds.add(candidateId);
 
-    const values = candidateToTeachValues(candidate);
+    const values = editedCandidateToTeachValues(candidate);
     if (!values) return { ok: false };
-    values.change_note = typeof candidate.change_note === "string" ? candidate.change_note : "";
     const validated = validateTeachEslamDraft(values);
     if (!validated.ok) return { ok: false };
 
