@@ -56,7 +56,7 @@ test("published Brain row resolution accepts only the exact published immutable 
   assert.equal(resolved[0].id, "00000000-0000-4000-8000-000000000001");
 });
 
-test("Brain model context is deterministic, priority ordered, bounded, and defensive", async () => {
+test("Brain model context is deterministic, priority and layer ordered, bounded, and defensive", async () => {
   const {
     buildBoundedEslamBrainContext,
     MAX_ESLAM_BRAIN_CONTENT_CHARS,
@@ -101,6 +101,34 @@ test("Brain model context is deterministic, priority ordered, bounded, and defen
   assert.equal(parsed.some((item) => item.layer === "invalid"), false);
   assert.equal(buildBoundedEslamBrainContext(items), context);
 
+  const equalPriorityLayers = resolvePublishedEslamBrainItems([
+    publishedRow({
+      id: "00000000-0000-4000-8000-000000000001",
+      semantic_layer: "cases",
+      item_type: "example",
+      priority: 50,
+    }),
+    publishedRow({
+      id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+      semantic_layer: "identity",
+      item_type: "identity_fact",
+      priority: 50,
+    }),
+    publishedRow({
+      id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+      semantic_layer: "brain",
+      item_type: "principle",
+      priority: 50,
+    }),
+  ]);
+  const equalPriorityContext = JSON.parse(
+    buildBoundedEslamBrainContext(equalPriorityLayers),
+  );
+  assert.deepEqual(
+    equalPriorityContext.map((item) => item.layer),
+    ["identity", "brain", "cases"],
+  );
+
   const overflow = Array.from({ length: 40 }, (_, index) => ({
     ...items[0],
     id: `item-${String(index).padStart(3, "0")}`,
@@ -118,18 +146,21 @@ test("Brain model context is deterministic, priority ordered, bounded, and defen
   );
 });
 
-test("Brain retrieval is server-only, publication-filtered, bounded, and fail-open", () => {
+test("Brain retrieval bounds each semantic layer before global ranking and fails open", () => {
   const data = readSource("src/features/eslam-brain/model-context-data.ts");
 
   assert.match(data, /^import "server-only";/);
   assert.match(data, /getSupabaseAdminClient\(\)/);
+  assert.match(data, /ESLAM_BRAIN_SEMANTIC_LAYERS\.map\(async \(semanticLayer\)/);
   assert.match(data, /from\("eslam_brain_items"\)/);
   assert.match(data, /eslam_brain_versions!eslam_brain_items_published_version_fk/);
   assert.match(data, /\.eq\("status", "published"\)/);
+  assert.match(data, /\.eq\("semantic_layer", semanticLayer\)/);
   assert.match(data, /\.not\("published_version_number", "is", null\)/);
   assert.match(data, /\.order\("priority", \{ ascending: true \}\)/);
   assert.match(data, /\.order\("id", \{ ascending: true \}\)/);
   assert.match(data, /\.limit\(MAX_ESLAM_BRAIN_QUERY_ITEMS\)/);
+  assert.match(data, /layerResults\.flatMap/);
   assert.match(data, /resolvePublishedEslamBrainItems/);
   assert.match(data, /buildBoundedEslamBrainContext/);
   assert.match(data, /return null;/);
