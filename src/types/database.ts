@@ -281,6 +281,10 @@ export type Database = {
         Args: { p_content: string }
         Returns: string
       }
+      create_eslam_brain_draft: {
+        Args: { p_payload: Json }
+        Returns: string
+      }
       release_conversation_generation: {
         Args: { p_conversation_id: string; p_token: string; p_user_id: string }
         Returns: boolean
@@ -404,12 +408,12 @@ export type CompositeTypes<
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
     : never = never,
-> = PublicCompositeTypeNameOrOptions extends {
+> = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
-  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][DefaultSchemaTableNameOrOptions]
     : never
 
 export const Constants = {
