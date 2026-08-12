@@ -263,6 +263,120 @@ export type Database = {
         }
         Relationships: []
       }
+      teaching_items: {
+        Row: {
+          brain_item_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          source_id: string
+        }
+        Insert: {
+          brain_item_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source_id: string
+        }
+        Update: {
+          brain_item_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teaching_items_brain_item_id_fkey"
+            columns: ["brain_item_id"]
+            isOneToOne: false
+            referencedRelation: "eslam_brain_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "teaching_items_source_id_fkey"
+            columns: ["source_id"]
+            isOneToOne: false
+            referencedRelation: "teaching_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      teaching_sources: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          source_metadata: Json
+          source_type: string
+          source_uri: string | null
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source_metadata?: Json
+          source_type: string
+          source_uri?: string | null
+          title: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source_metadata?: Json
+          source_type?: string
+          source_uri?: string | null
+          title?: string
+        }
+        Relationships: []
+      }
+      teaching_versions: {
+        Row: {
+          brain_item_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          source_locator: Json
+          teaching_item_id: string
+          version_number: number
+        }
+        Insert: {
+          brain_item_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source_locator?: Json
+          teaching_item_id: string
+          version_number: number
+        }
+        Update: {
+          brain_item_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          source_locator?: Json
+          teaching_item_id?: string
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teaching_versions_brain_version_fk"
+            columns: ["brain_item_id", "version_number"]
+            isOneToOne: false
+            referencedRelation: "eslam_brain_versions"
+            referencedColumns: ["item_id", "version_number"]
+          },
+          {
+            foreignKeyName: "teaching_versions_teaching_item_brain_item_fk"
+            columns: ["teaching_item_id", "brain_item_id"]
+            isOneToOne: false
+            referencedRelation: "teaching_items"
+            referencedColumns: ["id", "brain_item_id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -342,14 +456,14 @@ export type TablesInsert<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
+    Insert: infer I
+  }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
+      Insert: infer I
+    }
       ? I
       : never
     : never
@@ -367,14 +481,14 @@ export type TablesUpdate<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
+    Update: infer U
+  }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
+      Update: infer U
+    }
       ? U
       : never
     : never
