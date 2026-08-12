@@ -387,6 +387,45 @@ export type Database = {
           },
         ]
       }
+      voice_recordings: {
+        Row: {
+          created_at: string
+          created_by: string
+          duration_ms: number | null
+          id: string
+          mime_type: string
+          size_bytes: number | null
+          status: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          duration_ms?: number | null
+          id?: string
+          mime_type: string
+          size_bytes?: number | null
+          status?: string
+          storage_bucket?: string
+          storage_path: string
+          uploaded_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          duration_ms?: number | null
+          id?: string
+          mime_type?: string
+          size_bytes?: number | null
+          status?: string
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -413,6 +452,14 @@ export type Database = {
       create_eslam_brain_review_version: {
         Args: { p_payload: Json }
         Returns: number
+      }
+      publish_eslam_brain_draft_direct: {
+        Args: {
+          p_created_by: string
+          p_item_id: string
+          p_version_number: number
+        }
+        Returns: string
       }
       release_conversation_generation: {
         Args: { p_conversation_id: string; p_token: string; p_user_id: string }

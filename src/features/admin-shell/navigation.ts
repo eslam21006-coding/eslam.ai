@@ -15,7 +15,7 @@ export const adminNavigation = [
     slug: "teach",
     href: "/admin/teach",
     label: "Teach Eslam",
-    description: "اكتب تعليماً نصياً جديداً واحفظه كمسودة ثم انشره بشكل صريح.",
+    description: "أضف تعليماً نصياً أو سجّل مصدراً صوتياً خاصاً ثم راجع ما يدخل إلى عقل إسلام.",
   },
   {
     slug: "memory",
