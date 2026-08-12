@@ -37,7 +37,7 @@ begin
 
   begin
     perform public.claim_voice_teaching_extraction(
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      '20000000-0000-4000-8000-000000000001',
       '11111111-1111-4111-8111-111111111111',
       'gpt-5-mini',
       1,
@@ -55,26 +55,8 @@ set local role anon;
 do $$
 begin
   begin
-    insert into public.voice_teaching_extractions (
-      voice_transcription_id,
-      voice_recording_id,
-      created_by,
-      status,
-      model,
-      processing_started_at,
-      lease_expires_at,
-      claim_token
-    ) values (
-      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-      '11111111-1111-4111-8111-111111111111',
-      'processing',
-      'gpt-5-mini',
-      now(),
-      now() + interval '150 seconds',
-      gen_random_uuid()
-    );
-    raise exception 'anon role unexpectedly inserted voice teaching extraction';
+    perform 1 from public.voice_teaching_candidates;
+    raise exception 'anon role unexpectedly read voice teaching candidates';
   exception
     when insufficient_privilege then null;
   end;
@@ -153,7 +135,7 @@ insert into public.voice_transcriptions (
     '11111111-1111-4111-8111-111111111111',
     'completed',
     'gpt-4o-transcribe',
-    'A second transcript used only to verify expired extraction recovery.',
+    'A second transcript used to verify expired extraction recovery.',
     1,
     now() - interval '2 minutes',
     now() - interval '1 minute'
@@ -273,11 +255,11 @@ begin
 
   if exists (
     select 1
-    from expiring_claim first
+    from expiring_claim original
     cross join expired_retry retry
-    where first.claim_token = retry.claim_token
+    where original.claim_token = retry.claim_token
   ) then
-    raise exception 'expired voice teaching retry did not rotate worker token';
+    raise exception 'expired extraction retry did not rotate the claim token';
   end if;
 end;
 $$;
@@ -297,7 +279,7 @@ begin
   ) into v_failed;
 
   if v_failed is distinct from true then
-    raise exception 'voice teaching attempt did not transition to failed';
+    raise exception 'owned extraction attempt did not transition to failed';
   end if;
 end;
 $$;
@@ -324,11 +306,11 @@ begin
 
   if exists (
     select 1
-    from first_claim first
+    from first_claim original
     cross join retry_claim retry
-    where first.claim_token = retry.claim_token
+    where original.claim_token = retry.claim_token
   ) then
-    raise exception 'failed voice teaching retry did not rotate worker token';
+    raise exception 'failed extraction retry did not rotate the claim token';
   end if;
 end;
 $$;
@@ -348,11 +330,11 @@ begin
     v_id,
     '11111111-1111-4111-8111-111111111111',
     v_old_token,
-    '[{"semantic_layer":"brain","item_type":"principle","priority":100,"title":"Stale","content":"Stale worker content","summary":null,"topics":[],"source_excerpt":"stale"}]'::jsonb
+    '[]'::jsonb
   ) into v_stale_completed;
 
   if v_stale_completed is distinct from false then
-    raise exception 'stale voice teaching worker unexpectedly completed newer attempt';
+    raise exception 'stale extraction worker unexpectedly completed a newer attempt';
   end if;
 
   select public.complete_voice_teaching_extraction(
@@ -402,28 +384,52 @@ begin
       and lease_expires_at is null
       and completed_at is not null
   ) then
-    raise exception 'completed voice teaching extraction state is incorrect';
+    raise exception 'completed extraction state is incorrect';
   end if;
 
-  if (select count(*) from public.voice_teaching_candidates where extraction_id = (select extraction_id from retry_claim)) <> 2 then
-    raise exception 'completed voice teaching extraction did not persist two candidates';
+  if (
+    select count(*)
+    from public.voice_teaching_candidates
+    where extraction_id = (select extraction_id from retry_claim)
+  ) <> 2 then
+    raise exception 'completed extraction did not persist exactly two candidates';
   end if;
 
   begin
     update public.voice_teaching_candidates
-    set content = 'mutated candidate'
+    set content = 'service-role mutation'
     where extraction_id = (select extraction_id from retry_claim)
       and ordinal = 1;
-    raise exception 'voice teaching candidate unexpectedly mutated';
+    raise exception 'service_role unexpectedly updated immutable candidate data';
+  exception
+    when insufficient_privilege then null;
+  end;
+end;
+$$;
+
+reset role;
+
+do $$
+begin
+  begin
+    update public.voice_teaching_candidates
+    set content = 'postgres mutation'
+    where extraction_id = (select extraction_id from retry_claim)
+      and ordinal = 1;
+    raise exception 'postgres unexpectedly bypassed candidate immutability trigger';
   exception
     when others then
-      if sqlerrm = 'voice teaching candidate unexpectedly mutated' then raise; end if;
+      if sqlerrm = 'postgres unexpectedly bypassed candidate immutability trigger' then
+        raise;
+      end if;
       if position('voice teaching candidate lineage is immutable' in sqlerrm) = 0 then
-        raise exception 'candidate immutability returned unexpected error: %', sqlerrm;
+        raise exception 'candidate trigger returned unexpected error: %', sqlerrm;
       end if;
   end;
 end;
 $$;
+
+set local role service_role;
 
 create temporary table completed_claim as
 select * from public.claim_voice_teaching_extraction(
@@ -441,7 +447,7 @@ begin
     where claim_state = 'completed'
       and attempt_count = 2
   ) then
-    raise exception 'completed voice teaching extraction was not idempotently returned';
+    raise exception 'completed extraction was not returned idempotently';
   end if;
 end;
 $$;
@@ -468,10 +474,14 @@ begin
     v_token,
     '[]'::jsonb
   ) into v_completed;
+
   if v_completed is distinct from true then
     raise exception 'zero-candidate extraction did not complete';
   end if;
-  if exists (select 1 from public.voice_teaching_candidates where extraction_id = v_id) then
+
+  if exists (
+    select 1 from public.voice_teaching_candidates where extraction_id = v_id
+  ) then
     raise exception 'zero-candidate extraction unexpectedly persisted candidates';
   end if;
 end;
@@ -488,18 +498,20 @@ select * from public.claim_voice_teaching_extraction(
 
 do $$
 begin
-  if not exists (select 1 from wrong_owner_claim where claim_state = 'not_found') then
-    raise exception 'wrong owner unexpectedly claimed voice teaching extraction';
+  if not exists (
+    select 1 from wrong_owner_claim where claim_state = 'not_found'
+  ) then
+    raise exception 'wrong owner unexpectedly claimed a voice teaching extraction';
   end if;
 end;
 $$;
 
 create temporary table candidate_ids as
 select
-  max(id) filter (where ordinal = 1) as first_id,
-  max(id) filter (where ordinal = 2) as second_id
-from public.voice_teaching_candidates
-where extraction_id = (select extraction_id from retry_claim);
+  (select id from public.voice_teaching_candidates
+    where extraction_id = (select extraction_id from retry_claim) and ordinal = 1) as first_id,
+  (select id from public.voice_teaching_candidates
+    where extraction_id = (select extraction_id from retry_claim) and ordinal = 2) as second_id;
 
 create temporary table materialized_result as
 select public.create_voice_teaching_drafts(
@@ -531,11 +543,12 @@ begin
   where candidate_id = v_candidate_id;
 
   if v_brain_id is null then
-    raise exception 'voice teaching candidate did not create a Brain draft mapping';
+    raise exception 'voice candidate did not create a Brain draft mapping';
   end if;
 
   if not exists (
-    select 1 from public.eslam_brain_items
+    select 1
+    from public.eslam_brain_items
     where id = v_brain_id
       and status = 'draft'
       and semantic_layer = 'brain'
@@ -544,11 +557,12 @@ begin
       and approved_version_number is null
       and published_version_number is null
   ) then
-    raise exception 'voice teaching materialization did not create an unpublished draft';
+    raise exception 'voice materialization did not create an unpublished Brain draft';
   end if;
 
   if not exists (
-    select 1 from public.eslam_brain_versions
+    select 1
+    from public.eslam_brain_versions
     where item_id = v_brain_id
       and version_number = 1
       and title = 'Edited bottleneck rule'
@@ -557,7 +571,7 @@ begin
       and topics = array['CAC','funnel']::text[]
       and change_note = 'Reviewed after voice extraction'
   ) then
-    raise exception 'voice teaching Brain version did not preserve reviewed edits';
+    raise exception 'Brain version did not preserve reviewed edits';
   end if;
 
   if not exists (
@@ -577,7 +591,7 @@ begin
       and tv.source_locator ->> 'kind' = 'voice_transcript_candidate'
       and tv.source_locator ->> 'voice_teaching_candidate_id' = v_candidate_id::text
   ) then
-    raise exception 'voice teaching lineage did not preserve exact source provenance';
+    raise exception 'voice lineage did not preserve exact source provenance';
   end if;
 end;
 $$;
@@ -611,7 +625,9 @@ begin
     raise exception 'already materialized candidate unexpectedly created a second draft';
   exception
     when others then
-      if sqlerrm = 'already materialized candidate unexpectedly created a second draft' then raise; end if;
+      if sqlerrm = 'already materialized candidate unexpectedly created a second draft' then
+        raise;
+      end if;
       if position('already materialized' in sqlerrm) = 0 then
         raise exception 'duplicate materialization returned unexpected error: %', sqlerrm;
       end if;
@@ -632,7 +648,8 @@ declare
 begin
   select first_id, second_id into v_first_id, v_second_id from candidate_ids;
   select count(*) into v_second_mapping_before
-  from public.voice_teaching_candidate_drafts where candidate_id = v_second_id;
+  from public.voice_teaching_candidate_drafts
+  where candidate_id = v_second_id;
   select count(*) into v_brain_count_before from public.eslam_brain_items;
 
   begin
@@ -646,7 +663,7 @@ begin
           'item_type', 'principle',
           'priority', 90,
           'title', 'Second candidate',
-          'content', 'This row must roll back because the next candidate is already materialized.',
+          'content', 'This candidate must roll back because the next one is already materialized.',
           'summary', '',
           'topics', '[]'::jsonb,
           'change_note', ''
@@ -667,15 +684,22 @@ begin
     raise exception 'mixed materialization unexpectedly succeeded';
   exception
     when others then
-      if sqlerrm = 'mixed materialization unexpectedly succeeded' then raise; end if;
+      if sqlerrm = 'mixed materialization unexpectedly succeeded' then
+        raise;
+      end if;
       if position('already materialized' in sqlerrm) = 0 then
         raise exception 'mixed materialization returned unexpected error: %', sqlerrm;
       end if;
   end;
 
-  if (select count(*) from public.voice_teaching_candidate_drafts where candidate_id = v_second_id) <> v_second_mapping_before then
+  if (
+    select count(*)
+    from public.voice_teaching_candidate_drafts
+    where candidate_id = v_second_id
+  ) <> v_second_mapping_before then
     raise exception 'failed mixed materialization left a candidate mapping';
   end if;
+
   if (select count(*) from public.eslam_brain_items) <> v_brain_count_before then
     raise exception 'failed mixed materialization left partial Brain data';
   end if;
