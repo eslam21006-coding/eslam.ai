@@ -71,11 +71,13 @@ export function TranscribeButton({ recordingId, status, canTranscribe }: Props) 
       >
         {isPending ? "جارٍ التحويل…" : !canTranscribe ? "التحويل جارٍ…" : label}
       </button>
-      {message ? (
-        <p className="max-w-sm text-xs leading-5 text-[var(--foreground-muted)]" aria-live="polite">
-          {message}
-        </p>
-      ) : null}
+      <p
+        className="max-w-sm text-xs leading-5 text-[var(--foreground-muted)]"
+        aria-live="polite"
+        role="status"
+      >
+        {message}
+      </p>
     </div>
   );
 }
