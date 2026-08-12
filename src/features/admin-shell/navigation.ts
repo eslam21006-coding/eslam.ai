@@ -27,7 +27,7 @@ export const adminNavigation = [
     slug: "brain",
     href: "/admin/brain",
     label: "عقل إسلام",
-    description: "المبادئ وقواعد التشخيص ومنطق التفكير ستُدار هنا لاحقاً.",
+    description: "راجع التعليمات ومصادرها، عدّل المسودات، اعتمدها، انشرها أو أرشفها.",
   },
   {
     slug: "knowledge",
