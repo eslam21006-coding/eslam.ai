@@ -90,29 +90,35 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(data, /\.eq\("created_by", authorization\.userId\)/);
   assert.match(data, /\.eq\("status", "draft"\)/);
   assert.match(data, /\.eq\("version_number", 1\)/);
-  assert.match(data, /MAX_RECENT_TEACH_ESLAM_DRAFTS = 20/);
+  assert.match(data, /TEACH_ESLAM_DRAFT_PAGE_SIZE = 20/);
+  assert.match(data, /\.range\(offset, offset \+ TEACH_ESLAM_DRAFT_PAGE_SIZE\)/);
 
   assert.doesNotMatch(form, /service_role|SUPABASE_SERVICE_ROLE|createClient\(/i);
   assert.match(form, /state\.created && publishStatus !== "published"/);
   assert.match(page, />\s*Teach Eslam\s*</);
-  assert.match(page, /loadTeachEslamDrafts\(\)/);
-  assert.match(page, /drafts\.map/);
+  assert.match(page, /loadTeachEslamDrafts\(draftPageNumber\)/);
+  assert.match(page, /draftPage\.drafts\.map/);
   assert.match(page, /action=\{publishTeachEslamDraftAction\}/);
   assert.match(page, /name="item_id" value=\{draft\.id\}/);
   assert.match(page, /name="version_number" value=\{draft\.versionNumber\}/);
   assert.match(navigation, /label: "Teach Eslam"/);
 });
 
-test("Teach Eslam persisted drafts remain publishable after navigation", () => {
+test("Teach Eslam persisted drafts remain reachable through pagination", () => {
   const data = readSource("src/features/teach-eslam/data.ts");
   const page = readSource("src/app/admin/teach/page.tsx");
 
   assert.match(data, /from\("eslam_brain_items"\)/);
   assert.match(data, /from\("eslam_brain_versions"\)/);
   assert.match(data, /\.order\("created_at", \{ ascending: false \}\)/);
-  assert.match(data, /\.limit\(MAX_RECENT_TEACH_ESLAM_DRAFTS\)/);
-  assert.match(page, /المسودات المحفوظة/);
-  assert.match(page, /تظل قابلة للنشر بعد تحديث الصفحة أو العودة لاحقاً/);
+  assert.match(data, /\.order\("id", \{ ascending: false \}\)/);
+  assert.match(data, /rows\.length > TEACH_ESLAM_DRAFT_PAGE_SIZE/);
+  assert.match(data, /rows\.slice\(0, TEACH_ESLAM_DRAFT_PAGE_SIZE\)/);
+  assert.match(page, /كل المسودات المحفوظة تظل قابلة للوصول والنشر/);
+  assert.match(page, /draftPage\.hasPreviousPage/);
+  assert.match(page, /draftPage\.hasNextPage/);
+  assert.match(page, /draftPage=\$\{draftPage\.page - 1\}/);
+  assert.match(page, /draftPage=\$\{draftPage\.page \+ 1\}/);
   assert.match(page, /publishTeachEslamDraftAction/);
 });
 
