@@ -1,16 +1,27 @@
+import Link from "next/link";
+
 import { publishTeachEslamDraftAction } from "@/features/teach-eslam/actions";
 import { loadTeachEslamDrafts } from "@/features/teach-eslam/data";
 import { TeachEslamForm } from "@/features/teach-eslam/teach-eslam-form";
 
 type TeachEslamPageProps = {
-  searchParams: Promise<{ status?: string }>;
+  searchParams: Promise<{ status?: string; draftPage?: string }>;
 };
 
+function parseDraftPage(value: string | undefined) {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
 export default async function TeachEslamPage({ searchParams }: TeachEslamPageProps) {
-  const [{ status }, drafts] = await Promise.all([searchParams, loadTeachEslamDrafts()]);
+  const params = await searchParams;
+  const draftPageNumber = parseDraftPage(params.draftPage);
+  const draftPage = await loadTeachEslamDrafts(draftPageNumber);
   const publishStatus =
-    status === "published" || status === "publish-failed" || status === "publish-invalid"
-      ? status
+    params.status === "published" ||
+    params.status === "publish-failed" ||
+    params.status === "publish-invalid"
+      ? params.status
       : undefined;
 
   return (
@@ -33,13 +44,13 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
               المسودات المحفوظة
             </h2>
             <p className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-              تظهر هنا آخر المسودات المحفوظة حتى تظل قابلة للنشر بعد تحديث الصفحة أو العودة لاحقاً.
+              كل المسودات المحفوظة تظل قابلة للوصول والنشر بعد تحديث الصفحة أو العودة لاحقاً.
             </p>
           </div>
 
-          {drafts.length ? (
+          {draftPage.drafts.length ? (
             <div className="mt-5 grid gap-3">
-              {drafts.map((draft) => (
+              {draftPage.drafts.map((draft) => (
                 <article
                   key={draft.id}
                   className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4 sm:flex sm:items-center sm:justify-between sm:gap-5"
@@ -68,9 +79,42 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
             </div>
           ) : (
             <p className="mt-5 rounded-[var(--radius-sm)] border border-dashed border-[var(--border-strong)] px-4 py-5 text-sm text-[var(--foreground-subtle)]">
-              لا توجد مسودات محفوظة حالياً.
+              لا توجد مسودات محفوظة في هذه الصفحة.
             </p>
           )}
+
+          {draftPage.hasPreviousPage || draftPage.hasNextPage ? (
+            <nav
+              className="mt-5 flex items-center justify-between gap-3"
+              aria-label="التنقل بين صفحات المسودات"
+            >
+              {draftPage.hasPreviousPage ? (
+                <Link
+                  href={`/admin/teach?draftPage=${draftPage.page - 1}`}
+                  className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-medium text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
+                >
+                  الأحدث
+                </Link>
+              ) : (
+                <span />
+              )}
+
+              <span className="text-xs text-[var(--foreground-subtle)]" dir="ltr">
+                Page {draftPage.page}
+              </span>
+
+              {draftPage.hasNextPage ? (
+                <Link
+                  href={`/admin/teach?draftPage=${draftPage.page + 1}`}
+                  className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-medium text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
+                >
+                  الأقدم
+                </Link>
+              ) : (
+                <span />
+              )}
+            </nav>
+          ) : null}
         </section>
       </div>
     </div>
