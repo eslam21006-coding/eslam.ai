@@ -23,6 +23,9 @@ type CleanupRecording = {
   status: string;
 };
 
+const STALE_PENDING_UPLOAD_MS = 3 * 60 * 60 * 1000;
+const CLEANUP_BATCH_SIZE = 50;
+
 async function removeClaimedVoiceRecording(
   admin: SupabaseAdminClient,
   userId: string,
@@ -303,33 +306,60 @@ export async function cancelVoiceRecordingUploadAction(
   );
 }
 
-/** Retries durable owner-scoped cleanup rows left behind after a transient Storage failure. */
+/** Retries durable cleanup rows and reclaims expired pending upload intents for the current admin. */
 export async function retryQueuedVoiceRecordingCleanupsAction() {
   const authorization = await requireAdmin();
   const admin = getSupabaseAdminClient();
-  const { data: queued, error: queueError } = await admin
+  const { data: cancelling, error: cancellingError } = await admin
     .from("voice_recordings")
     .select("id")
     .eq("created_by", authorization.userId)
     .eq("status", "cancelling")
     .order("created_at", { ascending: true })
-    .limit(50);
+    .limit(CLEANUP_BATCH_SIZE);
 
-  if (queueError) {
+  if (cancellingError) {
     console.error("Voice recording cleanup queue load failed", {
-      code: queueError.code,
-      message: queueError.message,
+      stage: "cancelling",
+      code: cancellingError.code,
+      message: cancellingError.message,
     });
     return { ok: false as const, cleaned: 0, failed: 0 };
   }
 
+  const queuedIds = (cancelling ?? []).map((recording) => recording.id);
+  const remaining = CLEANUP_BATCH_SIZE - queuedIds.length;
+
+  if (remaining > 0) {
+    const staleCutoff = new Date(Date.now() - STALE_PENDING_UPLOAD_MS).toISOString();
+    const { data: stalePending, error: stalePendingError } = await admin
+      .from("voice_recordings")
+      .select("id")
+      .eq("created_by", authorization.userId)
+      .eq("status", "pending")
+      .lt("created_at", staleCutoff)
+      .order("created_at", { ascending: true })
+      .limit(remaining);
+
+    if (stalePendingError) {
+      console.error("Voice recording cleanup queue load failed", {
+        stage: "stale-pending",
+        code: stalePendingError.code,
+        message: stalePendingError.message,
+      });
+      return { ok: false as const, cleaned: 0, failed: 0 };
+    }
+
+    queuedIds.push(...(stalePending ?? []).map((recording) => recording.id));
+  }
+
   let cleaned = 0;
   let failed = 0;
-  for (const recording of queued ?? []) {
+  for (const recordingId of queuedIds) {
     const result = await cancelVoiceRecordingById(
       admin,
       authorization.userId,
-      recording.id,
+      recordingId,
     );
     if (result.ok) cleaned += 1;
     else failed += 1;
