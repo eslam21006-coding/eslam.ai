@@ -147,5 +147,52 @@ begin
 end;
 $$;
 
+insert into public.voice_recordings (
+  id,
+  created_by,
+  storage_path,
+  mime_type
+)
+values (
+  'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+  '11111111-1111-4111-8111-111111111111',
+  '11111111-1111-4111-8111-111111111111/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.webm',
+  'audio/webm'
+);
+
+update public.voice_recordings
+set status = 'cancelling'
+where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.voice_recordings
+    where id = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'
+      and status = 'cancelling'
+      and size_bytes is null
+      and duration_ms is null
+      and uploaded_at is null
+  ) then
+    raise exception 'cancelling voice recording did not retain retryable cleanup metadata';
+  end if;
+end;
+$$;
+
+do $$
+begin
+  begin
+    update public.voice_recordings
+    set status = 'cancelling'
+    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    raise exception 'uploaded recording unexpectedly moved back to cancelling';
+  exception
+    when check_violation then
+      null;
+  end;
+end;
+$$;
+
 reset role;
 rollback;
