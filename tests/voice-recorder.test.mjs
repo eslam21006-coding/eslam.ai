@@ -89,13 +89,15 @@ test("voice cancellation atomically claims cleanup and retains metadata on Stora
   assert.match(hardening, /status in \('pending', 'cancelling'\)/);
 });
 
-test("voice cleanup queue persists across unmounts and is retried without a client recording id", () => {
+test("voice cleanup queue persists across unmounts and reclaims expired pending intents", () => {
   const actions = readSource("src/features/voice-recorder/actions.ts");
   const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
 
   assert.match(actions, /export async function retryQueuedVoiceRecordingCleanupsAction/);
+  assert.match(actions, /const STALE_PENDING_UPLOAD_MS = 3 \* 60 \* 60 \* 1000/);
   assert.match(actions, /\.eq\("status", "cancelling"\)/);
-  assert.match(actions, /\.limit\(50\)/);
+  assert.match(actions, /\.eq\("status", "pending"\)[\s\S]*\.lt\("created_at", staleCutoff\)/);
+  assert.match(actions, /\.limit\(CLEANUP_BATCH_SIZE\)/);
   assert.match(actions, /cancelVoiceRecordingById/);
   assert.match(recorder, /retryQueuedVoiceRecordingCleanupsAction\(\)/);
 });
