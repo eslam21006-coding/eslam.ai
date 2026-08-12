@@ -89,6 +89,7 @@ test("transcription UI loads owner-scoped source artifacts and exposes safe retr
   const button = readSource("src/features/voice-transcription/transcribe-button.tsx");
   const list = readSource("src/features/voice-transcription/transcription-list.tsx");
   const page = readSource("src/app/admin/teach/voice/page.tsx");
+  const recorderActions = readSource("src/features/voice-recorder/actions.ts");
 
   assert.match(data, /\.from\("voice_recordings"\)/);
   assert.match(data, /\.eq\("created_by", userId\)/);
@@ -104,6 +105,12 @@ test("transcription UI loads owner-scoped source artifacts and exposes safe retr
   assert.match(page, /loadVoiceTranscriptionList\(authorization\.userId\)/);
   assert.match(page, /export const maxDuration = 300/);
   assert.match(page, /Task 20/);
+  assert.match(recorderActions, /import \{ revalidatePath \} from "next\/cache"/);
+  assert.match(recorderActions, /const VOICE_ADMIN_PATH = "\/admin\/teach\/voice"/);
+  assert.match(
+    recorderActions,
+    /function finalizedVoiceRecording[\s\S]*revalidatePath\(VOICE_ADMIN_PATH\)/,
+  );
 });
 
 test("voice transcription runtime regression is registered in CI and env config stays server-only", () => {
