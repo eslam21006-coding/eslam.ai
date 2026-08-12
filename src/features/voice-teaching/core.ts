@@ -5,7 +5,7 @@ import {
   validateTeachEslamDraft,
   type TeachEslamValues,
   type ValidTeachEslamDraft,
-} from "@/features/teach-eslam/core";
+} from "../teach-eslam/core.ts";
 
 export const VOICE_TEACHING_PROMPT_VERSION = 1;
 export const VOICE_TEACHING_LEASE_SECONDS = 150;
