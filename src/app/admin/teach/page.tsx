@@ -42,6 +42,12 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
               Voice Recorder
             </Link>
             <Link
+              href="/admin/teach/documents"
+              className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-center text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]"
+            >
+              Documents
+            </Link>
+            <Link
               href="/admin/brain?status=draft&page=1"
               className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-center text-sm font-semibold text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
             >
@@ -50,7 +56,7 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
           </div>
         </div>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--foreground-muted)] sm:text-base">
-          اكتب ما تريد أن يعرفه أو يطبقه Eslam.AI، أو افتح Voice Recorder لتسجيله بصوتك. التعليم النصي يبدأ كمسودة ثم يحتاج إلى نشر صريح، بينما التسجيل الصوتي يُحفظ كمصدر خاص فقط إلى أن نبني مرحلة التحويل إلى نص.
+          علّم Eslam.AI بالنص مباشرة، أو استخدم Voice Recorder لمسار الصوت → transcript → candidates → Brain drafts، أو احفظ Documents كمصادر خاصة تمهيداً لاستخراج Teachings منها في Task 22. لا يصبح أي Teaching فعالاً في الإجابات إلا بعد مسار المراجعة والنشر المناسب.
         </p>
 
         <TeachEslamForm publishStatus={publishStatus} />
