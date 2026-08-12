@@ -352,27 +352,40 @@ export function VoiceRecorder() {
 
   const finalizeIntent = useCallback(
     async (intent: VoiceUploadIntent) => {
-      const finalization = await finalizeVoiceRecordingUploadAction({
-        recordingId: intent.recordingId,
-        durationMs,
-      });
+      try {
+        const finalization = await finalizeVoiceRecordingUploadAction({
+          recordingId: intent.recordingId,
+          durationMs,
+        });
 
-      if (!isMountedRef.current) return;
+        if (!isMountedRef.current) return;
 
-      if (!finalization.ok) {
+        if (!finalization.ok) {
+          setPendingIntent(intent);
+          setStatus("finalize-error");
+          setMessage(
+            "تم رفع الصوت، لكن لم يكتمل تثبيت بياناته. الملف لم يضع، واضغط إعادة المحاولة لإكمال الحفظ.",
+          );
+          return;
+        }
+
+        cleanupPurposeRef.current = "discard-local";
+        setPendingIntent(null);
+        setUploadedId(finalization.recordingId);
+        setStatus("uploaded");
+        setMessage("تم حفظ التسجيل في مساحة خاصة بنجاح. أصبح جاهزاً لمهمة التحويل إلى نص لاحقاً.");
+      } catch (error) {
+        console.error("Voice recording finalization request failed", {
+          message: error instanceof Error ? error.message : "Unknown error",
+        });
+        if (!isMountedRef.current) return;
+
         setPendingIntent(intent);
         setStatus("finalize-error");
         setMessage(
-          "تم رفع الصوت، لكن لم يكتمل تثبيت بياناته. الملف لم يضع، واضغط إعادة المحاولة لإكمال الحفظ.",
+          "تم رفع الصوت، لكن تعذر إكمال التحقق من الحفظ بسبب مشكلة اتصال. التسجيل المحلي محفوظ ويمكنك إعادة محاولة تثبيت الحفظ.",
         );
-        return;
       }
-
-      cleanupPurposeRef.current = "discard-local";
-      setPendingIntent(null);
-      setUploadedId(finalization.recordingId);
-      setStatus("uploaded");
-      setMessage("تم حفظ التسجيل في مساحة خاصة بنجاح. أصبح جاهزاً لمهمة التحويل إلى نص لاحقاً.");
     },
     [durationMs],
   );
