@@ -14,29 +14,34 @@ export type TeachingLifecycleStatus = Exclude<TeachingReviewStatus, "all">;
 export const TEACHING_REVIEW_PAGE_SIZE = 12;
 export const TEACHING_REVIEW_BULK_LIMIT = 50;
 
+/** Parses a review status query parameter and fails closed to the draft queue. */
 export function parseTeachingReviewStatus(value: string | undefined): TeachingReviewStatus {
   return TEACHING_REVIEW_STATUSES.some((status) => status.value === value)
     ? (value as TeachingReviewStatus)
     : "draft";
 }
 
+/** Parses positive review-page numbers and normalizes invalid input to page one. */
 export function parseTeachingReviewPage(value: string | undefined) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
 }
 
+/** Validates UUIDs accepted by admin review mutations before database access. */
 export function isTeachingReviewUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
     value,
   );
 }
 
+/** Parses a positive immutable Brain version number from submitted form data. */
 export function parseTeachingVersionNumber(value: FormDataEntryValue | null) {
   if (typeof value !== "string") return null;
   const versionNumber = Number(value);
   return Number.isInteger(versionNumber) && versionNumber > 0 ? versionNumber : null;
 }
 
+/** Reads the editable teaching fields from a review form without trusting lifecycle metadata. */
 export function readTeachingReviewValues(formData: FormData): TeachEslamValues {
   const read = (name: keyof TeachEslamValues) => {
     const value = formData.get(name);
@@ -55,6 +60,7 @@ export function readTeachingReviewValues(formData: FormData): TeachEslamValues {
   };
 }
 
+/** Builds the bounded return URL used by review actions while preserving filter and page context. */
 export function teachingReviewReturnHref(formData: FormData, notice: string, extra = "") {
   const rawStatus = formData.get("return_status");
   const status = parseTeachingReviewStatus(typeof rawStatus === "string" ? rawStatus : undefined);
