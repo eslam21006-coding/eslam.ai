@@ -220,7 +220,6 @@ export function VoiceRecorder() {
         return;
       }
 
-      // Store the stream before MediaRecorder construction so the catch path can always stop it.
       streamRef.current = stream;
       const recorder = new MediaRecorder(stream, {
         mimeType: selectedMimeType,
@@ -319,23 +318,37 @@ export function VoiceRecorder() {
     setStatus("cleaning");
     setMessage("جارٍ تنظيف محاولة الحفظ السابقة…");
 
-    const cleanup = await cancelVoiceRecordingUploadAction({
-      recordingId: intent.recordingId,
-    });
+    try {
+      const cleanup = await cancelVoiceRecordingUploadAction({
+        recordingId: intent.recordingId,
+      });
 
-    if (!isMountedRef.current) return false;
+      if (!isMountedRef.current) return false;
 
-    if (!cleanup.ok) {
+      if (!cleanup.ok) {
+        setPendingIntent(intent);
+        setStatus("cleanup-error");
+        setMessage(
+          "تعذر تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف.",
+        );
+        return false;
+      }
+
+      setPendingIntent(null);
+      return true;
+    } catch (error) {
+      console.error("Voice recording cleanup request failed", {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      if (!isMountedRef.current) return false;
+
       setPendingIntent(intent);
       setStatus("cleanup-error");
       setMessage(
-        "تعذر تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف.",
+        "تعذر الاتصال أثناء تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف.",
       );
       return false;
     }
-
-    setPendingIntent(null);
-    return true;
   }, []);
 
   const resetForNewRecording = useCallback(async () => {
@@ -406,12 +419,25 @@ export function VoiceRecorder() {
     setStatus("uploading");
     setMessage(null);
 
-    const intentResult = await createVoiceRecordingUploadAction({ mimeType });
+    let intentResult: Awaited<ReturnType<typeof createVoiceRecordingUploadAction>>;
+    try {
+      intentResult = await createVoiceRecordingUploadAction({ mimeType });
+    } catch (error) {
+      console.error("Voice recording upload intent request failed", {
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+      if (!isMountedRef.current) return;
+
+      setStatus("preview");
+      setMessage("تعذر الاتصال لتجهيز مساحة رفع التسجيل. التسجيل المحلي محفوظ ويمكنك محاولة الحفظ مرة أخرى.");
+      return;
+    }
+
     if (!isMountedRef.current) {
       if (intentResult.ok) {
-        await cancelVoiceRecordingUploadAction({
+        void cancelVoiceRecordingUploadAction({
           recordingId: intentResult.intent.recordingId,
-        });
+        }).catch(() => undefined);
       }
       return;
     }
@@ -427,25 +453,27 @@ export function VoiceRecorder() {
     const fileName = intent.storagePath.split("/").at(-1) ?? `${intent.recordingId}.audio`;
     const file = new File([audioBlob], fileName, { type: intent.mimeType });
     const supabase = createClient();
-    const { error: uploadError } = await supabase.storage
-      .from(intent.bucket)
-      .uploadToSignedUrl(intent.storagePath, intent.token, file, {
-        contentType: intent.mimeType,
-        upsert: false,
-      });
 
-    if (uploadError) {
-      console.error("Signed voice upload failed", { message: uploadError.message });
-      const cleanup = await cancelVoiceRecordingUploadAction({
-        recordingId: intent.recordingId,
-      });
+    let uploadErrorMessage: string | null = null;
+    try {
+      const { error: uploadError } = await supabase.storage
+        .from(intent.bucket)
+        .uploadToSignedUrl(intent.storagePath, intent.token, file, {
+          contentType: intent.mimeType,
+          upsert: false,
+        });
+      uploadErrorMessage = uploadError?.message ?? null;
+    } catch (error) {
+      uploadErrorMessage = error instanceof Error ? error.message : "Unknown upload error";
+    }
 
+    if (uploadErrorMessage) {
+      console.error("Signed voice upload failed", { message: uploadErrorMessage });
+      cleanupPurposeRef.current = "preserve-local";
+      const cleaned = await cleanupPendingRecording(intent);
       if (!isMountedRef.current) return;
 
-      if (!cleanup.ok) {
-        cleanupPurposeRef.current = "preserve-local";
-        setPendingIntent(intent);
-        setStatus("cleanup-error");
+      if (!cleaned) {
         setMessage(
           "فشل رفع التسجيل وتعذر تنظيف محاولة الرفع. التسجيل المحلي ما زال موجوداً؛ أعد محاولة التنظيف ثم حاول الحفظ مرة أخرى.",
         );
@@ -453,19 +481,18 @@ export function VoiceRecorder() {
       }
 
       cleanupPurposeRef.current = "discard-local";
-      setPendingIntent(null);
       setStatus("preview");
       setMessage("فشل رفع التسجيل. الملف المحلي ما زال موجوداً ويمكنك المحاولة مرة أخرى.");
       return;
     }
 
     if (!isMountedRef.current) {
-      await cancelVoiceRecordingUploadAction({ recordingId: intent.recordingId });
+      void cancelVoiceRecordingUploadAction({ recordingId: intent.recordingId }).catch(() => undefined);
       return;
     }
 
     await finalizeIntent(intent);
-  }, [audioBlob, durationMs, finalizeIntent, mimeType]);
+  }, [audioBlob, cleanupPendingRecording, durationMs, finalizeIntent, mimeType]);
 
   const retryFinalization = useCallback(async () => {
     if (!pendingIntent) return;
