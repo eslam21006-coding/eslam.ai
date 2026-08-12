@@ -82,7 +82,7 @@ export function validateTeachEslamDraft(values: TeachEslamValues):
   const summary = values.summary.trim();
   const changeNote = values.change_note.trim();
   const topics = normalizeTeachEslamTopics(values.topics);
-  const priority = Number(values.priority);
+  const priorityText = values.priority.trim();
 
   const semanticLayer = TEACH_ESLAM_SEMANTIC_LAYERS.find(
     (option) => option.value === values.semantic_layer,
@@ -98,6 +98,9 @@ export function validateTeachEslamDraft(values: TeachEslamValues):
   if (changeNote.length > TEACH_ESLAM_LIMITS.changeNote) return { ok: false };
   if (topics.length > TEACH_ESLAM_LIMITS.topics) return { ok: false };
   if (topics.some((topic) => topic.length > TEACH_ESLAM_LIMITS.topic)) return { ok: false };
+  if (!priorityText) return { ok: false };
+
+  const priority = Number(priorityText);
   if (!Number.isInteger(priority)) return { ok: false };
   if (priority < TEACH_ESLAM_LIMITS.priorityMin || priority > TEACH_ESLAM_LIMITS.priorityMax) {
     return { ok: false };
