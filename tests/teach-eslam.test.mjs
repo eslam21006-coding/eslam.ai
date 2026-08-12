@@ -112,6 +112,6 @@ test("Task 15 remains text-authoring only", () => {
 
   assert.doesNotMatch(
     sources,
-    /file_search|vector_store|voice|transcrib|document_ingestion|teaching_sources|bulk approve|mentee_memor|metric_snapshots/i,
+    /file_search|vector_store|microphone|mediaRecorder|audio_blob|voice_transcription|transcrib|document_ingestion|teaching_sources|bulk approve|mentee_memor|metric_snapshots/i,
   );
 });
