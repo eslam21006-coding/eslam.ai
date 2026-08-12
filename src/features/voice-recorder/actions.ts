@@ -14,6 +14,105 @@ import {
   voiceRecordingExtension,
 } from "@/features/voice-recorder/core";
 
+type SupabaseAdminClient = ReturnType<typeof getSupabaseAdminClient>;
+
+type CleanupRecording = {
+  id: string;
+  storage_bucket: string;
+  storage_path: string;
+  status: string;
+};
+
+async function removeClaimedVoiceRecording(
+  admin: SupabaseAdminClient,
+  userId: string,
+  recording: CleanupRecording,
+): Promise<VoiceCancelResult> {
+  const { error: storageError } = await admin.storage
+    .from(recording.storage_bucket)
+    .remove([recording.storage_path]);
+
+  if (storageError) {
+    console.warn("Voice recording object cleanup did not complete", {
+      recordingId: recording.id,
+      message: storageError.message,
+    });
+    return { ok: false, error: "cancel-failed" };
+  }
+
+  const { data: deleted, error: deleteError } = await admin
+    .from("voice_recordings")
+    .delete()
+    .eq("id", recording.id)
+    .eq("created_by", userId)
+    .eq("status", "cancelling")
+    .select("id")
+    .maybeSingle();
+
+  if (deleteError || !deleted) {
+    console.error("Voice recording cancellation failed", {
+      stage: "metadata-delete",
+      recordingId: recording.id,
+      code: deleteError?.code,
+      message: deleteError?.message ?? "Cancellation metadata row was not deleted",
+    });
+    return { ok: false, error: "cancel-failed" };
+  }
+
+  return { ok: true };
+}
+
+async function cancelVoiceRecordingById(
+  admin: SupabaseAdminClient,
+  userId: string,
+  recordingId: string,
+): Promise<VoiceCancelResult> {
+  const { data: claimed, error: claimError } = await admin
+    .from("voice_recordings")
+    .update({ status: "cancelling" })
+    .eq("id", recordingId)
+    .eq("created_by", userId)
+    .eq("status", "pending")
+    .select("id,storage_bucket,storage_path,status")
+    .maybeSingle();
+
+  if (claimError) {
+    console.error("Voice recording cancellation failed", {
+      stage: "claim",
+      recordingId,
+      code: claimError.code,
+      message: claimError.message,
+    });
+    return { ok: false, error: "cancel-failed" };
+  }
+
+  let recording = claimed;
+  if (!recording) {
+    const { data: existing, error: loadError } = await admin
+      .from("voice_recordings")
+      .select("id,storage_bucket,storage_path,status")
+      .eq("id", recordingId)
+      .eq("created_by", userId)
+      .maybeSingle();
+
+    if (loadError) {
+      console.error("Voice recording cancellation failed", {
+        stage: "load",
+        recordingId,
+        code: loadError.code,
+        message: loadError.message,
+      });
+      return { ok: false, error: "cancel-failed" };
+    }
+
+    if (!existing || existing.status === "uploaded") return { ok: true };
+    if (existing.status !== "cancelling") return { ok: false, error: "cancel-failed" };
+    recording = existing;
+  }
+
+  return removeClaimedVoiceRecording(admin, userId, recording);
+}
+
 /** Creates an owner-scoped pending recording and a short-lived signed Storage upload token. */
 export async function createVoiceRecordingUploadAction(
   input: unknown,
@@ -197,76 +296,46 @@ export async function cancelVoiceRecordingUploadAction(
   const recordingId = validateVoiceRecordingId(input);
   if (!recordingId) return { ok: false, error: "invalid-request" };
 
+  return cancelVoiceRecordingById(
+    getSupabaseAdminClient(),
+    authorization.userId,
+    recordingId,
+  );
+}
+
+/** Retries durable owner-scoped cleanup rows left behind after a transient Storage failure. */
+export async function retryQueuedVoiceRecordingCleanupsAction() {
+  const authorization = await requireAdmin();
   const admin = getSupabaseAdminClient();
-  const { data: claimed, error: claimError } = await admin
+  const { data: queued, error: queueError } = await admin
     .from("voice_recordings")
-    .update({ status: "cancelling" })
-    .eq("id", recordingId)
-    .eq("created_by", authorization.userId)
-    .eq("status", "pending")
-    .select("id,storage_bucket,storage_path,status")
-    .maybeSingle();
-
-  if (claimError) {
-    console.error("Voice recording cancellation failed", {
-      stage: "claim",
-      code: claimError.code,
-      message: claimError.message,
-    });
-    return { ok: false, error: "cancel-failed" };
-  }
-
-  let recording = claimed;
-  if (!recording) {
-    const { data: existing, error: loadError } = await admin
-      .from("voice_recordings")
-      .select("id,storage_bucket,storage_path,status")
-      .eq("id", recordingId)
-      .eq("created_by", authorization.userId)
-      .maybeSingle();
-
-    if (loadError) {
-      console.error("Voice recording cancellation failed", {
-        stage: "load",
-        code: loadError.code,
-        message: loadError.message,
-      });
-      return { ok: false, error: "cancel-failed" };
-    }
-
-    if (!existing || existing.status === "uploaded") return { ok: true };
-    if (existing.status !== "cancelling") return { ok: false, error: "cancel-failed" };
-    recording = existing;
-  }
-
-  const { error: storageError } = await admin.storage
-    .from(recording.storage_bucket)
-    .remove([recording.storage_path]);
-
-  if (storageError) {
-    console.warn("Voice recording object cleanup did not complete", {
-      message: storageError.message,
-    });
-    return { ok: false, error: "cancel-failed" };
-  }
-
-  const { data: deleted, error: deleteError } = await admin
-    .from("voice_recordings")
-    .delete()
-    .eq("id", recording.id)
+    .select("id")
     .eq("created_by", authorization.userId)
     .eq("status", "cancelling")
-    .select("id")
-    .maybeSingle();
+    .order("created_at", { ascending: true })
+    .limit(50);
 
-  if (deleteError || !deleted) {
-    console.error("Voice recording cancellation failed", {
-      stage: "metadata-delete",
-      code: deleteError?.code,
-      message: deleteError?.message ?? "Cancellation metadata row was not deleted",
+  if (queueError) {
+    console.error("Voice recording cleanup queue load failed", {
+      code: queueError.code,
+      message: queueError.message,
     });
-    return { ok: false, error: "cancel-failed" };
+    return { ok: false as const, cleaned: 0, failed: 0 };
   }
 
-  return { ok: true };
+  let cleaned = 0;
+  let failed = 0;
+  for (const recording of queued ?? []) {
+    const result = await cancelVoiceRecordingById(
+      admin,
+      authorization.userId,
+      recording.id,
+    );
+    if (result.ok) cleaned += 1;
+    else failed += 1;
+  }
+
+  return failed > 0
+    ? { ok: false as const, cleaned, failed }
+    : { ok: true as const, cleaned, failed: 0 };
 }
