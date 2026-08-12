@@ -54,7 +54,7 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
               المسودات المحفوظة
             </h2>
             <p className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-              كل المسودات المحفوظة تظل قابلة للوصول والنشر بعد تحديث الصفحة أو العودة لاحقاً، ويمكن مراجعتها وتعديلها وإعادة تصنيفها من مركز عقل إسلام.
+              المسودة الجديدة غير المعدلة يمكن نشرها مباشرة. بعد أي تعديل أو إعادة تصنيف من مركز المراجعة، تصبح المسودة جزءاً من مسار المراجعة ولا يمكن نشر نسخة قديمة منها من هنا.
             </p>
           </div>
 
@@ -70,20 +70,29 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
                       {draft.title}
                     </h3>
                     <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                      {draft.semanticLayer} · {draft.itemType} · priority {draft.priority}
+                      {draft.semanticLayer} · {draft.itemType} · priority {draft.priority} · v{draft.versionNumber}
                     </p>
                   </div>
 
-                  <form action={publishTeachEslamDraftAction} className="mt-3 shrink-0 sm:mt-0">
-                    <input type="hidden" name="item_id" value={draft.id} />
-                    <input type="hidden" name="version_number" value={draft.versionNumber} />
-                    <button
-                      type="submit"
-                      className="min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-2 text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)] sm:w-auto"
+                  {draft.directPublishEligible ? (
+                    <form action={publishTeachEslamDraftAction} className="mt-3 shrink-0 sm:mt-0">
+                      <input type="hidden" name="item_id" value={draft.id} />
+                      <input type="hidden" name="version_number" value={draft.versionNumber} />
+                      <button
+                        type="submit"
+                        className="min-h-11 w-full rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-2 text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)] sm:w-auto"
+                      >
+                        نشر الآن
+                      </button>
+                    </form>
+                  ) : (
+                    <Link
+                      href="/admin/brain?status=draft&page=1"
+                      className="mt-3 min-h-11 shrink-0 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-center text-sm font-semibold text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)] sm:mt-0"
                     >
-                      نشر الآن
-                    </button>
-                  </form>
+                      راجع النسخة المعدلة
+                    </Link>
+                  )}
                 </article>
               ))}
             </div>
