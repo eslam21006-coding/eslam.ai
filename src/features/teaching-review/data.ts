@@ -49,6 +49,19 @@ export type TeachingReviewPage = {
   counts: Record<TeachingLifecycleStatus, number>;
 };
 
+type AdminClient = ReturnType<typeof getSupabaseAdminClient>;
+type LineageRow = {
+  id: string;
+  brain_item_id: string;
+  version_number: number;
+  teaching_item_id: string;
+  source_locator: Json;
+  created_at: string;
+};
+
+const LINEAGE_BATCH_SIZE = 500;
+const ID_QUERY_CHUNK_SIZE = 200;
+
 function logReviewLoadError(stage: string, error: { code?: string; message?: string } | null) {
   console.error("Teaching review load failed", {
     stage,
@@ -59,6 +72,14 @@ function logReviewLoadError(stage: string, error: { code?: string; message?: str
 
 function emptyCounts(): Record<TeachingLifecycleStatus, number> {
   return { draft: 0, approved: 0, published: 0, archived: 0 };
+}
+
+function chunks<T>(values: T[], size: number) {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
 }
 
 async function loadStatusCounts(userId: string) {
@@ -78,6 +99,75 @@ async function loadStatusCounts(userId: string) {
   );
 
   return Object.fromEntries(results) as Record<TeachingLifecycleStatus, number>;
+}
+
+async function loadLatestVersions(admin: AdminClient, itemIds: string[]) {
+  const results = await Promise.all(
+    itemIds.map(async (itemId) => {
+      const { data, error } = await admin
+        .from("eslam_brain_versions")
+        .select("item_id,version_number,title,content,summary,topics,change_note,created_at")
+        .eq("item_id", itemId)
+        .order("version_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      return { itemId, data, error };
+    }),
+  );
+
+  const latestVersionByItem = new Map<string, TeachingReviewVersion>();
+  let failed = false;
+
+  for (const result of results) {
+    if (result.error) {
+      logReviewLoadError(`latest-version:${result.itemId}`, result.error);
+      failed = true;
+      continue;
+    }
+    if (!result.data) continue;
+    latestVersionByItem.set(result.itemId, {
+      versionNumber: result.data.version_number,
+      title: result.data.title,
+      content: result.data.content,
+      summary: result.data.summary,
+      topics: result.data.topics,
+      changeNote: result.data.change_note,
+      createdAt: result.data.created_at,
+    });
+  }
+
+  return { latestVersionByItem, failed };
+}
+
+async function loadExactVersionLineage(
+  admin: AdminClient,
+  brainItemId: string,
+  versionNumber: number,
+): Promise<{ rows: LineageRow[]; failed: boolean }> {
+  const rows: LineageRow[] = [];
+
+  for (let from = 0; ; from += LINEAGE_BATCH_SIZE) {
+    const { data, error } = await admin
+      .from("teaching_versions")
+      .select("id,brain_item_id,version_number,teaching_item_id,source_locator,created_at")
+      .eq("brain_item_id", brainItemId)
+      .eq("version_number", versionNumber)
+      .order("teaching_item_id", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + LINEAGE_BATCH_SIZE - 1);
+
+    if (error) {
+      logReviewLoadError(`lineage:${brainItemId}:v${versionNumber}`, error);
+      return { rows: [], failed: true };
+    }
+
+    const batch = (data ?? []) as LineageRow[];
+    rows.push(...batch);
+    if (batch.length < LINEAGE_BATCH_SIZE) break;
+  }
+
+  return { rows, failed: false };
 }
 
 export async function loadTeachingReviewPage(
@@ -126,77 +216,61 @@ export async function loadTeachingReviewPage(
   const pageRows = rows.slice(0, TEACHING_REVIEW_PAGE_SIZE);
   const itemIds = pageRows.map((item) => item.id);
 
-  const { data: versionRows, error: versionsError } = await admin
-    .from("eslam_brain_versions")
-    .select("item_id,version_number,title,content,summary,topics,change_note,created_at")
-    .in("item_id", itemIds)
-    .order("version_number", { ascending: false });
+  const { latestVersionByItem, failed: versionsFailed } = await loadLatestVersions(admin, itemIds);
+  if (versionsFailed) return emptyPage();
 
-  if (versionsError) {
-    logReviewLoadError("versions", versionsError);
-    return emptyPage();
-  }
-
-  const latestVersionByItem = new Map<string, TeachingReviewVersion>();
-  for (const version of versionRows ?? []) {
-    const existing = latestVersionByItem.get(version.item_id);
-    if (existing && existing.versionNumber >= version.version_number) continue;
-    latestVersionByItem.set(version.item_id, {
-      versionNumber: version.version_number,
-      title: version.title,
-      content: version.content,
-      summary: version.summary,
-      topics: version.topics,
-      changeNote: version.change_note,
-      createdAt: version.created_at,
-    });
-  }
-
-  const { data: lineageRows, error: lineageError } = await admin
-    .from("teaching_versions")
-    .select("brain_item_id,version_number,teaching_item_id,source_locator,created_at")
-    .in("brain_item_id", itemIds);
-
-  if (lineageError) {
-    logReviewLoadError("teaching_versions", lineageError);
-    return emptyPage();
-  }
-
-  const relevantLineage = (lineageRows ?? []).filter(
-    (row) => latestVersionByItem.get(row.brain_item_id)?.versionNumber === row.version_number,
+  const lineageResults = await Promise.all(
+    itemIds.map(async (itemId) => {
+      const latestVersion = latestVersionByItem.get(itemId);
+      if (!latestVersion) return { rows: [] as LineageRow[], failed: false };
+      return loadExactVersionLineage(admin, itemId, latestVersion.versionNumber);
+    }),
   );
+
+  if (lineageResults.some((result) => result.failed)) return emptyPage();
+  const relevantLineage = lineageResults.flatMap((result) => result.rows);
   const teachingItemIds = Array.from(new Set(relevantLineage.map((row) => row.teaching_item_id)));
 
-  const { data: teachingItems, error: teachingItemsError } = teachingItemIds.length
-    ? await admin
-        .from("teaching_items")
-        .select("id,source_id,brain_item_id")
-        .in("id", teachingItemIds)
-    : { data: [], error: null };
+  const teachingItemResults = teachingItemIds.length
+    ? await Promise.all(
+        chunks(teachingItemIds, ID_QUERY_CHUNK_SIZE).map((ids) =>
+          admin.from("teaching_items").select("id,source_id,brain_item_id").in("id", ids).limit(ids.length),
+        ),
+      )
+    : [];
 
-  if (teachingItemsError) {
-    logReviewLoadError("teaching_items", teachingItemsError);
+  if (teachingItemResults.some((result) => result.error)) {
+    const failure = teachingItemResults.find((result) => result.error);
+    logReviewLoadError("teaching_items", failure?.error ?? null);
     return emptyPage();
   }
 
+  const teachingItems = teachingItemResults.flatMap((result) => result.data ?? []);
   const sourceIdByTeachingItem = new Map(
-    (teachingItems ?? []).map((item) => [item.id, item.source_id] as const),
+    teachingItems.map((item) => [item.id, item.source_id] as const),
   );
   const sourceIds = Array.from(new Set(Array.from(sourceIdByTeachingItem.values())));
 
-  const { data: sources, error: sourcesError } = sourceIds.length
-    ? await admin
-        .from("teaching_sources")
-        .select("id,source_type,title,source_uri,source_metadata,created_at")
-        .in("id", sourceIds)
-    : { data: [], error: null };
+  const sourceResults = sourceIds.length
+    ? await Promise.all(
+        chunks(sourceIds, ID_QUERY_CHUNK_SIZE).map((ids) =>
+          admin
+            .from("teaching_sources")
+            .select("id,source_type,title,source_uri,source_metadata,created_at")
+            .in("id", ids)
+            .limit(ids.length),
+        ),
+      )
+    : [];
 
-  if (sourcesError) {
-    logReviewLoadError("teaching_sources", sourcesError);
+  if (sourceResults.some((result) => result.error)) {
+    const failure = sourceResults.find((result) => result.error);
+    logReviewLoadError("teaching_sources", failure?.error ?? null);
     return emptyPage();
   }
 
-  const sourceById = new Map((sources ?? []).map((source) => [source.id, source] as const));
+  const sources = sourceResults.flatMap((result) => result.data ?? []);
+  const sourceById = new Map(sources.map((source) => [source.id, source] as const));
   const sourcesByBrainItem = new Map<string, TeachingReviewSource[]>();
 
   for (const lineage of relevantLineage) {
