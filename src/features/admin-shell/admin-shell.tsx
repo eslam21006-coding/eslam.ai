@@ -4,8 +4,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, type ReactNode } from "react";
 
-import { logoutAction } from "@/features/auth/actions";
 import { adminNavigation } from "@/features/admin-shell/navigation";
+import {
+  closeAdminMobileMenu,
+  handleAdminMenuCancel,
+  isAdminNavigationActive,
+  openAdminMobileMenu,
+} from "@/features/admin-shell/runtime";
+import { logoutAction } from "@/features/auth/actions";
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
@@ -24,7 +30,7 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
       <nav aria-label="تنقل الإدارة" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
         <div className="grid gap-1">
           {adminNavigation.map((item) => {
-            const active = pathname === item.href;
+            const active = isAdminNavigationActive(pathname, item.href);
             return (
               <Link
                 key={item.href}
@@ -69,14 +75,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const mobileMenuRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
-    if (mobileMenuRef.current?.open) mobileMenuRef.current.close();
+    closeAdminMobileMenu(mobileMenuRef.current);
   }, [pathname]);
 
   useEffect(() => {
     const desktopBreakpoint = window.matchMedia("(min-width: 64rem)");
     const closeAtDesktop = () => {
-      if (desktopBreakpoint.matches && mobileMenuRef.current?.open) {
-        mobileMenuRef.current.close();
+      if (desktopBreakpoint.matches) {
+        closeAdminMobileMenu(mobileMenuRef.current);
       }
     };
 
@@ -85,8 +91,8 @@ export function AdminShell({ children }: { children: ReactNode }) {
     return () => desktopBreakpoint.removeEventListener("change", closeAtDesktop);
   }, []);
 
-  const openMobileMenu = () => mobileMenuRef.current?.showModal();
-  const closeMobileMenu = () => mobileMenuRef.current?.close();
+  const openMobileMenu = () => openAdminMobileMenu(mobileMenuRef.current);
+  const closeMobileMenu = () => closeAdminMobileMenu(mobileMenuRef.current);
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
@@ -97,6 +103,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
       <dialog
         ref={mobileMenuRef}
         aria-label="قائمة الإدارة"
+        onCancel={(event) =>
+          handleAdminMenuCancel(mobileMenuRef.current, () => event.preventDefault())
+        }
         className="fixed inset-y-0 right-0 m-0 h-dvh max-h-none w-[min(20rem,88vw)] max-w-none border-0 border-l border-[var(--border)] bg-[var(--surface)] p-0 text-[var(--foreground)] shadow-[var(--shadow-soft)] backdrop:bg-black/75 lg:hidden"
       >
         <div className="relative h-full">
