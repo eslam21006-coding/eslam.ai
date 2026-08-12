@@ -11,6 +11,9 @@ const schemaMigration = readSource(
 const indexMigration = readSource(
   "supabase/migrations/20260812060949_index_eslam_brain_foreign_keys.sql",
 );
+const hardeningMigration = readSource(
+  "supabase/migrations/20260812061925_harden_eslam_brain_provenance_privileges.sql",
+);
 
 test("Eslam Brain canonical model enforces semantic layers, teaching types, and lifecycle", () => {
   assert.match(schemaMigration, /create table public\.eslam_brain_items/);
@@ -39,7 +42,7 @@ test("Eslam Brain versions are immutable and published pointers reference real v
   assert.match(schemaMigration, /char_length\(btrim\(content\)\) between 1 and 16000/);
 });
 
-test("Eslam Brain is server-only with append-only version privileges", () => {
+test("final Brain privileges are server-only and column-scoped", () => {
   assert.match(
     schemaMigration,
     /revoke all on table public\.eslam_brain_items from public, anon, authenticated, service_role/,
@@ -48,17 +51,31 @@ test("Eslam Brain is server-only with append-only version privileges", () => {
     schemaMigration,
     /revoke all on table public\.eslam_brain_versions from public, anon, authenticated, service_role/,
   );
+  assert.match(hardeningMigration, /revoke all on table public\.eslam_brain_items from service_role/);
+  assert.match(hardeningMigration, /grant select on table public\.eslam_brain_items to service_role/);
   assert.match(
-    schemaMigration,
-    /grant select, insert, update on table public\.eslam_brain_items to service_role/,
+    hardeningMigration,
+    /grant insert \([\s\S]*semantic_layer[\s\S]*created_by[\s\S]*\) on public\.eslam_brain_items to service_role/,
   );
   assert.match(
-    schemaMigration,
-    /grant select, insert on table public\.eslam_brain_versions to service_role/,
+    hardeningMigration,
+    /grant update \([\s\S]*semantic_layer[\s\S]*published_version_number[\s\S]*\) on public\.eslam_brain_items to service_role/,
   );
-  assert.doesNotMatch(schemaMigration, /grant delete on table public\.eslam_brain/);
+  assert.match(hardeningMigration, /grant select on table public\.eslam_brain_versions to service_role/);
+  assert.match(
+    hardeningMigration,
+    /grant insert \([\s\S]*item_id[\s\S]*content[\s\S]*created_by[\s\S]*\) on public\.eslam_brain_versions to service_role/,
+  );
+  assert.doesNotMatch(hardeningMigration, /grant update .*eslam_brain_versions/i);
+  assert.doesNotMatch(hardeningMigration, /grant delete .*eslam_brain/i);
   assert.match(schemaMigration, /alter table public\.eslam_brain_items enable row level security/);
   assert.match(schemaMigration, /alter table public\.eslam_brain_versions enable row level security/);
+});
+
+test("immutable version provenance survives Auth-user deletion", () => {
+  assert.match(schemaMigration, /created_by uuid references auth\.users\(id\) on delete set null/);
+  assert.match(hardeningMigration, /drop constraint eslam_brain_versions_created_by_fkey/);
+  assert.match(hardeningMigration, /drop index public\.eslam_brain_versions_created_by_idx/);
 });
 
 test("Eslam Brain foreign keys and published retrieval have covering indexes", () => {
@@ -70,17 +87,20 @@ test("Eslam Brain foreign keys and published retrieval have covering indexes", (
   assert.match(indexMigration, /eslam_brain_versions_created_by_idx/);
 });
 
-test("runtime database regression executes the immutable server-only brain contract in CI", () => {
+test("runtime database regression executes the final immutable server-only brain contract in CI", () => {
   const runtime = readSource("supabase/tests/eslam_brain_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
 
   assert.match(runtime, /client role unexpectedly has direct Eslam Brain access/);
-  assert.match(runtime, /service_role item privileges do not match the Task 13 contract/);
-  assert.match(runtime, /service_role version privileges do not match the immutable history contract/);
+  assert.match(runtime, /service_role item table privileges do not match the column-scoped contract/);
+  assert.match(runtime, /service_role item column privileges do not match the Task 13 contract/);
+  assert.match(runtime, /service_role version table privileges do not match the immutable history contract/);
+  assert.match(runtime, /service_role version insert columns do not match the immutable history contract/);
   assert.match(runtime, /published Eslam Brain item did not resolve deterministically/);
   assert.match(runtime, /nonexistent published version unexpectedly succeeded/);
   assert.match(runtime, /immutable brain version trigger did not reject UPDATE/);
   assert.match(runtime, /immutable brain version trigger did not reject DELETE/);
+  assert.match(runtime, /immutable version creator provenance was not preserved after Auth user deletion/);
   assert.match(ci, /supabase\/tests\/eslam_brain_runtime\.sql/);
 });
 
