@@ -1,6 +1,7 @@
-export const VOICE_TRANSCRIPTION_LEASE_SECONDS = 360;
+export const VOICE_TRANSCRIPTION_LEASE_SECONDS = 420;
 export const VOICE_TRANSCRIPTION_MAX_TEXT_LENGTH = 250_000;
 export const VOICE_TRANSCRIPTION_MAX_AUDIO_BYTES = 25 * 1024 * 1024;
+export const VOICE_TRANSCRIPTION_DEFAULT_MODEL = "gpt-4o-transcribe";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -24,6 +25,10 @@ export type VoiceTranscriptionActionResult =
         | "transcription-failed"
         | "finalize-conflict";
     };
+
+export function resolveVoiceTranscriptionModel(value: string | undefined) {
+  return value?.trim() || VOICE_TRANSCRIPTION_DEFAULT_MODEL;
+}
 
 export function validateVoiceTranscriptionInput(input: unknown) {
   if (!input || typeof input !== "object") return null;
