@@ -9,7 +9,8 @@ export type TeachEslamDraftSummary = {
   semanticLayer: string;
   itemType: string;
   priority: number;
-  versionNumber: 1;
+  versionNumber: number;
+  directPublishEligible: boolean;
 };
 
 export type TeachEslamDraftPage = {
@@ -60,34 +61,51 @@ export async function loadTeachEslamDrafts(page = 1): Promise<TeachEslamDraftPag
 
   const hasNextPage = rows.length > TEACH_ESLAM_DRAFT_PAGE_SIZE;
   const items = rows.slice(0, TEACH_ESLAM_DRAFT_PAGE_SIZE);
-  const itemIds = items.map((item) => item.id);
-  const { data: versions, error: versionsError } = await admin
-    .from("eslam_brain_versions")
-    .select("item_id,version_number,title")
-    .in("item_id", itemIds)
-    .eq("version_number", 1);
 
-  if (versionsError) {
-    logDraftLoadError("versions", versionsError);
-    return emptyPage();
-  }
+  const versionResults = await Promise.all(
+    items.map(async (item) => {
+      const { data, error } = await admin
+        .from("eslam_brain_versions")
+        .select("item_id,version_number,title")
+        .eq("item_id", item.id)
+        .order("version_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-  const titleByItemId = new Map(
-    (versions ?? []).map((version) => [version.item_id, version.title] as const),
+      return { itemId: item.id, data, error };
+    }),
   );
 
+  const latestVersionByItemId = new Map<
+    string,
+    { versionNumber: number; title: string }
+  >();
+
+  for (const result of versionResults) {
+    if (result.error) {
+      logDraftLoadError(`version:${result.itemId}`, result.error);
+      continue;
+    }
+    if (!result.data) continue;
+    latestVersionByItemId.set(result.itemId, {
+      versionNumber: result.data.version_number,
+      title: result.data.title,
+    });
+  }
+
   const drafts = items.flatMap((item) => {
-    const title = titleByItemId.get(item.id);
-    if (!title) return [];
+    const latestVersion = latestVersionByItemId.get(item.id);
+    if (!latestVersion) return [];
 
     return [
       {
         id: item.id,
-        title,
+        title: latestVersion.title,
         semanticLayer: item.semantic_layer,
         itemType: item.item_type,
         priority: item.priority,
-        versionNumber: 1 as const,
+        versionNumber: latestVersion.versionNumber,
+        directPublishEligible: latestVersion.versionNumber === 1,
       },
     ];
   });
