@@ -116,6 +116,97 @@ export type Database = {
         }
         Relationships: []
       }
+      eslam_brain_items: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          item_type: string
+          priority: number
+          published_version_number: number | null
+          semantic_layer: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_type: string
+          priority?: number
+          published_version_number?: number | null
+          semantic_layer: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_type?: string
+          priority?: number
+          published_version_number?: number | null
+          semantic_layer?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eslam_brain_items_published_version_fk"
+            columns: ["id", "published_version_number"]
+            isOneToOne: false
+            referencedRelation: "eslam_brain_versions"
+            referencedColumns: ["item_id", "version_number"]
+          },
+        ]
+      }
+      eslam_brain_versions: {
+        Row: {
+          change_note: string | null
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          item_id: string
+          summary: string | null
+          title: string
+          topics: string[]
+          version_number: number
+        }
+        Insert: {
+          change_note?: string | null
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_id: string
+          summary?: string | null
+          title: string
+          topics?: string[]
+          version_number: number
+        }
+        Update: {
+          change_note?: string | null
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          item_id?: string
+          summary?: string | null
+          title?: string
+          topics?: string[]
+          version_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "eslam_brain_versions_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "eslam_brain_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           content: string

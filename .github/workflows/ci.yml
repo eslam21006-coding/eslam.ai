@@ -88,7 +88,8 @@ jobs:
           for regression in \
             supabase/tests/business_dna_rls_runtime.sql \
             supabase/tests/conversations_rls_runtime.sql \
-            supabase/tests/admin_authorization_runtime.sql; do
+            supabase/tests/admin_authorization_runtime.sql \
+            supabase/tests/eslam_brain_runtime.sql; do
             echo "Running $regression"
             docker exec --interactive "$container_name" \
               psql --set ON_ERROR_STOP=1 --username postgres \
