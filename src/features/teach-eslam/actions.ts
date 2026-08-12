@@ -26,6 +26,12 @@ export const INITIAL_TEACH_ESLAM_ACTION_STATE: TeachEslamActionState = {
   created: null,
 };
 
+type DraftRpcError = { code?: string; message: string };
+type CreateDraftRpc = (
+  functionName: "create_eslam_brain_draft",
+  args: { p_payload: Json },
+) => PromiseLike<{ data: string | null; error: DraftRpcError | null }>;
+
 function readText(formData: FormData, name: keyof TeachEslamValues) {
   const value = formData.get(name);
   return typeof value === "string" ? value : "";
@@ -83,7 +89,8 @@ export async function createTeachEslamDraftAction(
   };
 
   const admin = getSupabaseAdminClient();
-  const { data, error } = await admin.rpc("create_eslam_brain_draft", {
+  const createDraftRpc = admin.rpc.bind(admin) as unknown as CreateDraftRpc;
+  const { data, error } = await createDraftRpc("create_eslam_brain_draft", {
     p_payload: payload,
   });
 
