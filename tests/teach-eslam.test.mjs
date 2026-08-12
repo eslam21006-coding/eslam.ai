@@ -64,6 +64,7 @@ test("Teach Eslam rejects invalid enums, lengths, topics, and priority", async (
 
 test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   const actions = readSource("src/features/teach-eslam/actions.ts");
+  const data = readSource("src/features/teach-eslam/data.ts");
   const form = readSource("src/features/teach-eslam/teach-eslam-form.tsx");
   const page = readSource("src/app/admin/teach/page.tsx");
   const navigation = readSource("src/features/admin-shell/navigation.ts");
@@ -75,9 +76,36 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(actions, /status: "published", published_version_number: versionNumber/);
   assert.match(actions, /\.eq\("created_by", authorization\.userId\)/);
   assert.match(actions, /\.eq\("status", "draft"\)/);
+
+  assert.match(data, /^import "server-only";/);
+  assert.match(data, /requireAdmin\(\)/);
+  assert.match(data, /getSupabaseAdminClient\(\)/);
+  assert.match(data, /\.eq\("created_by", authorization\.userId\)/);
+  assert.match(data, /\.eq\("status", "draft"\)/);
+  assert.match(data, /\.eq\("version_number", 1\)/);
+  assert.match(data, /MAX_RECENT_TEACH_ESLAM_DRAFTS = 20/);
+
   assert.doesNotMatch(form, /service_role|SUPABASE_SERVICE_ROLE|createClient\(/i);
   assert.match(page, />\s*Teach Eslam\s*</);
+  assert.match(page, /loadTeachEslamDrafts\(\)/);
+  assert.match(page, /drafts\.map/);
+  assert.match(page, /action=\{publishTeachEslamDraftAction\}/);
+  assert.match(page, /name="item_id" value=\{draft\.id\}/);
+  assert.match(page, /name="version_number" value=\{draft\.versionNumber\}/);
   assert.match(navigation, /label: "Teach Eslam"/);
+});
+
+test("Teach Eslam persisted drafts remain publishable after navigation", () => {
+  const data = readSource("src/features/teach-eslam/data.ts");
+  const page = readSource("src/app/admin/teach/page.tsx");
+
+  assert.match(data, /from\("eslam_brain_items"\)/);
+  assert.match(data, /from\("eslam_brain_versions"\)/);
+  assert.match(data, /\.order\("created_at", \{ ascending: false \}\)/);
+  assert.match(data, /\.limit\(MAX_RECENT_TEACH_ESLAM_DRAFTS\)/);
+  assert.match(page, /المسودات المحفوظة/);
+  assert.match(page, /تظل قابلة للنشر بعد تحديث الصفحة أو العودة لاحقاً/);
+  assert.match(page, /publishTeachEslamDraftAction/);
 });
 
 test("Teach Eslam draft RPC is transactional and client-inaccessible", () => {
@@ -108,6 +136,7 @@ test("Task 15 remains text-authoring only", () => {
   const sources = [
     readSource("src/features/teach-eslam/core.ts"),
     readSource("src/features/teach-eslam/actions.ts"),
+    readSource("src/features/teach-eslam/data.ts"),
     readSource("src/features/teach-eslam/teach-eslam-form.tsx"),
     readSource("src/app/admin/teach/page.tsx"),
   ].join("\n");
