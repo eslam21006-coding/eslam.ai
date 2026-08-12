@@ -4,27 +4,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  EMPTY_TEACH_ESLAM_VALUES,
+  type TeachEslamActionState,
   type TeachEslamValues,
   validateTeachEslamDraft,
 } from "@/features/teach-eslam/core";
 import { requireAdmin } from "@/lib/auth/admin";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
-
-export type TeachEslamActionState = {
-  error: "invalid_input" | "save_failed" | null;
-  revision: number;
-  values: TeachEslamValues;
-  created: { itemId: string; title: string; versionNumber: 1 } | null;
-};
-
-export const INITIAL_TEACH_ESLAM_ACTION_STATE: TeachEslamActionState = {
-  error: null,
-  revision: 0,
-  values: EMPTY_TEACH_ESLAM_VALUES,
-  created: null,
-};
 
 function readText(formData: FormData, name: keyof TeachEslamValues) {
   const value = formData.get(name);
