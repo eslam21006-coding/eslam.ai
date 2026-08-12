@@ -1,7 +1,7 @@
 export const VOICE_RECORDING_BUCKET = "eslam-voice-recordings";
 export const VOICE_RECORDING_MAX_BYTES = 25 * 1024 * 1024;
 export const VOICE_RECORDING_MAX_DURATION_MS = 60 * 60 * 1000;
-export const VOICE_RECORDING_AUDIO_BITS_PER_SECOND = 64_000;
+export const VOICE_RECORDING_AUDIO_BITS_PER_SECOND = 48_000;
 
 export const VOICE_RECORDING_MIME_TYPES = [
   "audio/webm",
