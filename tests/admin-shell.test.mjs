@@ -120,13 +120,13 @@ test("admin navigation reports exactly one matching active route", () => {
   assert.equal(isAdminNavigationActive("/admin/users/other", "/admin/users"), false);
 });
 
-test("admin navigation exposes the full Task 12 information architecture only", () => {
+test("admin navigation preserves the Task 12 information architecture with the Task 15 Teach Eslam destination", () => {
   assert.deepEqual(
     adminNavigation.map((item) => item.label),
     [
       "المستخدمون",
       "المحادثات",
-      "علّم إسلام",
+      "Teach Eslam",
       "ذاكرة إسلام",
       "عقل إسلام",
       "معرفة إسلام",
@@ -160,7 +160,7 @@ test("production admin shell wires the tested runtime behaviors", () => {
   assert.match(layout, /<AdminShell>\{children\}<\/AdminShell>/);
 });
 
-test("admin home and section destinations stay presentation-only", () => {
+test("admin home and generic section destinations stay presentation-only", () => {
   const home = readSource("src/app/admin/page.tsx");
   const section = readSource("src/app/admin/[section]/page.tsx");
 
