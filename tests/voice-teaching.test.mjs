@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 
 const readSource = (relativePath) =>
@@ -192,7 +192,7 @@ test("voice teaching page paginates saved sources and only reviews completed tra
   assert.doesNotMatch(workbench, /publish_eslam_brain_draft_direct|review_eslam_brain_item/);
 });
 
-test("voice teaching migrations preserve service-only audit lineage and coding deployments stay paused", () => {
+test("voice teaching migrations preserve service-only audit lineage and release deployments stay enabled", () => {
   const baseMigration = readSource(
     "supabase/migrations/20260812195918_create_voice_teaching_workflow.sql",
   );
@@ -203,7 +203,7 @@ test("voice teaching migrations preserve service-only audit lineage and coding d
     "supabase/migrations/20260812203202_harden_voice_teaching_audit_indexes.sql",
   );
   const ci = readSource(".github/workflows/ci.yml");
-  const vercel = JSON.parse(readSource("vercel.json"));
+  const vercelUrl = new URL("../vercel.json", import.meta.url);
   const env = readSource(".env.example");
 
   assert.match(baseMigration, /create table public\.voice_teaching_extractions/);
@@ -219,7 +219,10 @@ test("voice teaching migrations preserve service-only audit lineage and coding d
   assert.match(hardeningMigration, /prevent_completed_voice_teaching_extraction_delete/);
   assert.match(ci, /voice_teaching_runtime\.sql/);
   assert.match(ci, /voice_teaching_audit_runtime\.sql/);
-  assert.equal(vercel.git.deploymentEnabled, false);
+  if (existsSync(vercelUrl)) {
+    const vercel = JSON.parse(readFileSync(vercelUrl, "utf8"));
+    assert.notEqual(vercel.git?.deploymentEnabled, false);
+  }
   assert.match(env, /# OPENAI_VOICE_TEACHING_MODEL=gpt-5-mini/);
   assert.doesNotMatch(env, /NEXT_PUBLIC_OPENAI/);
 });
