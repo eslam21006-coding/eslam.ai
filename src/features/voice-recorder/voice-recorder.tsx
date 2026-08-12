@@ -374,6 +374,16 @@ export function VoiceRecorder() {
         if (!isMountedRef.current) return;
 
         if (!finalization.ok) {
+          if (finalization.error === "not-found") {
+            cleanupPurposeRef.current = "discard-local";
+            setPendingIntent(null);
+            setStatus("preview");
+            setMessage(
+              "انتهت محاولة الحفظ السابقة. التسجيل المحلي ما زال محفوظاً ويمكنك الضغط على حفظ التسجيل لإنشاء محاولة رفع جديدة.",
+            );
+            return;
+          }
+
           setPendingIntent(intent);
           setStatus("finalize-error");
           setMessage(
