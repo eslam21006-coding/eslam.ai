@@ -11,7 +11,7 @@ const importSource = (relativePath) =>
 const migrationPath =
   "supabase/migrations/20260812151341_create_teaching_review_workflow.sql";
 const hardeningMigrationPath =
-  "supabase/migrations/20260812160000_harden_teaching_review_workflow.sql";
+  "supabase/migrations/20260812160453_harden_teaching_review_workflow.sql";
 
 test("Task 17 review filter contract defaults safely", async () => {
   const {
