@@ -10,18 +10,21 @@ const importSource = (relativePath) =>
 
 const validRecordingId = "11111111-1111-4111-8111-111111111111";
 
-test("voice transcription validates recording ids and lease state", async () => {
+test("voice transcription validates ids, lease state, and model resolution", async () => {
   const {
     VOICE_TRANSCRIPTION_LEASE_SECONDS,
     VOICE_TRANSCRIPTION_MAX_AUDIO_BYTES,
     VOICE_TRANSCRIPTION_MAX_TEXT_LENGTH,
     isVoiceTranscriptionLeaseActive,
+    resolveVoiceTranscriptionModel,
     validateVoiceTranscriptionInput,
   } = await importSource("src/features/voice-transcription/core.ts");
 
-  assert.equal(VOICE_TRANSCRIPTION_LEASE_SECONDS, 360);
+  assert.equal(VOICE_TRANSCRIPTION_LEASE_SECONDS, 420);
   assert.equal(VOICE_TRANSCRIPTION_MAX_AUDIO_BYTES, 25 * 1024 * 1024);
   assert.equal(VOICE_TRANSCRIPTION_MAX_TEXT_LENGTH, 250_000);
+  assert.equal(resolveVoiceTranscriptionModel(undefined), "gpt-4o-transcribe");
+  assert.equal(resolveVoiceTranscriptionModel("  gpt-4o-mini-transcribe  "), "gpt-4o-mini-transcribe");
   assert.deepEqual(validateVoiceTranscriptionInput({ recordingId: validRecordingId }), {
     recordingId: validRecordingId,
   });
@@ -32,9 +35,12 @@ test("voice transcription validates recording ids and lease state", async () => 
   assert.equal(isVoiceTranscriptionLeaseActive(null), false);
 });
 
-test("voice transcription migration provides service-only fenced retry state", () => {
+test("voice transcription migrations provide service-only fenced retry state", () => {
   const migration = readSource(
     "supabase/migrations/20260812191232_create_voice_transcription_workflow.sql",
+  );
+  const hardening = readSource(
+    "supabase/migrations/20260812193219_harden_voice_transcription_lease_validation.sql",
   );
 
   assert.match(migration, /create table public\.voice_transcriptions/);
@@ -61,6 +67,10 @@ test("voice transcription migration provides service-only fenced retry state", (
     migration,
     /grant execute on function public\.claim_voice_transcription\(uuid, uuid, text, integer\) to service_role/,
   );
+  assert.match(
+    hardening,
+    /if p_lease_seconds is null or p_lease_seconds not between 60 and 1800 then/,
+  );
 });
 
 test("transcription action stays admin-only, server-only, and never writes Brain", () => {
@@ -73,15 +83,16 @@ test("transcription action stays admin-only, server-only, and never writes Brain
   assert.match(actions, /\.from\("voice_recordings"\)/);
   assert.match(actions, /\.eq\("created_by", authorization\.userId\)/);
   assert.match(actions, /\.from\(recording\.storage_bucket\)[\s\S]*\.download\(recording\.storage_path\)/);
-  assert.match(actions, /new File\(\[await audioBlob\.arrayBuffer\(\)\]/);
-  assert.match(actions, /audio\.transcriptions\.create/);
-  assert.match(actions, /VOICE_TRANSCRIPTION_PROMPT/);
+  assert.match(actions, /new File\(\[audioBlob\], fileName/);
+  assert.match(actions, /const model = getOpenAITranscriptionModel\(\)/);
+  assert.match(actions, /audio\.transcriptions\.create\(\{[\s\S]*model,[\s\S]*prompt: VOICE_TRANSCRIPTION_PROMPT/);
   assert.match(actions, /\.rpc\(\s*"complete_voice_transcription"/);
   assert.match(actions, /fail_voice_transcription/);
   assert.doesNotMatch(actions, /eslam_brain_items|eslam_brain_versions|teaching_sources/);
-  assert.match(openaiClient, /OPENAI_TRANSCRIPTION_MODEL/);
-  assert.match(openaiClient, /gpt-4o-transcribe/);
-  assert.match(openaiClient, /OPENAI_TRANSCRIPTION_TIMEOUT_MS = 240_000/);
+  assert.match(openaiClient, /^import "server-only";/);
+  assert.match(openaiClient, /resolveVoiceTranscriptionModel\(process\.env\.OPENAI_TRANSCRIPTION_MODEL\)/);
+  assert.match(openaiClient, /OPENAI_TRANSCRIPTION_TIMEOUT_MS = 225_000/);
+  assert.match(openaiClient, /OPENAI_TRANSCRIPTION_MAX_RETRIES = 0/);
 });
 
 test("transcription UI loads owner-scoped source artifacts and exposes safe retry controls", () => {
@@ -95,10 +106,15 @@ test("transcription UI loads owner-scoped source artifacts and exposes safe retr
   assert.match(data, /\.eq\("created_by", userId\)/);
   assert.match(data, /\.eq\("status", "uploaded"\)/);
   assert.match(data, /\.from\("voice_transcriptions"\)/);
+  assert.match(data, /if \(!recording\.uploaded_at \|\| !recording\.size_bytes\) return \[\]/);
+  assert.match(data, /durationMs: recording\.duration_ms \?\? 0/);
   assert.match(data, /isVoiceTranscriptionLeaseActive/);
   assert.match(button, /transcribeVoiceRecordingAction/);
   assert.match(button, /router\.refresh\(\)/);
   assert.match(button, /catch \(error\)/);
+  assert.match(button, /aria-live="polite"/);
+  assert.match(button, /role="status"/);
+  assert.doesNotMatch(button, /\{message \? \(\s*<p[\s\S]*aria-live="polite"/);
   assert.match(list, /التسجيلات المحفوظة/);
   assert.match(list, /transcript/i);
   assert.match(page, /await requireAdmin\(\)/);
@@ -116,8 +132,12 @@ test("transcription UI loads owner-scoped source artifacts and exposes safe retr
 test("voice transcription runtime regression is registered in CI and env config stays server-only", () => {
   const ci = readSource(".github/workflows/ci.yml");
   const env = readSource(".env.example");
+  const runtime = readSource("supabase/tests/voice_transcriptions_runtime.sql");
 
   assert.match(ci, /supabase\/tests\/voice_transcriptions_runtime\.sql/);
   assert.match(env, /OPENAI_TRANSCRIPTION_MODEL=gpt-4o-transcribe/);
   assert.doesNotMatch(env, /NEXT_PUBLIC_OPENAI/);
+  assert.match(runtime, /expired_retry_claim/);
+  assert.match(runtime, /expired processing lease was not reclaimed/);
+  assert.match(runtime, /null transcription lease returned unexpected error/);
 });
