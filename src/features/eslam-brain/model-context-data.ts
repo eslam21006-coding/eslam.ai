@@ -2,6 +2,7 @@ import "server-only";
 
 import {
   buildBoundedEslamBrainContext,
+  ESLAM_BRAIN_SEMANTIC_LAYERS,
   MAX_ESLAM_BRAIN_QUERY_ITEMS,
   resolvePublishedEslamBrainItems,
   type PublishedBrainQueryRow,
@@ -41,21 +42,34 @@ function errorSummary(error: unknown) {
 export async function loadEslamBrainModelContext() {
   try {
     const supabase = getSupabaseAdminClient();
-    const { data, error } = await supabase
-      .from("eslam_brain_items")
-      .select(ESLAM_BRAIN_SELECT)
-      .eq("status", "published")
-      .not("published_version_number", "is", null)
-      .order("priority", { ascending: true })
-      .order("id", { ascending: true })
-      .limit(MAX_ESLAM_BRAIN_QUERY_ITEMS);
+    const layerResults = await Promise.all(
+      ESLAM_BRAIN_SEMANTIC_LAYERS.map(async (semanticLayer) => {
+        const result = await supabase
+          .from("eslam_brain_items")
+          .select(ESLAM_BRAIN_SELECT)
+          .eq("status", "published")
+          .eq("semantic_layer", semanticLayer)
+          .not("published_version_number", "is", null)
+          .order("priority", { ascending: true })
+          .order("id", { ascending: true })
+          .limit(MAX_ESLAM_BRAIN_QUERY_ITEMS);
 
-    if (error) {
-      console.error("eslam_brain model context load failed", errorSummary(error));
+        return { semanticLayer, ...result };
+      }),
+    );
+
+    const failedLayer = layerResults.find(({ error }) => error);
+    if (failedLayer?.error) {
+      console.error("eslam_brain model context load failed", {
+        semanticLayer: failedLayer.semanticLayer,
+        ...errorSummary(failedLayer.error),
+      });
       return null;
     }
 
-    const rows = (data ?? []) as unknown as PublishedBrainQueryRow[];
+    const rows = layerResults.flatMap(
+      ({ data }) => (data ?? []) as unknown as PublishedBrainQueryRow[],
+    );
     return buildBoundedEslamBrainContext(resolvePublishedEslamBrainItems(rows));
   } catch (error) {
     console.error("eslam_brain model context load failed", errorSummary(error));
