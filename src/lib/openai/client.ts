@@ -49,3 +49,7 @@ export function getOpenAIModel() {
 export function getOpenAITranscriptionModel() {
   return resolveVoiceTranscriptionModel(process.env.OPENAI_TRANSCRIPTION_MODEL);
 }
+
+export function getOpenAIVoiceTeachingModel() {
+  return process.env.OPENAI_VOICE_TEACHING_MODEL?.trim() || getOpenAIModel();
+}
