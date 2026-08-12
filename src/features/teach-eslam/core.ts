@@ -50,6 +50,20 @@ export const EMPTY_TEACH_ESLAM_VALUES: TeachEslamValues = {
   priority: "100",
 };
 
+export type TeachEslamActionState = {
+  error: "invalid_input" | "save_failed" | null;
+  revision: number;
+  values: TeachEslamValues;
+  created: { itemId: string; title: string; versionNumber: 1 } | null;
+};
+
+export const INITIAL_TEACH_ESLAM_ACTION_STATE: TeachEslamActionState = {
+  error: null,
+  revision: 0,
+  values: EMPTY_TEACH_ESLAM_VALUES,
+  created: null,
+};
+
 export type ValidTeachEslamDraft = {
   title: string;
   content: string;
