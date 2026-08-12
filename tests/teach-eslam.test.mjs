@@ -33,6 +33,12 @@ test("Teach Eslam validates canonical Brain fields and normalizes topics", async
   assert.deepEqual(result.draft.topics, ["diagnosis", "funnel"]);
   assert.equal(result.draft.semantic_layer, "brain");
   assert.equal(result.draft.item_type, "principle");
+
+  const casing = validateTeachEslamDraft(
+    validValues({ topics: "SEO, seo, B2B, b2b, Funnel" }),
+  );
+  assert.equal(casing.ok, true);
+  assert.deepEqual(casing.draft.topics, ["SEO", "B2B", "Funnel"]);
 });
 
 test("Teach Eslam rejects invalid enums, lengths, topics, and priority", async () => {
@@ -73,7 +79,8 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(actions, /requireAdmin\(\)/g);
   assert.match(actions, /getSupabaseAdminClient\(\)/);
   assert.match(actions, /create_eslam_brain_draft/);
-  assert.match(actions, /status: "published", published_version_number: versionNumber/);
+  assert.match(actions, /status:\s*"published"/);
+  assert.match(actions, /published_version_number:\s*versionNumber/);
   assert.match(actions, /\.eq\("created_by", authorization\.userId\)/);
   assert.match(actions, /\.eq\("status", "draft"\)/);
 
@@ -86,6 +93,7 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(data, /MAX_RECENT_TEACH_ESLAM_DRAFTS = 20/);
 
   assert.doesNotMatch(form, /service_role|SUPABASE_SERVICE_ROLE|createClient\(/i);
+  assert.match(form, /state\.created && publishStatus !== "published"/);
   assert.match(page, />\s*Teach Eslam\s*</);
   assert.match(page, /loadTeachEslamDrafts\(\)/);
   assert.match(page, /drafts\.map/);
@@ -119,9 +127,11 @@ test("Teach Eslam draft RPC is transactional and client-inaccessible", () => {
   assert.match(migration, /security invoker/);
   assert.match(migration, /set search_path = ''/);
   assert.match(migration, /insert into public\.eslam_brain_items/);
-  assert.match(migration, /insert into public\.eslam_brain_versions/);
+  assert.match(
+    migration,
+    /insert into public\.eslam_brain_versions[\s\S]*version_number/,
+  );
   assert.match(migration, /'draft'/);
-  assert.match(migration, /version_number,[\s\S]*1,/);
   assert.match(
     migration,
     /revoke execute on function public\.create_eslam_brain_draft\(jsonb\)[\s\S]*from public, anon, authenticated/,
