@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { formatVoiceBytes, formatVoiceDuration } from "@/features/voice-recorder/core";
 import type { VoiceTranscriptionListItem } from "@/features/voice-transcription/data";
 import { TranscribeButton } from "@/features/voice-transcription/transcribe-button";
@@ -17,7 +19,18 @@ function statusLabel(status: string | null) {
   return "لم يبدأ";
 }
 
-export function VoiceTranscriptionList({ items }: { items: VoiceTranscriptionListItem[] }) {
+/** Renders one paginated page of saved private voice sources and their transcript lifecycle. */
+export function VoiceTranscriptionList({
+  items,
+  page,
+  hasPrevious,
+  hasNext,
+}: {
+  items: VoiceTranscriptionListItem[];
+  page: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+}) {
   return (
     <section
       className="mt-7 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-7"
@@ -33,12 +46,14 @@ export function VoiceTranscriptionList({ items }: { items: VoiceTranscriptionLis
             حوّل أي تسجيل محفوظ إلى transcript للمراجعة. النص الناتج يظل مادة مشتقة من المصدر الصوتي ولا يدخل Brain تلقائياً.
           </p>
         </div>
-        <span className="text-xs text-[var(--foreground-subtle)]">آخر {items.length} تسجيل</span>
+        <span className="text-xs text-[var(--foreground-subtle)]">
+          صفحة {page} · {items.length} تسجيل
+        </span>
       </div>
 
       {items.length === 0 ? (
         <div className="mt-6 rounded-[var(--radius-md)] border border-dashed border-[var(--border)] px-5 py-8 text-center text-sm text-[var(--foreground-muted)]">
-          لا توجد تسجيلات محفوظة بعد. احفظ أول تسجيل وسيظهر هنا.
+          لا توجد تسجيلات في هذه الصفحة.
         </div>
       ) : (
         <div className="mt-6 space-y-4">
@@ -113,6 +128,27 @@ export function VoiceTranscriptionList({ items }: { items: VoiceTranscriptionLis
           ))}
         </div>
       )}
+
+      <nav className="mt-6 flex items-center justify-between gap-3 border-t border-[var(--border)] pt-5" aria-label="صفحات التسجيلات">
+        {hasPrevious ? (
+          <Link
+            href={`/admin/teach/voice?page=${page - 1}`}
+            className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-2 text-sm font-semibold text-[var(--foreground-muted)]"
+          >
+            الصفحة السابقة
+          </Link>
+        ) : (
+          <span />
+        )}
+        {hasNext ? (
+          <Link
+            href={`/admin/teach/voice?page=${page + 1}`}
+            className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] px-4 py-2 text-sm font-semibold text-[var(--gold-bright)]"
+          >
+            الصفحة التالية
+          </Link>
+        ) : null}
+      </nav>
     </section>
   );
 }

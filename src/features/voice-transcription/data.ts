@@ -3,6 +3,8 @@ import "server-only";
 import { isVoiceTranscriptionLeaseActive } from "@/features/voice-transcription/core";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
+export const VOICE_TRANSCRIPTION_PAGE_SIZE = 20;
+
 export type VoiceTranscriptionListItem = {
   recordingId: string;
   uploadedAt: string;
@@ -20,22 +22,44 @@ export type VoiceTranscriptionListItem = {
   canTranscribe: boolean;
 };
 
-/** Loads only the current admin's uploaded voice sources and derived transcript artifacts. */
-export async function loadVoiceTranscriptionList(userId: string) {
+export type VoiceTranscriptionPage = {
+  items: VoiceTranscriptionListItem[];
+  page: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
+};
+
+/** Loads one deterministic page of the current admin's uploaded voice sources and transcript artifacts. */
+export async function loadVoiceTranscriptionList(
+  userId: string,
+  page = 1,
+): Promise<VoiceTranscriptionPage> {
+  const safePage = Number.isInteger(page) && page > 0 ? page : 1;
+  const offset = (safePage - 1) * VOICE_TRANSCRIPTION_PAGE_SIZE;
   const admin = getSupabaseAdminClient();
-  const { data: recordings, error: recordingsError } = await admin
+  const { data: recordingRows, error: recordingsError } = await admin
     .from("voice_recordings")
     .select("id,uploaded_at,duration_ms,size_bytes,mime_type")
     .eq("created_by", userId)
     .eq("status", "uploaded")
     .order("uploaded_at", { ascending: false })
-    .limit(20);
+    .order("id", { ascending: false })
+    .range(offset, offset + VOICE_TRANSCRIPTION_PAGE_SIZE);
 
   if (recordingsError) {
     throw new Error(`Unable to load voice recordings: ${recordingsError.code}`);
   }
 
-  if (!recordings?.length) return [] satisfies VoiceTranscriptionListItem[];
+  const hasNext = (recordingRows?.length ?? 0) > VOICE_TRANSCRIPTION_PAGE_SIZE;
+  const recordings = (recordingRows ?? []).slice(0, VOICE_TRANSCRIPTION_PAGE_SIZE);
+  if (!recordings.length) {
+    return {
+      items: [],
+      page: safePage,
+      hasPrevious: safePage > 1,
+      hasNext: false,
+    };
+  }
 
   const recordingIds = recordings.map((recording) => recording.id);
   const { data: transcriptions, error: transcriptionsError } = await admin
@@ -55,7 +79,7 @@ export async function loadVoiceTranscriptionList(userId: string) {
   );
   const nowMs = Date.now();
 
-  return recordings.flatMap((recording): VoiceTranscriptionListItem[] => {
+  const items = recordings.flatMap((recording): VoiceTranscriptionListItem[] => {
     if (!recording.uploaded_at || !recording.size_bytes) return [];
     const transcription = byRecordingId.get(recording.id) ?? null;
     const canTranscribe =
@@ -83,4 +107,11 @@ export async function loadVoiceTranscriptionList(userId: string) {
       },
     ];
   });
+
+  return {
+    items,
+    page: safePage,
+    hasPrevious: safePage > 1,
+    hasNext,
+  };
 }

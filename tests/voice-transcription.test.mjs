@@ -95,16 +95,18 @@ test("transcription action stays admin-only, server-only, and never writes Brain
   assert.match(openaiClient, /OPENAI_TRANSCRIPTION_MAX_RETRIES = 0/);
 });
 
-test("transcription UI loads owner-scoped source artifacts and exposes safe retry controls", () => {
+test("transcription UI loads paginated owner-scoped source artifacts and exposes safe retry controls", () => {
   const data = readSource("src/features/voice-transcription/data.ts");
   const button = readSource("src/features/voice-transcription/transcribe-button.tsx");
   const list = readSource("src/features/voice-transcription/transcription-list.tsx");
   const page = readSource("src/app/admin/teach/voice/page.tsx");
   const recorderActions = readSource("src/features/voice-recorder/actions.ts");
 
+  assert.match(data, /VOICE_TRANSCRIPTION_PAGE_SIZE = 20/);
   assert.match(data, /\.from\("voice_recordings"\)/);
   assert.match(data, /\.eq\("created_by", userId\)/);
   assert.match(data, /\.eq\("status", "uploaded"\)/);
+  assert.match(data, /\.range\(offset, offset \+ VOICE_TRANSCRIPTION_PAGE_SIZE\)/);
   assert.match(data, /\.from\("voice_transcriptions"\)/);
   assert.match(data, /if \(!recording\.uploaded_at \|\| !recording\.size_bytes\) return \[\]/);
   assert.match(data, /durationMs: recording\.duration_ms \?\? 0/);
@@ -116,9 +118,15 @@ test("transcription UI loads owner-scoped source artifacts and exposes safe retr
   assert.match(button, /role="status"/);
   assert.doesNotMatch(button, /\{message \? \(\s*<p[\s\S]*aria-live="polite"/);
   assert.match(list, /التسجيلات المحفوظة/);
+  assert.match(list, /hasPrevious/);
+  assert.match(list, /hasNext/);
   assert.match(list, /transcript/i);
   assert.match(page, /await requireAdmin\(\)/);
-  assert.match(page, /loadVoiceTranscriptionList\(authorization\.userId\)/);
+  assert.match(page, /requestedPage/);
+  assert.match(
+    page,
+    /loadVoiceTranscriptionList\([\s\S]*authorization\.userId,[\s\S]*requestedPage,[\s\S]*\)/,
+  );
   assert.match(page, /export const maxDuration = 300/);
   assert.match(page, /Task 20/);
   assert.match(recorderActions, /import \{ revalidatePath \} from "next\/cache"/);

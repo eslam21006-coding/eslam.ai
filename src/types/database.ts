@@ -426,6 +426,170 @@ export type Database = {
         }
         Relationships: []
       }
+      voice_teaching_candidate_drafts: {
+        Row: {
+          brain_item_id: string
+          candidate_id: string
+          created_at: string
+          created_by: string
+        }
+        Insert: {
+          brain_item_id: string
+          candidate_id: string
+          created_at?: string
+          created_by: string
+        }
+        Update: {
+          brain_item_id?: string
+          candidate_id?: string
+          created_at?: string
+          created_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_teaching_candidate_drafts_brain_item_id_fkey"
+            columns: ["brain_item_id"]
+            isOneToOne: true
+            referencedRelation: "eslam_brain_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_teaching_candidate_drafts_candidate_id_fkey"
+            columns: ["candidate_id"]
+            isOneToOne: true
+            referencedRelation: "voice_teaching_candidates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_teaching_candidates: {
+        Row: {
+          content: string
+          created_at: string
+          created_by: string
+          extraction_id: string
+          id: string
+          item_type: string
+          ordinal: number
+          priority: number
+          semantic_layer: string
+          source_excerpt: string
+          summary: string | null
+          title: string
+          topics: string[]
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          created_by: string
+          extraction_id: string
+          id?: string
+          item_type: string
+          ordinal: number
+          priority: number
+          semantic_layer: string
+          source_excerpt: string
+          summary?: string | null
+          title: string
+          topics?: string[]
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          created_by?: string
+          extraction_id?: string
+          id?: string
+          item_type?: string
+          ordinal?: number
+          priority?: number
+          semantic_layer?: string
+          source_excerpt?: string
+          summary?: string | null
+          title?: string
+          topics?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_teaching_candidates_extraction_id_fkey"
+            columns: ["extraction_id"]
+            isOneToOne: false
+            referencedRelation: "voice_teaching_extractions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voice_teaching_extractions: {
+        Row: {
+          attempt_count: number
+          claim_token: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          id: string
+          last_error_at: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          model: string
+          processing_started_at: string | null
+          prompt_version: number
+          status: string
+          updated_at: string
+          voice_recording_id: string
+          voice_transcription_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          claim_token?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          last_error_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          model: string
+          processing_started_at?: string | null
+          prompt_version?: number
+          status: string
+          updated_at?: string
+          voice_recording_id: string
+          voice_transcription_id: string
+        }
+        Update: {
+          attempt_count?: number
+          claim_token?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          last_error_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          model?: string
+          processing_started_at?: string | null
+          prompt_version?: number
+          status?: string
+          updated_at?: string
+          voice_recording_id?: string
+          voice_transcription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_teaching_extractions_voice_recording_id_fkey"
+            columns: ["voice_recording_id"]
+            isOneToOne: false
+            referencedRelation: "voice_recordings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_teaching_extractions_voice_transcription_id_fkey"
+            columns: ["voice_transcription_id"]
+            isOneToOne: true
+            referencedRelation: "voice_transcriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voice_transcriptions: {
         Row: {
           attempt_count: number
@@ -506,6 +670,21 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_voice_teaching_extraction: {
+        Args: {
+          p_created_by: string
+          p_lease_seconds?: number
+          p_model: string
+          p_prompt_version?: number
+          p_transcription_id: string
+        }
+        Returns: {
+          attempt_count: number
+          claim_state: string
+          claim_token: string
+          extraction_id: string
+        }[]
+      }
       claim_voice_transcription: {
         Args: {
           p_created_by: string
@@ -520,6 +699,15 @@ export type Database = {
           transcript_text: string
           transcription_id: string
         }[]
+      }
+      complete_voice_teaching_extraction: {
+        Args: {
+          p_candidates: Json
+          p_claim_token: string
+          p_created_by: string
+          p_extraction_id: string
+        }
+        Returns: boolean
       }
       complete_voice_transcription: {
         Args: {
@@ -538,6 +726,23 @@ export type Database = {
       create_eslam_brain_review_version: {
         Args: { p_payload: Json }
         Returns: number
+      }
+      create_voice_teaching_drafts: {
+        Args: {
+          p_candidates: Json
+          p_created_by: string
+          p_extraction_id: string
+        }
+        Returns: Json
+      }
+      fail_voice_teaching_extraction: {
+        Args: {
+          p_claim_token: string
+          p_created_by: string
+          p_error_code: string
+          p_extraction_id: string
+        }
+        Returns: boolean
       }
       fail_voice_transcription: {
         Args: {
