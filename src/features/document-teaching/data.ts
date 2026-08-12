@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getSupabaseAdminClient } from "@/lib/supabase/admin";
+import { getDocumentTeachingAdminClient } from "@/features/document-teaching/database";
 
 export const DOCUMENT_TEACHING_PAGE_SIZE = 20;
 
@@ -28,7 +28,7 @@ export async function loadDocumentTeachingPage(
 ): Promise<DocumentTeachingPage> {
   const safePage = Number.isSafeInteger(page) && page > 0 ? page : 1;
   const offset = (safePage - 1) * DOCUMENT_TEACHING_PAGE_SIZE;
-  const admin = getSupabaseAdminClient();
+  const admin = getDocumentTeachingAdminClient();
   const { data, error } = await admin
     .from("document_teaching_uploads")
     .select("id,source_id,source_title,original_filename,mime_type,size_bytes,uploaded_at")
