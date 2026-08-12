@@ -36,7 +36,7 @@ set local role service_role;
 do $$
 declare
   user_id constant uuid := '22222222-2222-4222-8222-222222222222';
-  item_id uuid;
+  saved_item_id uuid;
   bulk_a uuid;
   bulk_b uuid;
   missing_id uuid := '33333333-3333-4333-8333-333333333333';
@@ -46,7 +46,7 @@ declare
   version_count_before bigint;
   version_count_after bigint;
 begin
-  item_id := public.create_eslam_brain_draft(jsonb_build_object(
+  saved_item_id := public.create_eslam_brain_draft(jsonb_build_object(
     'semantic_layer', 'brain',
     'item_type', 'principle',
     'priority', 100,
@@ -59,7 +59,7 @@ begin
   ));
 
   new_version := public.create_eslam_brain_review_version(jsonb_build_object(
-    'item_id', item_id,
+    'item_id', saved_item_id,
     'created_by', user_id,
     'expected_version_number', 1,
     'semantic_layer', 'cases',
@@ -78,11 +78,11 @@ begin
 
   if not exists (
     select 1
-    from public.eslam_brain_versions
-    where item_id = item_id
-      and version_number = 1
-      and title = 'Task 17 runtime v1'
-      and content = 'Original immutable content'
+    from public.eslam_brain_versions v
+    where v.item_id = saved_item_id
+      and v.version_number = 1
+      and v.title = 'Task 17 runtime v1'
+      and v.content = 'Original immutable content'
   ) then
     raise exception 'review edit mutated or removed version 1';
   end if;
@@ -90,7 +90,7 @@ begin
   if not exists (
     select 1
     from public.eslam_brain_items i
-    where i.id = item_id
+    where i.id = saved_item_id
       and i.status = 'draft'
       and i.semantic_layer = 'cases'
       and i.item_type = 'example'
@@ -108,7 +108,7 @@ begin
      and ti.brain_item_id = tv.brain_item_id
     join public.teaching_sources s
       on s.id = ti.source_id
-    where tv.brain_item_id = item_id
+    where tv.brain_item_id = saved_item_id
       and tv.version_number = 2
       and s.source_type = 'manual_text'
       and s.source_metadata ->> 'entrypoint' = 'teaching_review'
@@ -119,12 +119,12 @@ begin
   end if;
 
   select count(*) into version_count_before
-  from public.eslam_brain_versions
-  where item_id = item_id;
+  from public.eslam_brain_versions v
+  where v.item_id = saved_item_id;
 
   begin
     perform public.create_eslam_brain_review_version(jsonb_build_object(
-      'item_id', item_id,
+      'item_id', saved_item_id,
       'created_by', user_id,
       'expected_version_number', 1,
       'semantic_layer', 'brain',
@@ -140,32 +140,32 @@ begin
   end;
 
   select count(*) into version_count_after
-  from public.eslam_brain_versions
-  where item_id = item_id;
+  from public.eslam_brain_versions v
+  where v.item_id = saved_item_id;
 
   if version_count_after <> version_count_before then
     raise exception 'stale review edit left a partial version behind';
   end if;
 
-  result_status := public.review_eslam_brain_item(item_id, user_id, 'approve', 2);
+  result_status := public.review_eslam_brain_item(saved_item_id, user_id, 'approve', 2);
   if result_status <> 'approved' then
     raise exception 'draft approval failed';
   end if;
 
   if not exists (
     select 1
-    from public.eslam_brain_items
-    where id = item_id
-      and status = 'approved'
-      and approved_version_number = 2
-      and published_version_number is null
+    from public.eslam_brain_items i
+    where i.id = saved_item_id
+      and i.status = 'approved'
+      and i.approved_version_number = 2
+      and i.published_version_number is null
   ) then
     raise exception 'approval did not bind exact version 2';
   end if;
 
   begin
     perform public.create_eslam_brain_review_version(jsonb_build_object(
-      'item_id', item_id,
+      'item_id', saved_item_id,
       'created_by', user_id,
       'expected_version_number', 2,
       'semantic_layer', 'cases',
@@ -180,33 +180,33 @@ begin
       null;
   end;
 
-  result_status := public.review_eslam_brain_item(item_id, user_id, 'publish', 2);
+  result_status := public.review_eslam_brain_item(saved_item_id, user_id, 'publish', 2);
   if result_status <> 'published' then
     raise exception 'approved version publication failed';
   end if;
 
   if not exists (
     select 1
-    from public.eslam_brain_items
-    where id = item_id
-      and status = 'published'
-      and approved_version_number = 2
-      and published_version_number = 2
+    from public.eslam_brain_items i
+    where i.id = saved_item_id
+      and i.status = 'published'
+      and i.approved_version_number = 2
+      and i.published_version_number = 2
   ) then
     raise exception 'publication did not preserve approved version pointer';
   end if;
 
-  result_status := public.review_eslam_brain_item(item_id, user_id, 'archive', 2);
+  result_status := public.review_eslam_brain_item(saved_item_id, user_id, 'archive', 2);
   if result_status <> 'archived' then
     raise exception 'published teaching archive failed';
   end if;
 
   if not exists (
     select 1
-    from public.eslam_brain_items
-    where id = item_id
-      and status = 'archived'
-      and published_version_number = 2
+    from public.eslam_brain_items i
+    where i.id = saved_item_id
+      and i.status = 'archived'
+      and i.published_version_number = 2
   ) then
     raise exception 'archive did not preserve historical publication pointer';
   end if;
@@ -239,8 +239,8 @@ begin
 
   if not exists (
     select 1
-    from public.eslam_brain_items
-    where id = bulk_a and status = 'draft' and approved_version_number is null
+    from public.eslam_brain_items i
+    where i.id = bulk_a and i.status = 'draft' and i.approved_version_number is null
   ) then
     raise exception 'failed bulk approval partially mutated an eligible draft';
   end if;
@@ -252,10 +252,10 @@ begin
 
   if (
     select count(*)
-    from public.eslam_brain_items
-    where id in (bulk_a, bulk_b)
-      and status = 'approved'
-      and approved_version_number = 1
+    from public.eslam_brain_items i
+    where i.id in (bulk_a, bulk_b)
+      and i.status = 'approved'
+      and i.approved_version_number = 1
   ) <> 2 then
     raise exception 'bulk approval did not bind the latest version for every draft';
   end if;
