@@ -56,7 +56,7 @@ export async function loadVoiceTranscriptionList(userId: string) {
   const nowMs = Date.now();
 
   return recordings.flatMap((recording): VoiceTranscriptionListItem[] => {
-    if (!recording.uploaded_at || !recording.duration_ms || !recording.size_bytes) return [];
+    if (!recording.uploaded_at || !recording.size_bytes) return [];
     const transcription = byRecordingId.get(recording.id) ?? null;
     const canTranscribe =
       !transcription ||
@@ -68,7 +68,7 @@ export async function loadVoiceTranscriptionList(userId: string) {
       {
         recordingId: recording.id,
         uploadedAt: recording.uploaded_at,
-        durationMs: recording.duration_ms,
+        durationMs: recording.duration_ms ?? 0,
         sizeBytes: recording.size_bytes,
         mimeType: recording.mime_type,
         transcriptionId: transcription?.id ?? null,
