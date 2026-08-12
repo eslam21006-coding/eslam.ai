@@ -1,0 +1,1 @@
+drop index if exists public.eslam_brain_items_published_version_fk_idx;
