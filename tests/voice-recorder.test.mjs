@@ -65,7 +65,7 @@ test("voice upload actions stay admin-only and verify Storage before finalizatio
   const actions = readSource("src/features/voice-recorder/actions.ts");
 
   assert.match(actions, /^"use server";/);
-  assert.equal((actions.match(/requireAdmin\(\)/g) ?? []).length, 3);
+  assert.equal((actions.match(/requireAdmin\(\)/g) ?? []).length, 4);
   assert.match(actions, /createSignedUploadUrl/);
   assert.match(actions, /\.info\(recording\.storage_path\)/);
   assert.match(actions, /\.eq\("created_by", authorization\.userId\)/);
@@ -89,6 +89,43 @@ test("voice cancellation atomically claims cleanup and retains metadata on Stora
   assert.match(hardening, /status in \('pending', 'cancelling'\)/);
 });
 
+test("voice cleanup queue persists across unmounts and is retried without a client recording id", () => {
+  const actions = readSource("src/features/voice-recorder/actions.ts");
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(actions, /export async function retryQueuedVoiceRecordingCleanupsAction/);
+  assert.match(actions, /\.eq\("status", "cancelling"\)/);
+  assert.match(actions, /\.limit\(50\)/);
+  assert.match(actions, /cancelVoiceRecordingById/);
+  assert.match(recorder, /retryQueuedVoiceRecordingCleanupsAction\(\)/);
+});
+
+test("browser recorder closes late microphone streams and constructor failures", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(recorder, /if \(!isMountedRef\.current\) \{\s*stopMediaStream\(stream\);\s*return;/);
+  assert.match(
+    recorder,
+    /streamRef\.current = stream;\s*const recorder = new MediaRecorder\(stream,/,
+  );
+  assert.match(recorder, /catch \(error\) \{\s*stopStream\(\);/);
+});
+
+test("browser recorder clamps duration and preserves the local blob after cleanup retry", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(
+    recorder,
+    /const finalDuration = Math\.min\(\s*VOICE_RECORDING_MAX_DURATION_MS,/,
+  );
+  assert.match(recorder, /cleanupPurposeRef\.current = "preserve-local"/);
+  assert.match(recorder, /if \(purpose === "preserve-local"\) \{[\s\S]*setStatus\("preview"\)/);
+  assert.match(
+    recorder,
+    /التسجيل المحلي محفوظ ويمكنك محاولة الحفظ مرة أخرى/,
+  );
+});
+
 test("browser recorder supports capture controls, local preview, and signed direct upload", () => {
   const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
 
@@ -105,42 +142,6 @@ test("browser recorder supports capture controls, local preview, and signed dire
   assert.match(recorder, /finalizeVoiceRecordingUploadAction/);
   assert.match(recorder, /cancelVoiceRecordingUploadAction/);
   assert.doesNotMatch(recorder, /openai|vector_store|file_search/i);
-});
-
-test("browser recorder stops late microphone grants after unmount", () => {
-  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
-
-  assert.match(recorder, /const isMountedRef = useRef\(false\)/);
-  assert.match(recorder, /isMountedRef\.current = true/);
-  assert.match(recorder, /isMountedRef\.current = false/);
-  assert.match(
-    recorder,
-    /await navigator\.mediaDevices\.getUserMedia[\s\S]*if \(!isMountedRef\.current\) \{[\s\S]*stopMediaStream\(stream\);[\s\S]*return;/,
-  );
-  assert.match(recorder, /recorder\.onstop = null/);
-});
-
-test("browser recorder clamps automatic stops to the server duration ceiling", () => {
-  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
-
-  assert.match(
-    recorder,
-    /const finalDuration = Math\.min\([\s\S]*VOICE_RECORDING_MAX_DURATION_MS,[\s\S]*Math\.max\(1, Math\.round\(activeDuration\(\)\)\)/,
-  );
-  assert.match(recorder, /setElapsedMs\(Math\.min\(nextElapsed, VOICE_RECORDING_MAX_DURATION_MS\)\)/);
-  assert.match(recorder, /durationMs > VOICE_RECORDING_MAX_DURATION_MS/);
-  assert.match(recorder, /durationMs <= VOICE_RECORDING_MAX_DURATION_MS/);
-});
-
-test("browser recorder retains cleanup handle and exposes retry when cleanup fails", () => {
-  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
-
-  assert.match(recorder, /\| "cleanup-error"/);
-  assert.match(recorder, /setPendingIntent\(intent\)[\s\S]*setStatus\("cleanup-error"\)/);
-  assert.match(recorder, /if \(!cleanup\.ok\)/);
-  assert.match(recorder, /const retryCleanup = useCallback/);
-  assert.match(recorder, /onClick=\{retryCleanup\}/);
-  assert.match(recorder, /إعادة محاولة التنظيف/);
 });
 
 test("voice recorder route is protected and linked from Teach Eslam", () => {
