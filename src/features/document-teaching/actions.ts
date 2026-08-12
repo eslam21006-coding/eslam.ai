@@ -11,15 +11,15 @@ import {
   validateDocumentTeachingId,
   validateDocumentTeachingUploadIntent,
 } from "@/features/document-teaching/core";
+import { getDocumentTeachingAdminClient } from "@/features/document-teaching/database";
 import { requireAdmin } from "@/lib/auth/admin";
-import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 const DOCUMENT_ADMIN_PATH = "/admin/teach/documents";
 const TEACH_ADMIN_PATH = "/admin/teach";
 const STALE_PENDING_UPLOAD_MS = 3 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 50;
 
-type SupabaseAdminClient = ReturnType<typeof getSupabaseAdminClient>;
+type SupabaseAdminClient = ReturnType<typeof getDocumentTeachingAdminClient>;
 
 type CleanupDocument = {
   id: string;
@@ -142,7 +142,7 @@ export async function createDocumentTeachingUploadAction(
   const validated = validateDocumentTeachingUploadIntent(input);
   if (!validated) return { ok: false, error: "invalid-document" };
 
-  const admin = getSupabaseAdminClient();
+  const admin = getDocumentTeachingAdminClient();
   const documentId = crypto.randomUUID();
   const storagePath = `${authorization.userId}/${documentId}.${validated.extension}`;
 
@@ -210,7 +210,7 @@ export async function finalizeDocumentTeachingUploadAction(
   const documentId = validateDocumentTeachingId(input);
   if (!documentId) return { ok: false, error: "invalid-request" };
 
-  const admin = getSupabaseAdminClient();
+  const admin = getDocumentTeachingAdminClient();
   const { data: document, error: documentError } = await admin
     .from("document_teaching_uploads")
     .select(
@@ -297,13 +297,17 @@ export async function cancelDocumentTeachingUploadAction(
   const documentId = validateDocumentTeachingId(input);
   if (!documentId) return { ok: false, error: "invalid-request" };
 
-  return cancelDocumentById(getSupabaseAdminClient(), authorization.userId, documentId);
+  return cancelDocumentById(
+    getDocumentTeachingAdminClient(),
+    authorization.userId,
+    documentId,
+  );
 }
 
 /** Reclaims stale pending document intents and retries durable cleanup rows for the current admin. */
 export async function retryQueuedDocumentTeachingCleanupsAction() {
   const authorization = await requireAdmin();
-  const admin = getSupabaseAdminClient();
+  const admin = getDocumentTeachingAdminClient();
   const { data: cancelling, error: cancellingError } = await admin
     .from("document_teaching_uploads")
     .select("id")
