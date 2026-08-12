@@ -10,6 +10,8 @@ const importSource = (relativePath) =>
 
 const migrationPath =
   "supabase/migrations/20260812151341_create_teaching_review_workflow.sql";
+const hardeningMigrationPath =
+  "supabase/migrations/20260812160000_harden_teaching_review_workflow.sql";
 
 test("Task 17 review filter contract defaults safely", async () => {
   const {
@@ -43,6 +45,9 @@ test("Task 17 review data and mutations remain admin-only server paths", () => {
   assert.match(data, /from\("teaching_sources"\)/);
   assert.match(data, /\.eq\("created_by", authorization\.userId\)/);
   assert.match(data, /TEACHING_REVIEW_PAGE_SIZE/);
+  assert.match(data, /\.limit\(1\)\s*\.maybeSingle\(\)/);
+  assert.match(data, /\.eq\("version_number", versionNumber\)/);
+  assert.match(data, /LINEAGE_BATCH_SIZE = 500/);
 
   assert.match(actions, /^"use server";/);
   assert.match(actions, /requireAdmin\(\)/g);
@@ -78,10 +83,13 @@ test("Task 17 Brain page exposes review, provenance, versioning, lifecycle, and 
   assert.match(navigation, /href: "\/admin\/brain"/);
   assert.match(navigation, /راجع التعليمات ومصادرها/);
   assert.match(teachPage, /href="\/admin\/brain\?status=draft&page=1"/);
+  assert.match(teachPage, /directPublishEligible/);
+  assert.match(teachPage, /راجع النسخة المعدلة/);
 });
 
 test("Task 17 database review workflow binds approval and publication to exact immutable versions", () => {
   const migration = readSource(migrationPath);
+  const hardening = readSource(hardeningMigrationPath);
   const privilegeMigration = readSource(
     "supabase/migrations/20260812151928_grant_teaching_review_approved_version_update.sql",
   );
@@ -100,6 +108,15 @@ test("Task 17 database review workflow binds approval and publication to exact i
   assert.match(migration, /insert into public\.eslam_brain_versions/);
   assert.match(migration, /insert into public\.teaching_versions/);
 
+  assert.match(hardening, /v_expected_version_text/);
+  assert.match(hardening, /v_priority_text/);
+  assert.match(hardening, /invalid numeric review input/);
+  assert.match(hardening, /inherited_from_version/);
+  assert.match(hardening, /get diagnostics v_owned_count = row_count/);
+  assert.match(hardening, /get diagnostics v_eligible_count = row_count/);
+  assert.match(hardening, /create or replace function public\.publish_eslam_brain_draft_direct/);
+  assert.match(hardening, /edited drafts must use the review lifecycle/);
+
   assert.match(migration, /create or replace function public\.review_eslam_brain_item/);
   assert.match(migration, /when 'approve'/);
   assert.match(migration, /approved_version_number = p_version_number/);
@@ -110,7 +127,7 @@ test("Task 17 database review workflow binds approval and publication to exact i
 
   assert.match(migration, /create or replace function public\.bulk_approve_eslam_brain_items/);
   assert.match(migration, /v_requested_count > 50/);
-  assert.match(migration, /one or more teachings are not eligible for bulk approval/);
+  assert.match(hardening, /one or more teachings are not eligible for bulk approval/);
 
   assert.match(
     migration,
@@ -128,6 +145,7 @@ test("Task 17 database review workflow binds approval and publication to exact i
     migration,
     /grant execute on function public\.bulk_approve_eslam_brain_items\(uuid\[\], uuid\) to service_role/,
   );
+  assert.match(hardening, /grant execute on function public\.publish_eslam_brain_draft_direct\(uuid, uuid, integer\)/);
   assert.match(privilegeMigration, /grant update \(approved_version_number\)/);
 
   assert.match(types, /approved_version_number: number \| null/);
@@ -136,27 +154,42 @@ test("Task 17 database review workflow binds approval and publication to exact i
   assert.match(types, /review_eslam_brain_item:/);
 });
 
-test("Task 17 runtime covers immutable edits, lifecycle ordering, provenance, and atomic bulk approval", () => {
+test("Task 17 runtime covers immutable edits, lifecycle ordering, provenance, authorization, and atomic bulk approval", () => {
   const runtime = readSource("supabase/tests/teaching_review_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
 
   assert.match(runtime, /client role unexpectedly can execute teaching review RPCs/);
   assert.match(runtime, /review edit mutated or removed version 1/);
   assert.match(runtime, /review edit did not create version-specific provenance/);
+  assert.match(runtime, /review edit did not inherit original source provenance/);
+  assert.match(runtime, /stale direct publish unexpectedly succeeded after edit/);
+  assert.match(runtime, /draft publication before approval unexpectedly succeeded/);
+  assert.match(runtime, /cross-owner edit unexpectedly succeeded/);
+  assert.match(runtime, /cross-owner lifecycle review unexpectedly succeeded/);
+  assert.match(runtime, /cross-owner bulk approval unexpectedly succeeded/);
+  assert.match(runtime, /bulk approval accepted more than 50 unique ids/);
   assert.match(runtime, /stale review edit left a partial version behind/);
   assert.match(runtime, /approval did not bind exact version 2/);
+  assert.match(runtime, /publication with mismatched approved version unexpectedly succeeded/);
   assert.match(runtime, /publication did not preserve approved version pointer/);
   assert.match(runtime, /failed bulk approval partially mutated an eligible draft/);
   assert.match(runtime, /bulk approval did not bind the latest version for every draft/);
   assert.match(ci, /supabase\/tests\/teaching_review_runtime\.sql/);
+  assert.match(ci, /node-version: 22\.18\.0/);
 });
 
-test("Task 15 direct publish remains compatible by recording an implicit approved pointer", () => {
+test("Task 15 direct publish remains compatible only for an unedited latest v1 draft", () => {
   const actions = readSource("src/features/teach-eslam/actions.ts");
+  const data = readSource("src/features/teach-eslam/data.ts");
+  const page = readSource("src/app/admin/teach/page.tsx");
 
-  assert.match(actions, /approved_version_number:\s*versionNumber/);
-  assert.match(actions, /published_version_number:\s*versionNumber/);
+  assert.match(actions, /publish_eslam_brain_draft_direct/);
+  assert.match(actions, /p_version_number: versionNumber/);
   assert.match(actions, /revalidatePath\("\/admin\/brain"\)/);
+  assert.match(data, /\.order\("version_number", \{ ascending: false \}\)/);
+  assert.match(data, /\.limit\(1\)/);
+  assert.match(data, /directPublishEligible: latestVersion\.versionNumber === 1/);
+  assert.match(page, /draft\.directPublishEligible/);
 });
 
 test("Task 17 stays within review UX scope", () => {
