@@ -45,6 +45,8 @@ test("Teach Eslam rejects invalid enums, lengths, topics, and priority", async (
     validValues({ content: "" }),
     validValues({ semantic_layer: "metrics" }),
     validValues({ item_type: "random" }),
+    validValues({ priority: "" }),
+    validValues({ priority: "   " }),
     validValues({ priority: "1.5" }),
     validValues({ priority: "1001" }),
     validValues({ title: "x".repeat(TEACH_ESLAM_LIMITS.title + 1) }),
