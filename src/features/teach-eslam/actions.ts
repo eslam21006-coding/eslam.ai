@@ -102,6 +102,16 @@ function isUuid(value: string) {
   );
 }
 
+type DirectPublishRpcResult = PromiseLike<{
+  data: string | null;
+  error: { code?: string; message?: string } | null;
+}>;
+
+type DirectPublishRpc = (
+  functionName: "publish_eslam_brain_draft_direct",
+  args: { p_item_id: string; p_created_by: string; p_version_number: number },
+) => DirectPublishRpcResult;
+
 export async function publishTeachEslamDraftAction(formData: FormData) {
   const authorization = await requireAdmin();
   const rawItemId = formData.get("item_id");
@@ -109,43 +119,25 @@ export async function publishTeachEslamDraftAction(formData: FormData) {
   const itemId = typeof rawItemId === "string" ? rawItemId : "";
   const versionNumber = typeof rawVersionNumber === "string" ? Number(rawVersionNumber) : NaN;
 
-  if (!isUuid(itemId) || versionNumber !== 1) {
+  if (!isUuid(itemId) || !Number.isInteger(versionNumber) || versionNumber <= 0) {
     redirect("/admin/teach?status=publish-invalid");
   }
 
   const admin = getSupabaseAdminClient();
-  const { data: version, error: versionError } = await admin
-    .from("eslam_brain_versions")
-    .select("item_id,version_number")
-    .eq("item_id", itemId)
-    .eq("version_number", versionNumber)
-    .maybeSingle();
+  const directPublishRpc = admin.rpc as unknown as DirectPublishRpc;
+  const { data: published, error: publishError } = await directPublishRpc(
+    "publish_eslam_brain_draft_direct",
+    {
+      p_item_id: itemId,
+      p_created_by: authorization.userId,
+      p_version_number: versionNumber,
+    },
+  );
 
-  if (versionError || !version) {
-    console.error("Teach Eslam publish version lookup failed", {
-      code: versionError?.code,
-      message: versionError?.message ?? "Version not found",
-    });
-    redirect("/admin/teach?status=publish-failed");
-  }
-
-  const { data: published, error: publishError } = await admin
-    .from("eslam_brain_items")
-    .update({
-      status: "published",
-      approved_version_number: versionNumber,
-      published_version_number: versionNumber,
-    })
-    .eq("id", itemId)
-    .eq("created_by", authorization.userId)
-    .eq("status", "draft")
-    .select("id")
-    .maybeSingle();
-
-  if (publishError || !published) {
-    console.error("Teach Eslam publish failed", {
+  if (publishError || published !== "published") {
+    console.error("Teach Eslam direct publish failed", {
       code: publishError?.code,
-      message: publishError?.message ?? "Draft not found or no longer publishable",
+      message: publishError?.message ?? "Draft not found, stale, or requires review",
     });
     redirect("/admin/teach?status=publish-failed");
   }
