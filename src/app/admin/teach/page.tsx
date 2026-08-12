@@ -29,20 +29,28 @@ export default async function TeachEslamPage({ searchParams }: TeachEslamPagePro
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-medium text-[var(--gold-muted)]">Admin · Text teaching</p>
+            <p className="text-xs font-medium text-[var(--gold-muted)]">Admin · Teaching capture</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight" dir="ltr">
               Teach Eslam
             </h1>
           </div>
-          <Link
-            href="/admin/brain?status=draft&page=1"
-            className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-center text-sm font-semibold text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
-          >
-            فتح مركز المراجعة
-          </Link>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Link
+              href="/admin/teach/voice"
+              className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-center text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]"
+            >
+              Voice Recorder
+            </Link>
+            <Link
+              href="/admin/brain?status=draft&page=1"
+              className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-center text-sm font-semibold text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
+            >
+              فتح مركز المراجعة
+            </Link>
+          </div>
         </div>
         <p className="mt-4 max-w-3xl text-sm leading-7 text-[var(--foreground-muted)] sm:text-base">
-          اكتب ما تريد أن يعرفه أو يطبقه Eslam.AI. كل تعليم يبدأ كمسودة ثابتة، ثم يحتاج إلى نشر صريح قبل أن يصبح جزءاً من عقل إسلام المستخدم في المحادثات.
+          اكتب ما تريد أن يعرفه أو يطبقه Eslam.AI، أو افتح Voice Recorder لتسجيله بصوتك. التعليم النصي يبدأ كمسودة ثم يحتاج إلى نشر صريح، بينما التسجيل الصوتي يُحفظ كمصدر خاص فقط إلى أن نبني مرحلة التحويل إلى نص.
         </p>
 
         <TeachEslamForm publishStatus={publishStatus} />
