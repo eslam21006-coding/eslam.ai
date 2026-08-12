@@ -9,9 +9,27 @@ import { requireAdmin } from "@/lib/auth/admin";
 
 export const maxDuration = 300;
 
-export default async function VoiceRecorderPage() {
+function parsePage(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  if (!raw || !/^\d+$/.test(raw)) return 1;
+  const page = Number(raw);
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+}
+
+/** Admin voice pipeline: recording → transcription → reviewed teaching candidates → Brain drafts. */
+export default async function VoiceRecorderPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
   const authorization = await requireAdmin();
-  const transcriptionItems = await loadVoiceTranscriptionList(authorization.userId);
+  const resolvedSearchParams = await searchParams;
+  const requestedPage = parsePage(resolvedSearchParams.page);
+  const transcriptionPage = await loadVoiceTranscriptionList(
+    authorization.userId,
+    requestedPage,
+  );
+  const transcriptionItems = transcriptionPage.items;
   const completedTranscriptionIds = transcriptionItems.flatMap((item) =>
     item.transcriptionStatus === "completed" && item.transcriptionId ? [item.transcriptionId] : [],
   );
@@ -61,7 +79,12 @@ export default async function VoiceRecorderPage() {
       </div>
 
       <VoiceRecorder />
-      <VoiceTranscriptionList items={transcriptionItems} />
+      <VoiceTranscriptionList
+        items={transcriptionItems}
+        page={transcriptionPage.page}
+        hasPrevious={transcriptionPage.hasPrevious}
+        hasNext={transcriptionPage.hasNext}
+      />
       <VoiceTeachingWorkbench items={teachingItems} />
 
       <aside className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-5 py-4 text-sm leading-7 text-[var(--foreground-muted)]">
