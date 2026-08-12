@@ -1,6 +1,7 @@
 import "server-only";
 
 import { isVoiceTranscriptionLeaseActive } from "@/features/voice-transcription/core";
+import { VOICE_TRANSCRIPTION_PAGE_SIZE } from "@/features/voice-transcription/data";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
 export type VoiceTeachingCandidateView = {
@@ -31,9 +32,12 @@ export type VoiceTeachingExtractionView = {
   candidates: VoiceTeachingCandidateView[];
 };
 
-/** Loads bounded owner-scoped extraction/candidate state for the visible completed transcripts. */
+/** Loads owner-scoped extraction/candidate state for exactly one visible paginated transcription page. */
 export async function loadVoiceTeachingState(userId: string, transcriptionIds: string[]) {
-  const uniqueIds = Array.from(new Set(transcriptionIds)).slice(0, 20);
+  const uniqueIds = Array.from(new Set(transcriptionIds));
+  if (uniqueIds.length > VOICE_TRANSCRIPTION_PAGE_SIZE) {
+    throw new Error("Voice teaching state must be loaded one transcription page at a time.");
+  }
   if (uniqueIds.length === 0) return new Map<string, VoiceTeachingExtractionView>();
 
   const admin = getSupabaseAdminClient();
@@ -44,7 +48,7 @@ export async function loadVoiceTeachingState(userId: string, transcriptionIds: s
     )
     .eq("created_by", userId)
     .in("voice_transcription_id", uniqueIds)
-    .limit(20);
+    .limit(VOICE_TRANSCRIPTION_PAGE_SIZE);
 
   if (extractionError) {
     throw new Error(`Unable to load voice teaching extractions: ${extractionError.code}`);
@@ -52,6 +56,7 @@ export async function loadVoiceTeachingState(userId: string, transcriptionIds: s
 
   const extractionIds = (extractions ?? []).map((extraction) => extraction.id);
   const candidatesByExtraction = new Map<string, VoiceTeachingCandidateView[]>();
+  const candidateLimit = VOICE_TRANSCRIPTION_PAGE_SIZE * 12;
 
   if (extractionIds.length > 0) {
     const { data: candidates, error: candidatesError } = await admin
@@ -62,7 +67,7 @@ export async function loadVoiceTeachingState(userId: string, transcriptionIds: s
       .eq("created_by", userId)
       .in("extraction_id", extractionIds)
       .order("ordinal", { ascending: true })
-      .limit(240);
+      .limit(candidateLimit);
 
     if (candidatesError) {
       throw new Error(`Unable to load voice teaching candidates: ${candidatesError.code}`);
@@ -76,7 +81,7 @@ export async function loadVoiceTeachingState(userId: string, transcriptionIds: s
         .select("candidate_id,brain_item_id")
         .eq("created_by", userId)
         .in("candidate_id", candidateIds)
-        .limit(240);
+        .limit(candidateLimit);
 
       if (mappingError) {
         throw new Error(`Unable to load voice teaching draft mappings: ${mappingError.code}`);
