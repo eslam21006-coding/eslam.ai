@@ -161,7 +161,10 @@ function serializeForModel(item: PublishedEslamBrainItem) {
 }
 
 export function buildBoundedEslamBrainContext(items: PublishedEslamBrainItem[]) {
-  const selected = [...items].sort(comparePublishedItems).map(serializeForModel);
+  const selected = [...items]
+    .sort(comparePublishedItems)
+    .slice(0, MAX_ESLAM_BRAIN_QUERY_ITEMS)
+    .map(serializeForModel);
 
   while (selected.length > 0) {
     const serialized = JSON.stringify(selected);
