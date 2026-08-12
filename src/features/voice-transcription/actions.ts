@@ -150,7 +150,7 @@ export async function transcribeVoiceRecordingAction(
   let transcriptText: string;
   try {
     const fileName = recording.storage_path.split("/").at(-1) ?? `${recording.id}.audio`;
-    const audioFile = new File([await audioBlob.arrayBuffer()], fileName, {
+    const audioFile = new File([audioBlob], fileName, {
       type: recording.mime_type,
     });
     const transcription = await getOpenAITranscriptionClient().audio.transcriptions.create({
