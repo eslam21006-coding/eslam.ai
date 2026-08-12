@@ -6,6 +6,7 @@ import {
   cancelVoiceRecordingUploadAction,
   createVoiceRecordingUploadAction,
   finalizeVoiceRecordingUploadAction,
+  retryQueuedVoiceRecordingCleanupsAction,
 } from "@/features/voice-recorder/actions";
 import {
   VOICE_RECORDING_AUDIO_BITS_PER_SECOND,
@@ -30,6 +31,8 @@ type RecorderStatus =
   | "finalize-error"
   | "uploaded"
   | "error";
+
+type CleanupPurpose = "discard-local" | "preserve-local";
 
 const MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -77,6 +80,7 @@ export function VoiceRecorder() {
   const [uploadedId, setUploadedId] = useState<string | null>(null);
 
   const isMountedRef = useRef(false);
+  const cleanupPurposeRef = useRef<CleanupPurpose>("discard-local");
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -135,6 +139,15 @@ export function VoiceRecorder() {
   useEffect(() => {
     isMountedRef.current = true;
 
+    void retryQueuedVoiceRecordingCleanupsAction().then((result) => {
+      if (!result.ok) {
+        console.warn("Some queued voice recording cleanup is still pending", {
+          cleaned: result.cleaned,
+          failed: result.failed,
+        });
+      }
+    });
+
     return () => {
       isMountedRef.current = false;
 
@@ -163,6 +176,7 @@ export function VoiceRecorder() {
     finalDurationRef.current = 0;
     chunksRef.current = [];
     recorderRef.current = null;
+    cleanupPurposeRef.current = "discard-local";
     setUploadedId(null);
   }, [revokePreview]);
 
@@ -206,12 +220,13 @@ export function VoiceRecorder() {
         return;
       }
 
+      // Store the stream before MediaRecorder construction so the catch path can always stop it.
+      streamRef.current = stream;
       const recorder = new MediaRecorder(stream, {
         mimeType: selectedMimeType,
         audioBitsPerSecond: VOICE_RECORDING_AUDIO_BITS_PER_SECOND,
       });
 
-      streamRef.current = stream;
       recorderRef.current = recorder;
       chunksRef.current = [];
       accumulatedMsRef.current = 0;
@@ -300,33 +315,31 @@ export function VoiceRecorder() {
     setStatus("recording");
   }, [stopRecording]);
 
-  const cleanupPendingRecording = useCallback(
-    async (intent: VoiceUploadIntent) => {
-      setStatus("cleaning");
-      setMessage("جارٍ تنظيف محاولة الحفظ السابقة…");
+  const cleanupPendingRecording = useCallback(async (intent: VoiceUploadIntent) => {
+    setStatus("cleaning");
+    setMessage("جارٍ تنظيف محاولة الحفظ السابقة…");
 
-      const cleanup = await cancelVoiceRecordingUploadAction({
-        recordingId: intent.recordingId,
-      });
+    const cleanup = await cancelVoiceRecordingUploadAction({
+      recordingId: intent.recordingId,
+    });
 
-      if (!isMountedRef.current) return false;
+    if (!isMountedRef.current) return false;
 
-      if (!cleanup.ok) {
-        setPendingIntent(intent);
-        setStatus("cleanup-error");
-        setMessage(
-          "تعذر تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف قبل بدء تسجيل جديد.",
-        );
-        return false;
-      }
+    if (!cleanup.ok) {
+      setPendingIntent(intent);
+      setStatus("cleanup-error");
+      setMessage(
+        "تعذر تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف.",
+      );
+      return false;
+    }
 
-      setPendingIntent(null);
-      return true;
-    },
-    [],
-  );
+    setPendingIntent(null);
+    return true;
+  }, []);
 
   const resetForNewRecording = useCallback(async () => {
+    cleanupPurposeRef.current = "discard-local";
     if (pendingIntent) {
       const cleaned = await cleanupPendingRecording(pendingIntent);
       if (!cleaned || !isMountedRef.current) return;
@@ -355,6 +368,7 @@ export function VoiceRecorder() {
         return;
       }
 
+      cleanupPurposeRef.current = "discard-local";
       setPendingIntent(null);
       setUploadedId(finalization.recordingId);
       setStatus("uploaded");
@@ -416,14 +430,16 @@ export function VoiceRecorder() {
       if (!isMountedRef.current) return;
 
       if (!cleanup.ok) {
+        cleanupPurposeRef.current = "preserve-local";
         setPendingIntent(intent);
         setStatus("cleanup-error");
         setMessage(
-          "فشل رفع التسجيل وتعذر تنظيف محاولة الرفع. التسجيل المحلي ما زال موجوداً؛ أعد محاولة التنظيف قبل المحاولة من جديد.",
+          "فشل رفع التسجيل وتعذر تنظيف محاولة الرفع. التسجيل المحلي ما زال موجوداً؛ أعد محاولة التنظيف ثم حاول الحفظ مرة أخرى.",
         );
         return;
       }
 
+      cleanupPurposeRef.current = "discard-local";
       setPendingIntent(null);
       setStatus("preview");
       setMessage("فشل رفع التسجيل. الملف المحلي ما زال موجوداً ويمكنك المحاولة مرة أخرى.");
@@ -447,8 +463,16 @@ export function VoiceRecorder() {
 
   const retryCleanup = useCallback(async () => {
     if (!pendingIntent) return;
+    const purpose = cleanupPurposeRef.current;
     const cleaned = await cleanupPendingRecording(pendingIntent);
     if (!cleaned || !isMountedRef.current) return;
+
+    cleanupPurposeRef.current = "discard-local";
+    if (purpose === "preserve-local") {
+      setStatus("preview");
+      setMessage("تم تنظيف محاولة الرفع الفاشلة. التسجيل المحلي محفوظ ويمكنك محاولة الحفظ مرة أخرى.");
+      return;
+    }
 
     clearLocalRecording();
     setMessage(null);
