@@ -128,6 +128,21 @@ test("browser recorder clamps duration and preserves the local blob after cleanu
   );
 });
 
+test("browser recorder turns rejected finalization requests into a retryable state", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(
+    recorder,
+    /try \{[\s\S]*await finalizeVoiceRecordingUploadAction\([\s\S]*catch \(error\) \{/,
+  );
+  assert.match(recorder, /Voice recording finalization request failed/);
+  assert.match(
+    recorder,
+    /catch \(error\) \{[\s\S]*setPendingIntent\(intent\);[\s\S]*setStatus\("finalize-error"\)/,
+  );
+  assert.match(recorder, /مشكلة اتصال[\s\S]*إعادة محاولة تثبيت الحفظ/);
+});
+
 test("browser recorder supports capture controls, local preview, and signed direct upload", () => {
   const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
 
