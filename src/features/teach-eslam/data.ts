@@ -12,7 +12,14 @@ export type TeachEslamDraftSummary = {
   versionNumber: 1;
 };
 
-const MAX_RECENT_TEACH_ESLAM_DRAFTS = 20;
+export type TeachEslamDraftPage = {
+  drafts: TeachEslamDraftSummary[];
+  page: number;
+  hasPreviousPage: boolean;
+  hasNextPage: boolean;
+};
+
+const TEACH_ESLAM_DRAFT_PAGE_SIZE = 20;
 
 function logDraftLoadError(stage: string, error: { code?: string; message?: string } | null) {
   console.error("Teach Eslam draft load failed", {
@@ -22,25 +29,37 @@ function logDraftLoadError(stage: string, error: { code?: string; message?: stri
   });
 }
 
-export async function loadTeachEslamDrafts(): Promise<TeachEslamDraftSummary[]> {
+export async function loadTeachEslamDrafts(page = 1): Promise<TeachEslamDraftPage> {
   const authorization = await requireAdmin();
   const admin = getSupabaseAdminClient();
+  const normalizedPage = Number.isInteger(page) && page > 0 ? page : 1;
+  const offset = (normalizedPage - 1) * TEACH_ESLAM_DRAFT_PAGE_SIZE;
 
-  const { data: items, error: itemsError } = await admin
+  const { data: rows, error: itemsError } = await admin
     .from("eslam_brain_items")
     .select("id,semantic_layer,item_type,priority,created_at")
     .eq("created_by", authorization.userId)
     .eq("status", "draft")
     .order("created_at", { ascending: false })
-    .limit(MAX_RECENT_TEACH_ESLAM_DRAFTS);
+    .order("id", { ascending: false })
+    .range(offset, offset + TEACH_ESLAM_DRAFT_PAGE_SIZE);
+
+  const emptyPage = (): TeachEslamDraftPage => ({
+    drafts: [],
+    page: normalizedPage,
+    hasPreviousPage: normalizedPage > 1,
+    hasNextPage: false,
+  });
 
   if (itemsError) {
     logDraftLoadError("items", itemsError);
-    return [];
+    return emptyPage();
   }
 
-  if (!items?.length) return [];
+  if (!rows?.length) return emptyPage();
 
+  const hasNextPage = rows.length > TEACH_ESLAM_DRAFT_PAGE_SIZE;
+  const items = rows.slice(0, TEACH_ESLAM_DRAFT_PAGE_SIZE);
   const itemIds = items.map((item) => item.id);
   const { data: versions, error: versionsError } = await admin
     .from("eslam_brain_versions")
@@ -50,14 +69,14 @@ export async function loadTeachEslamDrafts(): Promise<TeachEslamDraftSummary[]> 
 
   if (versionsError) {
     logDraftLoadError("versions", versionsError);
-    return [];
+    return emptyPage();
   }
 
   const titleByItemId = new Map(
     (versions ?? []).map((version) => [version.item_id, version.title] as const),
   );
 
-  return items.flatMap((item) => {
+  const drafts = items.flatMap((item) => {
     const title = titleByItemId.get(item.id);
     if (!title) return [];
 
@@ -72,4 +91,11 @@ export async function loadTeachEslamDrafts(): Promise<TeachEslamDraftSummary[]> 
       },
     ];
   });
+
+  return {
+    drafts,
+    page: normalizedPage,
+    hasPreviousPage: normalizedPage > 1,
+    hasNextPage,
+  };
 }
