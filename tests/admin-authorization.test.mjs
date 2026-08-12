@@ -169,7 +169,7 @@ test("server guard uses authentic Auth user data and fails closed around candida
   assert.match(admin, /redirect\("\/auth\/login"\)/);
   assert.match(admin, /notFound\(\)/);
   assert.doesNotMatch(admin, /user_metadata|raw_user_meta_data/);
-  assert.match(layout, /await requireAdmin\(\)/);
+  assert.match(layout, /authorizeBeforeAdminRender\(requireAdmin/);
 });
 
 test("admin role data is private, immutable, and restricted to one-time binding", () => {
