@@ -107,6 +107,42 @@ test("browser recorder supports capture controls, local preview, and signed dire
   assert.doesNotMatch(recorder, /openai|vector_store|file_search/i);
 });
 
+test("browser recorder stops late microphone grants after unmount", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(recorder, /const isMountedRef = useRef\(false\)/);
+  assert.match(recorder, /isMountedRef\.current = true/);
+  assert.match(recorder, /isMountedRef\.current = false/);
+  assert.match(
+    recorder,
+    /await navigator\.mediaDevices\.getUserMedia[\s\S]*if \(!isMountedRef\.current\) \{[\s\S]*stopMediaStream\(stream\);[\s\S]*return;/,
+  );
+  assert.match(recorder, /recorder\.onstop = null/);
+});
+
+test("browser recorder clamps automatic stops to the server duration ceiling", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(
+    recorder,
+    /const finalDuration = Math\.min\([\s\S]*VOICE_RECORDING_MAX_DURATION_MS,[\s\S]*Math\.max\(1, Math\.round\(activeDuration\(\)\)\)/,
+  );
+  assert.match(recorder, /setElapsedMs\(Math\.min\(nextElapsed, VOICE_RECORDING_MAX_DURATION_MS\)\)/);
+  assert.match(recorder, /durationMs > VOICE_RECORDING_MAX_DURATION_MS/);
+  assert.match(recorder, /durationMs <= VOICE_RECORDING_MAX_DURATION_MS/);
+});
+
+test("browser recorder retains cleanup handle and exposes retry when cleanup fails", () => {
+  const recorder = readSource("src/features/voice-recorder/voice-recorder.tsx");
+
+  assert.match(recorder, /\| "cleanup-error"/);
+  assert.match(recorder, /setPendingIntent\(intent\)[\s\S]*setStatus\("cleanup-error"\)/);
+  assert.match(recorder, /if \(!cleanup\.ok\)/);
+  assert.match(recorder, /const retryCleanup = useCallback/);
+  assert.match(recorder, /onClick=\{retryCleanup\}/);
+  assert.match(recorder, /إعادة محاولة التنظيف/);
+});
+
 test("voice recorder route is protected and linked from Teach Eslam", () => {
   const page = readSource("src/app/admin/teach/voice/page.tsx");
   const teachPage = readSource("src/app/admin/teach/page.tsx");
