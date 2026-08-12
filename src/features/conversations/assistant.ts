@@ -12,11 +12,13 @@ import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 export async function generateBasicEslamReply(
   messages: MessageRecord[],
   businessDnaContext: string | null = null,
+  eslamBrainContext: string | null = null,
 ) {
   const request = buildBasicEslamResponseRequest(
     messages,
     getOpenAIModel(),
     businessDnaContext,
+    eslamBrainContext,
   );
   const response = await getOpenAIClient().responses.create(request);
 
@@ -35,11 +37,13 @@ export async function streamBasicEslamReply(
     onDelta(delta: string): void;
   },
   businessDnaContext: string | null = null,
+  eslamBrainContext: string | null = null,
 ) {
   const request = buildBasicEslamStreamingResponseRequest(
     messages,
     getOpenAIModel(),
     businessDnaContext,
+    eslamBrainContext,
   );
   const stream = await getOpenAIClient().responses.create(request, {
     signal: options.signal,

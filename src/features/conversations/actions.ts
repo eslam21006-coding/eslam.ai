@@ -11,6 +11,7 @@ import {
 import { isUuid, MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
 import { executeMessageResponseFlow } from "@/features/conversations/response-flow";
 import { createResponsePreparationDependencies } from "@/features/conversations/response-flow-server";
+import { loadEslamBrainModelContext } from "@/features/eslam-brain/model-context-data";
 import { requireAuthenticatedUser } from "@/lib/auth/session";
 
 export type MessageActionState = {
@@ -62,14 +63,17 @@ export async function persistUserMessageAction(
   }
 
   const userId = await requireAuthenticatedUser();
-  const businessDnaContext = await loadBusinessDnaModelContext(userId);
+  const [businessDnaContext, eslamBrainContext] = await Promise.all([
+    loadBusinessDnaModelContext(userId),
+    loadEslamBrainModelContext(),
+  ]);
   const preparationDependencies = await createResponsePreparationDependencies();
   const result = await executeMessageResponseFlow(
     { userId, conversationId, content },
     {
       ...preparationDependencies,
       generateReply: (messages) =>
-        generateBasicEslamReply(messages, businessDnaContext),
+        generateBasicEslamReply(messages, businessDnaContext, eslamBrainContext),
       persistAssistant: persistAssistantMessage,
     },
   );

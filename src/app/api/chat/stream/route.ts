@@ -9,6 +9,7 @@ import { isUuid, MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
 import { prepareMessageResponseFlow } from "@/features/conversations/response-flow";
 import { createResponsePreparationDependencies } from "@/features/conversations/response-flow-server";
 import { executePreparedStreamingResponse } from "@/features/conversations/streaming-response-flow";
+import { loadEslamBrainModelContext } from "@/features/eslam-brain/model-context-data";
 import { getAuthenticatedUserId } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -79,7 +80,10 @@ export async function POST(request: Request) {
     return errorResponse(400, "invalid_input");
   }
 
-  const businessDnaContext = await loadBusinessDnaModelContext(userId);
+  const [businessDnaContext, eslamBrainContext] = await Promise.all([
+    loadBusinessDnaModelContext(userId),
+    loadEslamBrainModelContext(),
+  ]);
   const preparationDependencies = await createResponsePreparationDependencies();
   const prepared = await prepareMessageResponseFlow(
     { userId, conversationId: input.conversationId, content: input.content },
@@ -134,7 +138,12 @@ export async function POST(request: Request) {
         },
         {
           streamReply: (messages, options) =>
-            streamBasicEslamReply(messages, options, businessDnaContext),
+            streamBasicEslamReply(
+              messages,
+              options,
+              businessDnaContext,
+              eslamBrainContext,
+            ),
           persistAssistant: persistAssistantMessage,
           releaseGeneration: preparationDependencies.releaseGeneration,
           reportError: preparationDependencies.reportError,
