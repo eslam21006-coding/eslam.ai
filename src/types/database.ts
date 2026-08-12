@@ -426,6 +426,68 @@ export type Database = {
         }
         Relationships: []
       }
+      voice_transcriptions: {
+        Row: {
+          attempt_count: number
+          claim_token: string | null
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          id: string
+          last_error_at: string | null
+          last_error_code: string | null
+          lease_expires_at: string | null
+          model: string
+          processing_started_at: string | null
+          status: string
+          transcript_text: string | null
+          updated_at: string
+          voice_recording_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          claim_token?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          id?: string
+          last_error_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          model: string
+          processing_started_at?: string | null
+          status: string
+          transcript_text?: string | null
+          updated_at?: string
+          voice_recording_id: string
+        }
+        Update: {
+          attempt_count?: number
+          claim_token?: string | null
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          id?: string
+          last_error_at?: string | null
+          last_error_code?: string | null
+          lease_expires_at?: string | null
+          model?: string
+          processing_started_at?: string | null
+          status?: string
+          transcript_text?: string | null
+          updated_at?: string
+          voice_recording_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_transcriptions_voice_recording_id_fkey"
+            columns: ["voice_recording_id"]
+            isOneToOne: true
+            referencedRelation: "voice_recordings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -444,6 +506,30 @@ export type Database = {
         }
         Returns: boolean
       }
+      claim_voice_transcription: {
+        Args: {
+          p_created_by: string
+          p_lease_seconds?: number
+          p_model: string
+          p_recording_id: string
+        }
+        Returns: {
+          attempt_count: number
+          claim_state: string
+          claim_token: string
+          transcript_text: string
+          transcription_id: string
+        }[]
+      }
+      complete_voice_transcription: {
+        Args: {
+          p_claim_token: string
+          p_created_by: string
+          p_transcript_text: string
+          p_transcription_id: string
+        }
+        Returns: boolean
+      }
       create_conversation_with_first_message: {
         Args: { p_content: string }
         Returns: string
@@ -452,6 +538,15 @@ export type Database = {
       create_eslam_brain_review_version: {
         Args: { p_payload: Json }
         Returns: number
+      }
+      fail_voice_transcription: {
+        Args: {
+          p_claim_token: string
+          p_created_by: string
+          p_error_code: string
+          p_transcription_id: string
+        }
+        Returns: boolean
       }
       publish_eslam_brain_draft_direct: {
         Args: {
