@@ -3,6 +3,7 @@ begin;
 do $$
 begin
   if has_table_privilege('anon', 'public.eslam_brain_items', 'SELECT')
+     or has_table_privilege('anon', 'public.eslam_brain_versions', 'SELECT')
      or has_table_privilege('authenticated', 'public.eslam_brain_items', 'SELECT')
      or has_table_privilege('authenticated', 'public.eslam_brain_versions', 'SELECT') then
     raise exception 'client role unexpectedly has direct Eslam Brain access';
@@ -65,7 +66,10 @@ $$;
 
 set local role service_role;
 
-with created_item as (
+do $$
+declare
+  saved_item_id uuid;
+begin
   insert into public.eslam_brain_items (
     semantic_layer,
     item_type,
@@ -77,8 +81,8 @@ with created_item as (
     'draft',
     25
   )
-  returning id
-), created_version as (
+  returning id into saved_item_id;
+
   insert into public.eslam_brain_versions (
     item_id,
     version_number,
@@ -87,22 +91,38 @@ with created_item as (
     summary,
     topics,
     change_note
-  )
-  select
-    id,
+  ) values (
+    saved_item_id,
     1,
     'Find the first broken step',
     'Diagnose the earliest broken step before optimizing downstream symptoms.',
     'Core diagnostic principle',
     array['diagnosis', 'funnel']::text[],
     'Initial canonical version'
-  from created_item
-  returning item_id, version_number
-)
-update public.eslam_brain_items item
-set status = 'published', published_version_number = version.version_number
-from created_version version
-where item.id = version.item_id;
+  );
+
+  update public.eslam_brain_items
+  set status = 'published', published_version_number = 1
+  where id = saved_item_id;
+
+  if not found then
+    raise exception 'service_role publication update did not affect the created item';
+  end if;
+
+  if not exists (
+    select 1
+    from public.eslam_brain_items item
+    join public.eslam_brain_versions version
+      on version.item_id = item.id
+     and version.version_number = item.published_version_number
+    where item.id = saved_item_id
+      and item.status = 'published'
+      and version.title = 'Find the first broken step'
+  ) then
+    raise exception 'service_role publication flow did not produce a resolvable published item';
+  end if;
+end;
+$$;
 
 do $$
 begin
