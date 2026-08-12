@@ -117,9 +117,13 @@ test("generated Supabase types include canonical brain items and version history
   assert.match(databaseTypes, /foreignKeyName: "eslam_brain_versions_item_id_fkey"/);
 });
 
-test("Task 13 remains a persistence model and does not inject brain content into chat", () => {
-  const requestBuilder = readSource("src/features/conversations/assistant-request.ts");
-  const streamRoute = readSource("src/app/api/chat/stream/route.ts");
+test("Task 13 remains persistence-only while Task 14 owns Brain retrieval", () => {
+  const retrieval = readSource("src/features/eslam-brain/model-context-data.ts");
 
-  assert.doesNotMatch(requestBuilder + streamRoute, /eslam_brain|brain_items|brain_versions/i);
+  assert.doesNotMatch(
+    schemaMigration + indexMigration + hardeningMigration,
+    /OpenAI|responses\.create|assistant-request|chat\/stream/i,
+  );
+  assert.match(retrieval, /from\("eslam_brain_items"\)/);
+  assert.match(retrieval, /\.eq\("status", "published"\)/);
 });
