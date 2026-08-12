@@ -14,6 +14,16 @@ const indexMigration = readSource(
 const hardeningMigration = readSource(
   "supabase/migrations/20260812061925_harden_eslam_brain_provenance_privileges.sql",
 );
+const dropRedundantIndexMigration = readSource(
+  "supabase/migrations/20260812075153_drop_redundant_eslam_brain_published_version_index.sql",
+);
+
+function sqlStatements(sql) {
+  return sql
+    .split(";")
+    .map((statement) => statement.trim())
+    .filter(Boolean);
+}
 
 test("Eslam Brain canonical model enforces semantic layers, teaching types, and lifecycle", () => {
   assert.match(schemaMigration, /create table public\.eslam_brain_items/);
@@ -66,8 +76,25 @@ test("final Brain privileges are server-only and column-scoped", () => {
     hardeningMigration,
     /grant insert \([\s\S]*item_id[\s\S]*content[\s\S]*created_by[\s\S]*\) on public\.eslam_brain_versions to service_role/,
   );
-  assert.doesNotMatch(hardeningMigration, /grant update .*eslam_brain_versions/i);
-  assert.doesNotMatch(hardeningMigration, /grant delete .*eslam_brain/i);
+
+  const finalGrantStatements = sqlStatements(hardeningMigration);
+  assert.equal(
+    finalGrantStatements.some(
+      (statement) =>
+        /^grant\s+update\b/i.test(statement) &&
+        /on\s+public\.eslam_brain_versions\b/i.test(statement),
+    ),
+    false,
+  );
+  assert.equal(
+    finalGrantStatements.some(
+      (statement) =>
+        /^grant\s+delete\b/i.test(statement) &&
+        /on\s+public\.eslam_brain_(?:items|versions)\b/i.test(statement),
+    ),
+    false,
+  );
+
   assert.match(schemaMigration, /alter table public\.eslam_brain_items enable row level security/);
   assert.match(schemaMigration, /alter table public\.eslam_brain_versions enable row level security/);
 });
@@ -78,24 +105,31 @@ test("immutable version provenance survives Auth-user deletion", () => {
   assert.match(hardeningMigration, /drop index public\.eslam_brain_versions_created_by_idx/);
 });
 
-test("Eslam Brain foreign keys and published retrieval have covering indexes", () => {
+test("Eslam Brain keeps useful indexes and forward-drops the redundant composite FK index", () => {
   assert.match(schemaMigration, /eslam_brain_items_published_lookup_idx/);
   assert.match(schemaMigration, /where status = 'published'/);
   assert.match(schemaMigration, /eslam_brain_versions_item_created_idx/);
   assert.match(indexMigration, /eslam_brain_items_created_by_idx/);
-  assert.match(indexMigration, /eslam_brain_items_published_version_fk_idx/);
   assert.match(indexMigration, /eslam_brain_versions_created_by_idx/);
+  assert.match(
+    dropRedundantIndexMigration,
+    /drop index if exists public\.eslam_brain_items_published_version_fk_idx/,
+  );
 });
 
 test("runtime database regression executes the final immutable server-only brain contract in CI", () => {
   const runtime = readSource("supabase/tests/eslam_brain_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
 
+  assert.match(runtime, /has_table_privilege\('anon', 'public\.eslam_brain_versions', 'SELECT'\)/);
   assert.match(runtime, /client role unexpectedly has direct Eslam Brain access/);
   assert.match(runtime, /service_role item table privileges do not match the column-scoped contract/);
   assert.match(runtime, /service_role item column privileges do not match the Task 13 contract/);
   assert.match(runtime, /service_role version table privileges do not match the immutable history contract/);
   assert.match(runtime, /service_role version insert columns do not match the immutable history contract/);
+  assert.match(runtime, /returning id into saved_item_id/);
+  assert.match(runtime, /service_role publication update did not affect the created item/);
+  assert.match(runtime, /service_role publication flow did not produce a resolvable published item/);
   assert.match(runtime, /published Eslam Brain item did not resolve deterministically/);
   assert.match(runtime, /nonexistent published version unexpectedly succeeded/);
   assert.match(runtime, /immutable brain version trigger did not reject UPDATE/);
@@ -121,7 +155,7 @@ test("Task 13 remains persistence-only while Task 14 owns Brain retrieval", () =
   const retrieval = readSource("src/features/eslam-brain/model-context-data.ts");
 
   assert.doesNotMatch(
-    schemaMigration + indexMigration + hardeningMigration,
+    schemaMigration + indexMigration + hardeningMigration + dropRedundantIndexMigration,
     /OpenAI|responses\.create|assistant-request|chat\/stream/i,
   );
   assert.match(retrieval, /from\("eslam_brain_items"\)/);
