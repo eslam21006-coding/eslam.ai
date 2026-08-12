@@ -22,6 +22,21 @@ begin
       raise exception 'service_role unexpectedly can mutate immutable teaching lineage on %', table_name;
     end if;
   end loop;
+
+  if has_function_privilege('anon', 'public.create_eslam_brain_draft(jsonb)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.create_eslam_brain_draft(jsonb)', 'EXECUTE') then
+    raise exception 'client role unexpectedly can execute create_eslam_brain_draft';
+  end if;
+
+  if not has_function_privilege('service_role', 'public.create_eslam_brain_draft(jsonb)', 'EXECUTE') then
+    raise exception 'service_role is missing execute on create_eslam_brain_draft';
+  end if;
+
+  if position('Hard deletion is unsupported' in coalesce(obj_description('public.teaching_sources'::regclass), '')) = 0
+     or position('Hard deletion is unsupported' in coalesce(obj_description('public.teaching_items'::regclass), '')) = 0
+     or position('Hard deletion is unsupported' in coalesce(obj_description('public.teaching_versions'::regclass), '')) = 0 then
+    raise exception 'append-only teaching lineage deletion policy is not documented';
+  end if;
 end;
 $$;
 
@@ -30,6 +45,8 @@ set local role service_role;
 do $$
 declare
   saved_item_id uuid;
+  secondary_source_id uuid;
+  secondary_teaching_item_id uuid;
   source_count_before bigint;
   source_count_after bigint;
   teaching_item_count_before bigint;
@@ -71,6 +88,52 @@ begin
       and bv.title = 'Task 16 lineage runtime teaching'
   ) then
     raise exception 'Teach Eslam did not create complete source-to-Brain lineage';
+  end if;
+
+  insert into public.teaching_sources (
+    source_type,
+    title,
+    source_metadata,
+    created_by
+  ) values (
+    'voice',
+    'Task 16 secondary source',
+    jsonb_build_object('entrypoint', 'runtime_multi_source_test'),
+    null
+  )
+  returning id into secondary_source_id;
+
+  insert into public.teaching_items (
+    source_id,
+    brain_item_id,
+    created_by
+  ) values (
+    secondary_source_id,
+    saved_item_id,
+    null
+  )
+  returning id into secondary_teaching_item_id;
+
+  insert into public.teaching_versions (
+    teaching_item_id,
+    brain_item_id,
+    version_number,
+    source_locator,
+    created_by
+  ) values (
+    secondary_teaching_item_id,
+    saved_item_id,
+    1,
+    jsonb_build_object('kind', 'secondary_source_contribution'),
+    null
+  );
+
+  if (
+    select count(*)
+    from public.teaching_items
+    where brain_item_id = saved_item_id
+  ) <> 2 then
+    raise exception 'Brain item could not receive provenance from multiple sources';
   end if;
 
   select count(*) into source_count_before from public.teaching_sources;
