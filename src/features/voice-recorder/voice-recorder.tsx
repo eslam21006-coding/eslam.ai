@@ -25,6 +25,8 @@ type RecorderStatus =
   | "paused"
   | "preview"
   | "uploading"
+  | "cleaning"
+  | "cleanup-error"
   | "finalize-error"
   | "uploaded"
   | "error";
@@ -58,6 +60,10 @@ function chooseRecorderMimeType() {
   return MIME_CANDIDATES.find((mimeType) => MediaRecorder.isTypeSupported(mimeType)) ?? null;
 }
 
+function stopMediaStream(stream: MediaStream | null) {
+  stream?.getTracks().forEach((track) => track.stop());
+}
+
 /** Browser recorder for local capture, preview, and direct signed upload to private Supabase Storage. */
 export function VoiceRecorder() {
   const [status, setStatus] = useState<RecorderStatus>("idle");
@@ -70,6 +76,7 @@ export function VoiceRecorder() {
   const [pendingIntent, setPendingIntent] = useState<VoiceUploadIntent | null>(null);
   const [uploadedId, setUploadedId] = useState<string | null>(null);
 
+  const isMountedRef = useRef(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -79,7 +86,7 @@ export function VoiceRecorder() {
   const previewUrlRef = useRef<string | null>(null);
 
   const stopStream = useCallback(() => {
-    streamRef.current?.getTracks().forEach((track) => track.stop());
+    stopMediaStream(streamRef.current);
     streamRef.current = null;
   }, []);
 
@@ -102,7 +109,10 @@ export function VoiceRecorder() {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state === "inactive") return;
 
-    const finalDuration = Math.max(1, Math.round(activeDuration()));
+    const finalDuration = Math.min(
+      VOICE_RECORDING_MAX_DURATION_MS,
+      Math.max(1, Math.round(activeDuration())),
+    );
     accumulatedMsRef.current = finalDuration;
     segmentStartedAtRef.current = null;
     finalDurationRef.current = finalDuration;
@@ -115,22 +125,32 @@ export function VoiceRecorder() {
 
     const interval = window.setInterval(() => {
       const nextElapsed = activeDuration();
-      setElapsedMs(nextElapsed);
+      setElapsedMs(Math.min(nextElapsed, VOICE_RECORDING_MAX_DURATION_MS));
       if (nextElapsed >= VOICE_RECORDING_MAX_DURATION_MS) stopRecording();
     }, 250);
 
     return () => window.clearInterval(interval);
   }, [activeDuration, status, stopRecording]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+
       const recorder = recorderRef.current;
-      if (recorder && recorder.state !== "inactive") recorder.stop();
+      if (recorder && recorder.state !== "inactive") {
+        recorder.ondataavailable = null;
+        recorder.onerror = null;
+        recorder.onstop = null;
+        recorder.stop();
+      }
+
       stopStream();
       if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
-    },
-    [stopStream],
-  );
+      previewUrlRef.current = null;
+    };
+  }, [stopStream]);
 
   const clearLocalRecording = useCallback(() => {
     revokePreview();
@@ -156,7 +176,9 @@ export function VoiceRecorder() {
       typeof MediaRecorder === "undefined"
     ) {
       setStatus("error");
-      setMessage("هذا المتصفح لا يدعم تسجيل الصوت بالطريقة المطلوبة. استخدم إصداراً حديثاً من Chrome أو Edge أو Safari.");
+      setMessage(
+        "هذا المتصفح لا يدعم تسجيل الصوت بالطريقة المطلوبة. استخدم إصداراً حديثاً من Chrome أو Edge أو Safari.",
+      );
       return;
     }
 
@@ -179,6 +201,11 @@ export function VoiceRecorder() {
         },
       });
 
+      if (!isMountedRef.current) {
+        stopMediaStream(stream);
+        return;
+      }
+
       const recorder = new MediaRecorder(stream, {
         mimeType: selectedMimeType,
         audioBitsPerSecond: VOICE_RECORDING_AUDIO_BITS_PER_SECOND,
@@ -196,16 +223,22 @@ export function VoiceRecorder() {
 
       recorder.onerror = () => {
         stopStream();
+        if (!isMountedRef.current) return;
         setStatus("error");
         setMessage("حدث خطأ أثناء التسجيل. لم يتم رفع أي ملف ويمكنك إعادة المحاولة.");
       };
 
       recorder.onstop = () => {
         stopStream();
+        if (!isMountedRef.current) return;
+
         const actualMimeType = normalizeVoiceRecordingMimeType(
           recorder.mimeType || selectedMimeType,
         );
-        const finalDuration = Math.max(1, finalDurationRef.current || Math.round(activeDuration()));
+        const finalDuration = Math.min(
+          VOICE_RECORDING_MAX_DURATION_MS,
+          Math.max(1, finalDurationRef.current || Math.round(activeDuration())),
+        );
         const blob = new Blob(chunksRef.current, {
           type: recorder.mimeType || selectedMimeType,
         });
@@ -236,6 +269,7 @@ export function VoiceRecorder() {
       setStatus("recording");
     } catch (error) {
       stopStream();
+      if (!isMountedRef.current) return;
       setStatus("error");
       setMessage(recorderErrorMessage(error));
     }
@@ -245,7 +279,7 @@ export function VoiceRecorder() {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state !== "recording") return;
 
-    accumulatedMsRef.current = activeDuration();
+    accumulatedMsRef.current = Math.min(activeDuration(), VOICE_RECORDING_MAX_DURATION_MS);
     segmentStartedAtRef.current = null;
     recorder.pause();
     setElapsedMs(accumulatedMsRef.current);
@@ -256,20 +290,52 @@ export function VoiceRecorder() {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state !== "paused") return;
 
+    if (accumulatedMsRef.current >= VOICE_RECORDING_MAX_DURATION_MS) {
+      stopRecording();
+      return;
+    }
+
     segmentStartedAtRef.current = performance.now();
     recorder.resume();
     setStatus("recording");
-  }, []);
+  }, [stopRecording]);
+
+  const cleanupPendingRecording = useCallback(
+    async (intent: VoiceUploadIntent) => {
+      setStatus("cleaning");
+      setMessage("جارٍ تنظيف محاولة الحفظ السابقة…");
+
+      const cleanup = await cancelVoiceRecordingUploadAction({
+        recordingId: intent.recordingId,
+      });
+
+      if (!isMountedRef.current) return false;
+
+      if (!cleanup.ok) {
+        setPendingIntent(intent);
+        setStatus("cleanup-error");
+        setMessage(
+          "تعذر تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف قبل بدء تسجيل جديد.",
+        );
+        return false;
+      }
+
+      setPendingIntent(null);
+      return true;
+    },
+    [],
+  );
 
   const resetForNewRecording = useCallback(async () => {
     if (pendingIntent) {
-      await cancelVoiceRecordingUploadAction({ recordingId: pendingIntent.recordingId });
+      const cleaned = await cleanupPendingRecording(pendingIntent);
+      if (!cleaned || !isMountedRef.current) return;
     }
-    setPendingIntent(null);
+
     clearLocalRecording();
     setMessage(null);
     setStatus("idle");
-  }, [clearLocalRecording, pendingIntent]);
+  }, [cleanupPendingRecording, clearLocalRecording, pendingIntent]);
 
   const finalizeIntent = useCallback(
     async (intent: VoiceUploadIntent) => {
@@ -277,6 +343,8 @@ export function VoiceRecorder() {
         recordingId: intent.recordingId,
         durationMs,
       });
+
+      if (!isMountedRef.current) return;
 
       if (!finalization.ok) {
         setPendingIntent(intent);
@@ -300,6 +368,7 @@ export function VoiceRecorder() {
       !audioBlob ||
       !mimeType ||
       durationMs <= 0 ||
+      durationMs > VOICE_RECORDING_MAX_DURATION_MS ||
       audioBlob.size <= 0 ||
       audioBlob.size > VOICE_RECORDING_MAX_BYTES
     ) {
@@ -311,6 +380,15 @@ export function VoiceRecorder() {
     setMessage(null);
 
     const intentResult = await createVoiceRecordingUploadAction({ mimeType });
+    if (!isMountedRef.current) {
+      if (intentResult.ok) {
+        await cancelVoiceRecordingUploadAction({
+          recordingId: intentResult.intent.recordingId,
+        });
+      }
+      return;
+    }
+
     if (!intentResult.ok) {
       setStatus("preview");
       setMessage("تعذر تجهيز مساحة رفع خاصة للتسجيل. حاول الحفظ مرة أخرى.");
@@ -331,10 +409,29 @@ export function VoiceRecorder() {
 
     if (uploadError) {
       console.error("Signed voice upload failed", { message: uploadError.message });
-      await cancelVoiceRecordingUploadAction({ recordingId: intent.recordingId });
+      const cleanup = await cancelVoiceRecordingUploadAction({
+        recordingId: intent.recordingId,
+      });
+
+      if (!isMountedRef.current) return;
+
+      if (!cleanup.ok) {
+        setPendingIntent(intent);
+        setStatus("cleanup-error");
+        setMessage(
+          "فشل رفع التسجيل وتعذر تنظيف محاولة الرفع. التسجيل المحلي ما زال موجوداً؛ أعد محاولة التنظيف قبل المحاولة من جديد.",
+        );
+        return;
+      }
+
       setPendingIntent(null);
       setStatus("preview");
       setMessage("فشل رفع التسجيل. الملف المحلي ما زال موجوداً ويمكنك المحاولة مرة أخرى.");
+      return;
+    }
+
+    if (!isMountedRef.current) {
+      await cancelVoiceRecordingUploadAction({ recordingId: intent.recordingId });
       return;
     }
 
@@ -348,12 +445,24 @@ export function VoiceRecorder() {
     await finalizeIntent(pendingIntent);
   }, [finalizeIntent, pendingIntent]);
 
+  const retryCleanup = useCallback(async () => {
+    if (!pendingIntent) return;
+    const cleaned = await cleanupPendingRecording(pendingIntent);
+    if (!cleaned || !isMountedRef.current) return;
+
+    clearLocalRecording();
+    setMessage(null);
+    setStatus("idle");
+  }, [cleanupPendingRecording, clearLocalRecording, pendingIntent]);
+
   const isCapturing = status === "recording" || status === "paused";
   const canUpload =
     status === "preview" &&
     Boolean(audioBlob) &&
     Boolean(mimeType) &&
-    Boolean(durationMs) &&
+    durationMs > 0 &&
+    durationMs <= VOICE_RECORDING_MAX_DURATION_MS &&
+    (audioBlob?.size ?? 0) > 0 &&
     (audioBlob?.size ?? 0) <= VOICE_RECORDING_MAX_BYTES;
 
   return (
@@ -488,6 +597,16 @@ export function VoiceRecorder() {
               </button>
             ) : null}
 
+            {status === "cleaning" ? (
+              <button
+                type="button"
+                disabled
+                className="min-h-11 cursor-wait rounded-[var(--radius-sm)] border border-[var(--border)] px-5 py-3 text-sm text-[var(--foreground-muted)]"
+              >
+                جارٍ التنظيف…
+              </button>
+            ) : null}
+
             {status === "finalize-error" && pendingIntent ? (
               <button
                 type="button"
@@ -495,6 +614,16 @@ export function VoiceRecorder() {
                 className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)]"
               >
                 إعادة محاولة تثبيت الحفظ
+              </button>
+            ) : null}
+
+            {status === "cleanup-error" && pendingIntent ? (
+              <button
+                type="button"
+                onClick={retryCleanup}
+                className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)]"
+              >
+                إعادة محاولة التنظيف
               </button>
             ) : null}
 
