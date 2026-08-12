@@ -82,6 +82,7 @@ export async function createTeachEslamDraftAction(
   }
 
   revalidatePath("/admin/teach");
+  revalidatePath("/admin/brain");
 
   return {
     error: null,
@@ -130,7 +131,11 @@ export async function publishTeachEslamDraftAction(formData: FormData) {
 
   const { data: published, error: publishError } = await admin
     .from("eslam_brain_items")
-    .update({ status: "published", published_version_number: versionNumber })
+    .update({
+      status: "published",
+      approved_version_number: versionNumber,
+      published_version_number: versionNumber,
+    })
     .eq("id", itemId)
     .eq("created_by", authorization.userId)
     .eq("status", "draft")
@@ -146,5 +151,6 @@ export async function publishTeachEslamDraftAction(formData: FormData) {
   }
 
   revalidatePath("/admin/teach");
+  revalidatePath("/admin/brain");
   redirect("/admin/teach?status=published");
 }
