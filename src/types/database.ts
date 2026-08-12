@@ -289,7 +289,7 @@ export type Database = {
           {
             foreignKeyName: "teaching_items_brain_item_id_fkey"
             columns: ["brain_item_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "eslam_brain_items"
             referencedColumns: ["id"]
           },
@@ -456,14 +456,14 @@ export type TablesInsert<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Insert: infer I
-    }
+    Insert: infer I
+  }
     ? I
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Insert: infer I
-      }
+      Insert: infer I
+    }
       ? I
       : never
     : never
@@ -481,14 +481,14 @@ export type TablesUpdate<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
-      Update: infer U
-    }
+    Update: infer U
+  }
     ? U
     : never
   : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
     ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
-        Update: infer U
-      }
+      Update: infer U
+    }
       ? U
       : never
     : never
