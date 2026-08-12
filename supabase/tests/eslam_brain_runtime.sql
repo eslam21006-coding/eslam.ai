@@ -9,17 +9,30 @@ begin
   end if;
 
   if not has_table_privilege('service_role', 'public.eslam_brain_items', 'SELECT')
-     or not has_table_privilege('service_role', 'public.eslam_brain_items', 'INSERT')
-     or not has_table_privilege('service_role', 'public.eslam_brain_items', 'UPDATE')
+     or has_table_privilege('service_role', 'public.eslam_brain_items', 'INSERT')
+     or has_table_privilege('service_role', 'public.eslam_brain_items', 'UPDATE')
      or has_table_privilege('service_role', 'public.eslam_brain_items', 'DELETE') then
-    raise exception 'service_role item privileges do not match the Task 13 contract';
+    raise exception 'service_role item table privileges do not match the column-scoped contract';
+  end if;
+
+  if not has_column_privilege('service_role', 'public.eslam_brain_items', 'semantic_layer', 'INSERT')
+     or not has_column_privilege('service_role', 'public.eslam_brain_items', 'status', 'UPDATE')
+     or has_column_privilege('service_role', 'public.eslam_brain_items', 'id', 'INSERT')
+     or has_column_privilege('service_role', 'public.eslam_brain_items', 'created_at', 'UPDATE') then
+    raise exception 'service_role item column privileges do not match the Task 13 contract';
   end if;
 
   if not has_table_privilege('service_role', 'public.eslam_brain_versions', 'SELECT')
-     or not has_table_privilege('service_role', 'public.eslam_brain_versions', 'INSERT')
+     or has_table_privilege('service_role', 'public.eslam_brain_versions', 'INSERT')
      or has_table_privilege('service_role', 'public.eslam_brain_versions', 'UPDATE')
      or has_table_privilege('service_role', 'public.eslam_brain_versions', 'DELETE') then
-    raise exception 'service_role version privileges do not match the immutable history contract';
+    raise exception 'service_role version table privileges do not match the immutable history contract';
+  end if;
+
+  if not has_column_privilege('service_role', 'public.eslam_brain_versions', 'content', 'INSERT')
+     or has_column_privilege('service_role', 'public.eslam_brain_versions', 'id', 'INSERT')
+     or has_column_privilege('service_role', 'public.eslam_brain_versions', 'created_at', 'INSERT') then
+    raise exception 'service_role version insert columns do not match the immutable history contract';
   end if;
 
   if not exists (
@@ -37,90 +50,87 @@ begin
   ) then
     raise exception 'Eslam Brain RLS is not enabled';
   end if;
+
+  if exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'public.eslam_brain_versions'::regclass
+      and contype = 'f'
+      and conname = 'eslam_brain_versions_created_by_fkey'
+  ) then
+    raise exception 'immutable version provenance still depends on mutable Auth user lifetime';
+  end if;
 end;
 $$;
 
 set local role service_role;
 
-insert into public.eslam_brain_items (
-  id,
-  semantic_layer,
-  item_type,
-  status,
-  priority
-) values (
-  '13000000-0000-4000-8000-000000000001',
-  'brain',
-  'principle',
-  'draft',
-  25
-);
-
-insert into public.eslam_brain_versions (
-  id,
-  item_id,
-  version_number,
-  title,
-  content,
-  summary,
-  topics,
-  change_note
-) values (
-  '13000000-0000-4000-8000-000000000002',
-  '13000000-0000-4000-8000-000000000001',
-  1,
-  'Find the first broken step',
-  'Diagnose the earliest broken step before optimizing downstream symptoms.',
-  'Core diagnostic principle',
-  array['diagnosis', 'funnel']::text[],
-  'Initial canonical version'
-);
-
-update public.eslam_brain_items
-set status = 'published', published_version_number = 1
-where id = '13000000-0000-4000-8000-000000000001';
+with created_item as (
+  insert into public.eslam_brain_items (
+    semantic_layer,
+    item_type,
+    status,
+    priority
+  ) values (
+    'brain',
+    'principle',
+    'draft',
+    25
+  )
+  returning id
+), created_version as (
+  insert into public.eslam_brain_versions (
+    item_id,
+    version_number,
+    title,
+    content,
+    summary,
+    topics,
+    change_note
+  )
+  select
+    id,
+    1,
+    'Find the first broken step',
+    'Diagnose the earliest broken step before optimizing downstream symptoms.',
+    'Core diagnostic principle',
+    array['diagnosis', 'funnel']::text[],
+    'Initial canonical version'
+  from created_item
+  returning item_id, version_number
+)
+update public.eslam_brain_items item
+set status = 'published', published_version_number = version.version_number
+from created_version version
+where item.id = version.item_id;
 
 do $$
 begin
-  if not exists (
-    select 1
-    from public.eslam_brain_items item
-    join public.eslam_brain_versions version
-      on version.item_id = item.id
-     and version.version_number = item.published_version_number
-    where item.id = '13000000-0000-4000-8000-000000000001'
-      and item.status = 'published'
-      and item.semantic_layer = 'brain'
-      and item.item_type = 'principle'
-      and version.title = 'Find the first broken step'
-  ) then
-    raise exception 'published Eslam Brain item did not resolve deterministically';
-  end if;
-
   begin
-    update public.eslam_brain_versions
-    set content = 'mutated'
-    where item_id = '13000000-0000-4000-8000-000000000001';
-    raise exception 'service_role unexpectedly updated immutable brain history';
+    insert into public.eslam_brain_items (id, semantic_layer, item_type, status)
+    values (gen_random_uuid(), 'brain', 'principle', 'draft');
+    raise exception 'service_role unexpectedly supplied canonical item id';
   exception
     when insufficient_privilege then null;
   end;
 
   begin
-    delete from public.eslam_brain_versions
-    where item_id = '13000000-0000-4000-8000-000000000001';
-    raise exception 'service_role unexpectedly deleted immutable brain history';
+    insert into public.eslam_brain_versions (
+      id,
+      item_id,
+      version_number,
+      title,
+      content
+    ) values (
+      gen_random_uuid(),
+      gen_random_uuid(),
+      1,
+      'Forbidden id insert',
+      'The service role must not control immutable row identifiers.'
+    );
+    raise exception 'service_role unexpectedly supplied immutable version id';
   exception
     when insufficient_privilege then null;
-  end;
-
-  begin
-    update public.eslam_brain_items
-    set published_version_number = 2
-    where id = '13000000-0000-4000-8000-000000000001';
-    raise exception 'nonexistent published version unexpectedly succeeded';
-  exception
-    when foreign_key_violation then null;
   end;
 
   begin
@@ -151,8 +161,77 @@ $$;
 
 reset role;
 
+insert into auth.users (id, email)
+values ('13000000-0000-4000-8000-000000000010', 'brain-author@example.com');
+
+insert into public.eslam_brain_items (
+  id,
+  semantic_layer,
+  item_type,
+  status,
+  priority,
+  created_by
+) values (
+  '13000000-0000-4000-8000-000000000001',
+  'brain',
+  'principle',
+  'draft',
+  25,
+  '13000000-0000-4000-8000-000000000010'
+);
+
+insert into public.eslam_brain_versions (
+  id,
+  item_id,
+  version_number,
+  title,
+  content,
+  summary,
+  topics,
+  change_note,
+  created_by
+) values (
+  '13000000-0000-4000-8000-000000000002',
+  '13000000-0000-4000-8000-000000000001',
+  1,
+  'Immutable provenance verification',
+  'Published versions retain their creator UUID even if the Auth account is later removed.',
+  'Provenance verification',
+  array['provenance']::text[],
+  'Runtime verification',
+  '13000000-0000-4000-8000-000000000010'
+);
+
+update public.eslam_brain_items
+set status = 'published', published_version_number = 1
+where id = '13000000-0000-4000-8000-000000000001';
+
 do $$
 begin
+  if not exists (
+    select 1
+    from public.eslam_brain_items item
+    join public.eslam_brain_versions version
+      on version.item_id = item.id
+     and version.version_number = item.published_version_number
+    where item.id = '13000000-0000-4000-8000-000000000001'
+      and item.status = 'published'
+      and item.semantic_layer = 'brain'
+      and item.item_type = 'principle'
+      and version.title = 'Immutable provenance verification'
+  ) then
+    raise exception 'published Eslam Brain item did not resolve deterministically';
+  end if;
+
+  begin
+    update public.eslam_brain_items
+    set published_version_number = 2
+    where id = '13000000-0000-4000-8000-000000000001';
+    raise exception 'nonexistent published version unexpectedly succeeded';
+  exception
+    when foreign_key_violation then null;
+  end;
+
   begin
     update public.eslam_brain_versions
     set content = 'privileged mutation attempt'
@@ -169,6 +248,22 @@ begin
   exception
     when sqlstate '55000' then null;
   end;
+end;
+$$;
+
+delete from auth.users
+where id = '13000000-0000-4000-8000-000000000010';
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.eslam_brain_versions
+    where item_id = '13000000-0000-4000-8000-000000000001'
+      and created_by = '13000000-0000-4000-8000-000000000010'
+  ) then
+    raise exception 'immutable version creator provenance was not preserved after Auth user deletion';
+  end if;
 end;
 $$;
 
