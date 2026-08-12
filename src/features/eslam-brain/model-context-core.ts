@@ -5,7 +5,12 @@ export const MAX_ESLAM_BRAIN_SUMMARY_CHARS = 800;
 export const MAX_ESLAM_BRAIN_TOPIC_CHARS = 120;
 export const MAX_ESLAM_BRAIN_TOPICS = 12;
 
-const SEMANTIC_LAYER_ORDER = ["identity", "brain", "cases", "voice"] as const;
+export const ESLAM_BRAIN_SEMANTIC_LAYERS = [
+  "identity",
+  "brain",
+  "cases",
+  "voice",
+] as const;
 const ITEM_TYPES = [
   "identity_fact",
   "principle",
@@ -18,7 +23,7 @@ const ITEM_TYPES = [
   "voice_rule",
 ] as const;
 
-type SemanticLayer = (typeof SEMANTIC_LAYER_ORDER)[number];
+type SemanticLayer = (typeof ESLAM_BRAIN_SEMANTIC_LAYERS)[number];
 type ItemType = (typeof ITEM_TYPES)[number];
 
 export type PublishedBrainVersionRow = {
@@ -49,10 +54,10 @@ export type PublishedEslamBrainItem = {
   topics: string[];
 };
 
-const semanticLayers = new Set<string>(SEMANTIC_LAYER_ORDER);
+const semanticLayers = new Set<string>(ESLAM_BRAIN_SEMANTIC_LAYERS);
 const itemTypes = new Set<string>(ITEM_TYPES);
 const layerRank = new Map<string, number>(
-  SEMANTIC_LAYER_ORDER.map((layer, index) => [layer, index]),
+  ESLAM_BRAIN_SEMANTIC_LAYERS.map((layer, index) => [layer, index]),
 );
 
 function boundedText(value: string, maxChars: number) {
