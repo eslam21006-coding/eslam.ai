@@ -5,15 +5,16 @@ import { revalidatePath } from "next/cache";
 import {
   DOCUMENT_TEACHING_LEASE_SECONDS,
   DOCUMENT_TEACHING_PROMPT_VERSION,
-  buildDocumentTeachingResponseRequest,
   isDocumentTeachingUuid,
-  parseDocumentTeachingCandidates,
   validateDocumentTeachingDraftSelections,
   validateDocumentTeachingExtractionInput,
-  type DocumentTeachingCandidate,
   type DocumentTeachingDraftsActionResult,
   type DocumentTeachingExtractionActionResult,
 } from "@/features/document-teaching/extraction-core";
+import {
+  executeDocumentTeachingDraftCreation,
+  executeDocumentTeachingExtraction,
+} from "@/features/document-teaching/extraction-execution";
 import { getDocumentTeachingAdminClient } from "@/features/document-teaching/database";
 import { requireAdmin } from "@/lib/auth/admin";
 import {
@@ -25,7 +26,6 @@ import type { Json } from "@/types/database";
 const DOCUMENT_PAGE = "/admin/teach/documents";
 const BRAIN_PAGE = "/admin/brain";
 const TEACH_PAGE = "/admin/teach";
-const OPENAI_FILE_EXPIRY_SECONDS = 60 * 60;
 
 type ClaimRow = {
   extraction_id: string | null;
@@ -34,6 +34,7 @@ type ClaimRow = {
   claim_token: string | null;
 };
 
+/** Persists a retryable failure only while this worker still owns the document claim. */
 async function failClaimedExtraction(
   extractionId: string,
   userId: string,
@@ -141,84 +142,83 @@ export async function extractDocumentTeachingAction(
     return { ok: false, error: "download-failed" };
   }
 
-  let openai: ReturnType<typeof getOpenAIDocumentTeachingClient> | null = null;
-  let temporaryFileId: string | null = null;
-  let candidates: DocumentTeachingCandidate[] = [];
-  let extractionErrorCode = "openai-extraction";
-
-  try {
-    openai = getOpenAIDocumentTeachingClient();
-    const file = new File([blob], document.original_filename, { type: document.mime_type });
-    const uploadedFile = await openai.files.create({
-      file,
-      purpose: "user_data",
-      expires_after: {
-        anchor: "created_at",
-        seconds: OPENAI_FILE_EXPIRY_SECONDS,
-      },
-    });
-    temporaryFileId = uploadedFile.id;
-
-    const response = await openai.responses.create(
-      buildDocumentTeachingResponseRequest(model, uploadedFile.id, document.source_title),
-    );
-    if (response.status === "incomplete") {
-      extractionErrorCode = "openai-truncated";
-      throw new Error("Document teaching response was incomplete before structured output completed");
-    }
-
-    const parsed = parseDocumentTeachingCandidates(response.output_text);
-    if (!parsed.ok) {
-      extractionErrorCode = "invalid-structured-output";
-      throw new Error("Structured document extraction failed independent validation");
-    }
-    candidates = parsed.candidates;
-  } catch (error) {
-    console.error("OpenAI document teaching extraction failed", {
-      documentId: validated.documentId,
-      extractionId,
-      model,
-      errorCode: extractionErrorCode,
-      message: error instanceof Error ? error.message : "Unknown extraction error",
-    });
-    await failClaimedExtraction(
-      extractionId,
-      authorization.userId,
-      claimToken,
-      extractionErrorCode,
-    );
-    revalidatePath(DOCUMENT_PAGE);
-    return { ok: false, error: "extraction-failed" };
-  } finally {
-    if (temporaryFileId && openai) {
-      try {
-        await openai.files.delete(temporaryFileId);
-      } catch (error) {
-        console.warn("Temporary OpenAI document file cleanup failed; expiry remains active", {
-          fileId: temporaryFileId,
-          message: error instanceof Error ? error.message : "Unknown file deletion error",
-        });
-      }
-    }
-  }
-
-  const { data: completed, error: completeError } = await admin.rpc(
-    "complete_document_teaching_extraction",
-    {
-      p_extraction_id: extractionId,
-      p_created_by: authorization.userId,
-      p_claim_token: claimToken,
-      p_candidates: candidates as unknown as Json,
+  const sourceFile = new File([blob], document.original_filename, { type: document.mime_type });
+  const execution = await executeDocumentTeachingExtraction({
+    createClient: () => {
+      const openai = getOpenAIDocumentTeachingClient();
+      return {
+        createFile: (fileInput) => openai.files.create(fileInput),
+        createResponse: async (request) => {
+          const response = await openai.responses.create(request);
+          return { status: response.status, outputText: response.output_text };
+        },
+        deleteFile: async (fileId) => {
+          await openai.files.delete(fileId);
+        },
+      };
     },
-  );
+    file: sourceFile,
+    model,
+    sourceTitle: document.source_title,
+    completeCandidates: async (candidates) => {
+      try {
+        const { data: completed, error: completeError } = await admin.rpc(
+          "complete_document_teaching_extraction",
+          {
+            p_extraction_id: extractionId,
+            p_created_by: authorization.userId,
+            p_claim_token: claimToken,
+            p_candidates: candidates as unknown as Json,
+          },
+        );
 
-  if (completeError || completed !== true) {
-    console.error("Document teaching extraction completion lost its claim", {
-      documentId: validated.documentId,
-      extractionId,
-      code: completeError?.code,
-      message: completeError?.message ?? "Claim token no longer owns this extraction",
-    });
+        if (completeError || completed !== true) {
+          console.error("Document teaching extraction completion lost its claim", {
+            documentId: validated.documentId,
+            extractionId,
+            code: completeError?.code,
+            message: completeError?.message ?? "Claim token no longer owns this extraction",
+          });
+          return false;
+        }
+        return true;
+      } catch (error) {
+        console.error("Document teaching extraction completion RPC threw", {
+          documentId: validated.documentId,
+          extractionId,
+          message: error instanceof Error ? error.message : "Unknown completion error",
+        });
+        throw error;
+      }
+    },
+    onCleanupError: (error, fileId) => {
+      console.warn("Temporary OpenAI document file cleanup failed; expiry remains active", {
+        fileId,
+        message: error instanceof Error ? error.message : "Unknown file deletion error",
+      });
+    },
+  });
+
+  if (!execution.ok) {
+    if (execution.stage === "extraction") {
+      console.error("OpenAI document teaching extraction failed", {
+        documentId: validated.documentId,
+        extractionId,
+        model,
+        errorCode: execution.errorCode,
+        message:
+          execution.error instanceof Error ? execution.error.message : "Unknown extraction error",
+      });
+      await failClaimedExtraction(
+        extractionId,
+        authorization.userId,
+        claimToken,
+        execution.errorCode,
+      );
+      revalidatePath(DOCUMENT_PAGE);
+      return { ok: false, error: "extraction-failed" };
+    }
+
     revalidatePath(DOCUMENT_PAGE);
     return { ok: false, error: "finalize-conflict" };
   }
@@ -235,24 +235,20 @@ export async function createDocumentTeachingDraftsAction(
   const validated = validateDocumentTeachingDraftSelections(input);
   if (!validated.ok) return { ok: false, error: "invalid-request" };
 
-  const payload = validated.candidates.map((candidate) => ({
-    candidate_id: candidate.candidate_id,
-    semantic_layer: candidate.semantic_layer,
-    item_type: candidate.item_type,
-    priority: candidate.priority,
-    title: candidate.title,
-    content: candidate.content,
-    summary: candidate.summary,
-    topics: candidate.topics,
-    change_note: candidate.change_note,
-  }));
-
   const admin = getDocumentTeachingAdminClient();
-  const { data, error } = await admin.rpc("create_document_teaching_drafts", {
-    p_extraction_id: validated.extractionId,
-    p_created_by: authorization.userId,
-    p_candidates: payload as unknown as Json,
-  });
+  const { data, error } = await executeDocumentTeachingDraftCreation(
+    {
+      extractionId: validated.extractionId,
+      userId: authorization.userId,
+      candidates: validated.candidates,
+    },
+    (payload) =>
+      admin.rpc("create_document_teaching_drafts", {
+        p_extraction_id: payload.p_extraction_id,
+        p_created_by: payload.p_created_by,
+        p_candidates: payload.p_candidates as unknown as Json,
+      }),
+  );
 
   if (error || !Array.isArray(data)) {
     console.error("Document teaching draft materialization failed", {
