@@ -3,7 +3,10 @@ import Link from "next/link";
 import { DocumentTeachingList } from "@/features/document-teaching/document-list";
 import { DocumentTeachingUploader } from "@/features/document-teaching/document-uploader";
 import { loadDocumentTeachingPage } from "@/features/document-teaching/data";
-import { loadDocumentTeachingExtractionState } from "@/features/document-teaching/extraction-data";
+import {
+  emptyDocumentTeachingExtractionView,
+  loadDocumentTeachingExtractionState,
+} from "@/features/document-teaching/extraction-data";
 import { DocumentTeachingExtractionWorkbench } from "@/features/document-teaching/extraction-workbench";
 import { requireAdmin } from "@/lib/auth/admin";
 
@@ -34,18 +37,9 @@ export default async function DocumentTeachingPage({
     documentId: item.documentId,
     title: item.title,
     originalFilename: item.originalFilename,
-    extraction: extractionByDocument.get(item.documentId) ?? {
-      documentId: item.documentId,
-      extractionId: null,
-      status: null,
-      model: null,
-      attemptCount: null,
-      leaseExpiresAt: null,
-      lastErrorCode: null,
-      completedAt: null,
-      canExtract: true,
-      candidates: [],
-    },
+    extraction:
+      extractionByDocument.get(item.documentId) ??
+      emptyDocumentTeachingExtractionView(item.documentId),
   }));
 
   return (
