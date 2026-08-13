@@ -128,7 +128,10 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(chat, /fetch\("\/api\/chat\/stream"/);
   assert.match(chat, /response\.body\.getReader\(\)/);
   assert.match(chat, /decoder\.decode\(value, \{ stream: true \}\)/);
-  assert.match(chat, /assistant: current\.assistant \+ delta/);
+  assert.match(chat, /parseChatStreamBuffer/);
+  assert.match(chat, /assistant: current\.assistant \+ frame\.delta/);
+  assert.match(chat, /frame\.type === "error"/);
+  assert.match(chat, /frame\.type === "done"/);
   assert.match(chat, /mountedRef\.current = true/);
   assert.match(chat, /abortRef\.current\?\.abort\(\)/);
   assert.match(chat, /new FormData\(event\.currentTarget\)/);
