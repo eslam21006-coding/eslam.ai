@@ -140,12 +140,13 @@ export async function extractDocumentTeachingAction(
     return { ok: false, error: "download-failed" };
   }
 
-  const openai = getOpenAIDocumentTeachingClient();
+  let openai: ReturnType<typeof getOpenAIDocumentTeachingClient> | null = null;
   let temporaryFileId: string | null = null;
   let candidates;
   let extractionErrorCode = "openai-extraction";
 
   try {
+    openai = getOpenAIDocumentTeachingClient();
     const file = new File([blob], document.original_filename, { type: document.mime_type });
     const uploadedFile = await openai.files.create({
       file,
@@ -188,7 +189,7 @@ export async function extractDocumentTeachingAction(
     revalidatePath(DOCUMENT_PAGE);
     return { ok: false, error: "extraction-failed" };
   } finally {
-    if (temporaryFileId) {
+    if (temporaryFileId && openai) {
       try {
         await openai.files.delete(temporaryFileId);
       } catch (error) {
