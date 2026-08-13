@@ -213,10 +213,12 @@ function DocumentTeachingCard({ item }: { item: DocumentTeachingWorkbenchItem })
     Object.fromEntries(item.extraction.candidates.map((candidate) => [candidate.id, candidateEdit(candidate)])),
   );
 
-  const selectableCandidates = item.extraction.candidates.filter((candidate) => !candidate.brainItemId);
   const selectedCandidates = useMemo(
-    () => selectableCandidates.filter((candidate) => selected.has(candidate.id)),
-    [selectableCandidates, selected],
+    () =>
+      item.extraction.candidates.filter(
+        (candidate) => !candidate.brainItemId && selected.has(candidate.id),
+      ),
+    [item.extraction.candidates, selected],
   );
 
   const runExtraction = () => {
@@ -364,7 +366,11 @@ function DocumentTeachingCard({ item }: { item: DocumentTeachingWorkbenchItem })
       ) : null}
 
       {message ? (
-        <p className="mt-4 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]">
+        <p
+          role="status"
+          aria-live="polite"
+          className="mt-4 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm text-[var(--foreground-muted)]"
+        >
           {message}
         </p>
       ) : null}
