@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
-import type { Database as BaseDatabase } from "@/types/database";
+import type { Database as BaseDatabase, Json } from "@/types/database";
 
 type BasePublic = BaseDatabase["public"];
 
@@ -180,7 +180,7 @@ export type DocumentTeachingDatabase = Omit<BaseDatabase, "public"> & {
       };
       complete_document_teaching_extraction: {
         Args: {
-          p_candidates: BaseDatabase["public"]["Tables"]["teaching_sources"]["Row"]["source_metadata"];
+          p_candidates: Json;
           p_claim_token: string;
           p_created_by: string;
           p_extraction_id: string;
@@ -198,11 +198,11 @@ export type DocumentTeachingDatabase = Omit<BaseDatabase, "public"> & {
       };
       create_document_teaching_drafts: {
         Args: {
-          p_candidates: BaseDatabase["public"]["Tables"]["teaching_sources"]["Row"]["source_metadata"];
+          p_candidates: Json;
           p_created_by: string;
           p_extraction_id: string;
         };
-        Returns: BaseDatabase["public"]["Tables"]["teaching_sources"]["Row"]["source_metadata"];
+        Returns: Json;
       };
     };
   };
