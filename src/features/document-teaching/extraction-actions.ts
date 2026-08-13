@@ -10,6 +10,7 @@ import {
   parseDocumentTeachingCandidates,
   validateDocumentTeachingDraftSelections,
   validateDocumentTeachingExtractionInput,
+  type DocumentTeachingCandidate,
   type DocumentTeachingDraftsActionResult,
   type DocumentTeachingExtractionActionResult,
 } from "@/features/document-teaching/extraction-core";
@@ -142,7 +143,7 @@ export async function extractDocumentTeachingAction(
 
   let openai: ReturnType<typeof getOpenAIDocumentTeachingClient> | null = null;
   let temporaryFileId: string | null = null;
-  let candidates;
+  let candidates: DocumentTeachingCandidate[] = [];
   let extractionErrorCode = "openai-extraction";
 
   try {
