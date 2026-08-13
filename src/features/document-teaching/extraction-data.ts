@@ -32,6 +32,24 @@ export type DocumentTeachingExtractionView = {
   candidates: DocumentTeachingCandidateView[];
 };
 
+/** Returns the canonical no-extraction state for one uploaded document. */
+export function emptyDocumentTeachingExtractionView(
+  documentId: string,
+): DocumentTeachingExtractionView {
+  return {
+    documentId,
+    extractionId: null,
+    status: null,
+    model: null,
+    attemptCount: null,
+    leaseExpiresAt: null,
+    lastErrorCode: null,
+    completedAt: null,
+    canExtract: true,
+    candidates: [],
+  };
+}
+
 function leaseIsActive(value: string | null, nowMs: number) {
   if (!value) return false;
   const expiresAt = Date.parse(value);
@@ -121,22 +139,24 @@ export async function loadDocumentTeachingExtractionState(userId: string, docume
   const byDocument = new Map<string, DocumentTeachingExtractionView>();
   for (const documentId of uniqueIds) {
     const extraction = (extractions ?? []).find((item) => item.document_upload_id === documentId);
-    const canExtract =
-      !extraction ||
-      extraction.status === "failed" ||
-      (extraction.status === "processing" && !leaseIsActive(extraction.lease_expires_at, nowMs));
+    if (!extraction) {
+      byDocument.set(documentId, emptyDocumentTeachingExtractionView(documentId));
+      continue;
+    }
 
     byDocument.set(documentId, {
       documentId,
-      extractionId: extraction?.id ?? null,
-      status: extraction?.status ?? null,
-      model: extraction?.model ?? null,
-      attemptCount: extraction?.attempt_count ?? null,
-      leaseExpiresAt: extraction?.lease_expires_at ?? null,
-      lastErrorCode: extraction?.last_error_code ?? null,
-      completedAt: extraction?.completed_at ?? null,
-      canExtract,
-      candidates: extraction ? candidatesByExtraction.get(extraction.id) ?? [] : [],
+      extractionId: extraction.id,
+      status: extraction.status,
+      model: extraction.model,
+      attemptCount: extraction.attempt_count,
+      leaseExpiresAt: extraction.lease_expires_at,
+      lastErrorCode: extraction.last_error_code,
+      completedAt: extraction.completed_at,
+      canExtract:
+        extraction.status === "failed" ||
+        (extraction.status === "processing" && !leaseIsActive(extraction.lease_expires_at, nowMs)),
+      candidates: candidatesByExtraction.get(extraction.id) ?? [],
     });
   }
 
