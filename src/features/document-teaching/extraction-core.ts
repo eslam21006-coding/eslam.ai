@@ -8,7 +8,7 @@ import {
 } from "../teach-eslam/core.ts";
 
 export const DOCUMENT_TEACHING_PROMPT_VERSION = 1;
-export const DOCUMENT_TEACHING_LEASE_SECONDS = 180;
+export const DOCUMENT_TEACHING_LEASE_SECONDS = 240;
 export const DOCUMENT_TEACHING_MAX_CANDIDATES = 12;
 export const DOCUMENT_TEACHING_MAX_SOURCE_EXCERPT = 1_000;
 export const DOCUMENT_TEACHING_MAX_SOURCE_LOCATOR = 300;
@@ -278,7 +278,7 @@ export function parseDocumentTeachingCandidates(outputText: string):
       return { ok: false };
     }
     const dedupeKey = draft.content.trim().replace(/\s+/gu, " ").toLocaleLowerCase("en-US");
-    if (normalizedContents.has(dedupeKey)) return { ok: false };
+    if (normalizedContents.has(dedupeKey)) continue;
     normalizedContents.add(dedupeKey);
     candidates.push({ ...draft, source_excerpt: sourceExcerpt, source_locator: sourceLocator });
   }
