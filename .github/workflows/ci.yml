@@ -96,7 +96,8 @@ jobs:
             supabase/tests/voice_recordings_runtime.sql \
             supabase/tests/voice_transcriptions_runtime.sql \
             supabase/tests/voice_teaching_runtime.sql \
-            supabase/tests/voice_teaching_audit_runtime.sql; do
+            supabase/tests/voice_teaching_audit_runtime.sql \
+            supabase/tests/document_teaching_uploads_runtime.sql; do
             echo "Running $regression"
             docker exec --interactive "$container_name" \
               psql --set ON_ERROR_STOP=1 --username postgres \
