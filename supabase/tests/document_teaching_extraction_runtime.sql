@@ -43,6 +43,7 @@ do $$
 declare
   v_claim record;
   v_busy record;
+  v_retry record;
   v_completed boolean;
   v_candidate_id uuid;
   v_result jsonb;
@@ -64,10 +65,31 @@ begin
   );
   if v_busy.claim_state <> 'busy' then raise exception 'active document extraction was not busy'; end if;
 
-  v_completed := public.complete_document_teaching_extraction(
+  if public.fail_document_teaching_extraction(
     v_claim.extraction_id,
     '55555555-5555-4555-8555-555555555555',
     v_claim.claim_token,
+    'test-retry'
+  ) is not true then
+    raise exception 'document extraction failure transition failed';
+  end if;
+
+  select * into v_retry from public.claim_document_teaching_extraction(
+    'bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb',
+    '55555555-5555-4555-8555-555555555555',
+    'gpt-5-mini',1,180
+  );
+  if v_retry.claim_state <> 'claimed'
+    or v_retry.claim_token is null
+    or v_retry.claim_token = v_claim.claim_token
+    or v_retry.attempt_count <> 2 then
+    raise exception 'document extraction retry did not reclaim with a rotated token';
+  end if;
+
+  v_completed := public.complete_document_teaching_extraction(
+    v_retry.extraction_id,
+    '55555555-5555-4555-8555-555555555555',
+    v_retry.claim_token,
     jsonb_build_array(jsonb_build_object(
       'semantic_layer','brain','item_type','principle','priority',100,
       'title','Price around contribution value',
@@ -78,17 +100,17 @@ begin
       'source_locator','Page 4 · Pricing Economics'
     ))
   );
-  if v_completed is not true then raise exception 'document extraction did not complete'; end if;
+  if v_completed is not true then raise exception 'document extraction did not complete after retry'; end if;
 
-  select id into v_candidate_id from public.document_teaching_candidates where extraction_id=v_claim.extraction_id;
+  select id into v_candidate_id from public.document_teaching_candidates where extraction_id=v_retry.extraction_id;
   if v_candidate_id is null then raise exception 'document candidate missing'; end if;
 
-  if public.complete_document_teaching_extraction(v_claim.extraction_id,'55555555-5555-4555-8555-555555555555',v_claim.claim_token,'[]'::jsonb) is true then
+  if public.complete_document_teaching_extraction(v_retry.extraction_id,'55555555-5555-4555-8555-555555555555',v_retry.claim_token,'[]'::jsonb) is true then
     raise exception 'stale completion unexpectedly succeeded';
   end if;
 
   v_result := public.create_document_teaching_drafts(
-    v_claim.extraction_id,
+    v_retry.extraction_id,
     '55555555-5555-4555-8555-555555555555',
     jsonb_build_array(jsonb_build_object(
       'candidate_id',v_candidate_id,'semantic_layer','brain','item_type','principle','priority',90,
@@ -121,7 +143,7 @@ begin
 
   begin
     perform public.create_document_teaching_drafts(
-      v_claim.extraction_id,'55555555-5555-4555-8555-555555555555',
+      v_retry.extraction_id,'55555555-5555-4555-8555-555555555555',
       jsonb_build_array(jsonb_build_object(
         'candidate_id',v_candidate_id,'semantic_layer','brain','item_type','principle','priority',90,
         'title','Duplicate','content','Duplicate materialization must fail.','summary','',
