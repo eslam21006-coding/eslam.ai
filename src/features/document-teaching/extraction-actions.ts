@@ -242,7 +242,7 @@ export async function createDocumentTeachingDraftsAction(
       userId: authorization.userId,
       candidates: validated.candidates,
     },
-    (payload) =>
+    async (payload) =>
       admin.rpc("create_document_teaching_drafts", {
         p_extraction_id: payload.p_extraction_id,
         p_created_by: payload.p_created_by,
