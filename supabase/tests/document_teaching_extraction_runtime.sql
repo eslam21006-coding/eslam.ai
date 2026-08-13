@@ -15,8 +15,7 @@ end;
 $$;
 reset role;
 
-set local role service_role;
-
+-- Privileged fixture setup mirrors already-finalized Task 21 state; Task 22 behavior below runs as service_role.
 insert into public.teaching_sources (id, source_type, title, source_uri, source_metadata, created_by)
 values (
   'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',
@@ -37,6 +36,8 @@ insert into public.document_teaching_uploads (
   'uploaded','Pricing Framework','pricing.pdf','application/pdf',2048,2048,
   'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa',now()
 );
+
+set local role service_role;
 
 do $$
 declare
@@ -68,9 +69,7 @@ begin
     '55555555-5555-4555-8555-555555555555',
     v_claim.claim_token,
     jsonb_build_array(jsonb_build_object(
-      'semantic_layer','brain',
-      'item_type','principle',
-      'priority',100,
+      'semantic_layer','brain','item_type','principle','priority',100,
       'title','Price around contribution value',
       'content','Use contribution economics when deciding how much acquisition cost the offer can carry.',
       'summary','Pricing and CAC should be assessed against contribution economics.',
@@ -84,12 +83,7 @@ begin
   select id into v_candidate_id from public.document_teaching_candidates where extraction_id=v_claim.extraction_id;
   if v_candidate_id is null then raise exception 'document candidate missing'; end if;
 
-  if public.complete_document_teaching_extraction(
-    v_claim.extraction_id,
-    '55555555-5555-4555-8555-555555555555',
-    v_claim.claim_token,
-    '[]'::jsonb
-  ) is true then
+  if public.complete_document_teaching_extraction(v_claim.extraction_id,'55555555-5555-4555-8555-555555555555',v_claim.claim_token,'[]'::jsonb) is true then
     raise exception 'stale completion unexpectedly succeeded';
   end if;
 
@@ -97,10 +91,7 @@ begin
     v_claim.extraction_id,
     '55555555-5555-4555-8555-555555555555',
     jsonb_build_array(jsonb_build_object(
-      'candidate_id',v_candidate_id,
-      'semantic_layer','brain',
-      'item_type','principle',
-      'priority',90,
+      'candidate_id',v_candidate_id,'semantic_layer','brain','item_type','principle','priority',90,
       'title','Contribution economics before CAC judgments',
       'content','Evaluate acquisition cost against contribution economics before deciding whether CAC is acceptable.',
       'summary','Judge CAC against contribution economics.',
@@ -120,13 +111,8 @@ begin
     where brain_item_id=v_brain_id and source_id='aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa'
   ) then raise exception 'document Brain draft did not reuse the original document source'; end if;
 
-  if (select count(*) from public.teaching_sources where id='aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa') <> 1 then
-    raise exception 'document materialization duplicated its teaching source';
-  end if;
-
   if not exists (
-    select 1
-    from public.teaching_versions tv
+    select 1 from public.teaching_versions tv
     where tv.brain_item_id=v_brain_id
       and tv.source_locator->>'kind'='document_candidate'
       and tv.source_locator->>'document_upload_id'='bbbbbbbb-2222-4222-8222-bbbbbbbbbbbb'
@@ -135,8 +121,7 @@ begin
 
   begin
     perform public.create_document_teaching_drafts(
-      v_claim.extraction_id,
-      '55555555-5555-4555-8555-555555555555',
+      v_claim.extraction_id,'55555555-5555-4555-8555-555555555555',
       jsonb_build_array(jsonb_build_object(
         'candidate_id',v_candidate_id,'semantic_layer','brain','item_type','principle','priority',90,
         'title','Duplicate','content','Duplicate materialization must fail.','summary','',
@@ -151,4 +136,13 @@ end;
 $$;
 
 reset role;
+
+do $$
+begin
+  if (select count(*) from public.teaching_sources where id='aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa') <> 1 then
+    raise exception 'document materialization duplicated its teaching source';
+  end if;
+end;
+$$;
+
 rollback;
