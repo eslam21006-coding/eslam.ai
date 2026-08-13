@@ -252,12 +252,20 @@ export function ConversationChat({
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let frameBuffer = "";
+      let readyReceived = false;
       let streamCompleted = false;
       let streamFailed = false;
 
       const applyFrames = (frames: ChatStreamEvent[]) => {
         for (const frame of frames) {
+          if (streamCompleted || streamFailed) {
+            throw new Error("Streaming frame arrived after a terminal frame.");
+          }
+
           if (frame.type === "ready") {
+            if (readyReceived) {
+              throw new Error("Streaming readiness arrived more than once.");
+            }
             if (
               targetConversationId &&
               targetConversationId !== frame.conversationId
@@ -265,13 +273,15 @@ export function ConversationChat({
               throw new Error("Streaming conversation metadata mismatch.");
             }
             targetConversationId = frame.conversationId;
+            readyReceived = true;
             continue;
           }
 
+          if (!readyReceived) {
+            throw new Error("Streaming frame arrived before readiness.");
+          }
+
           if (frame.type === "delta") {
-            if (streamCompleted || streamFailed) {
-              throw new Error("Streaming delta arrived after a terminal frame.");
-            }
             setOptimisticTurn((current) =>
               current
                 ? { ...current, assistant: current.assistant + frame.delta }
@@ -281,16 +291,10 @@ export function ConversationChat({
           }
 
           if (frame.type === "error") {
-            if (streamCompleted) {
-              throw new Error("Streaming failure arrived after completion.");
-            }
             streamFailed = true;
             continue;
           }
 
-          if (streamFailed) {
-            throw new Error("Streaming completion arrived after failure.");
-          }
           streamCompleted = true;
         }
       };
