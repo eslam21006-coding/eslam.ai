@@ -128,7 +128,8 @@ test("transcription UI loads paginated owner-scoped source artifacts and exposes
     /loadVoiceTranscriptionList\([\s\S]*authorization\.userId,[\s\S]*requestedPage,[\s\S]*\)/,
   );
   assert.match(page, /export const maxDuration = 300/);
-  assert.match(page, /Task 20/);
+  assert.match(page, /Approval وPublish صريحين من عقل إسلام/);
+  assert.match(page, /href="\/admin\/brain\?status=draft&page=1"/);
   assert.match(recorderActions, /import \{ revalidatePath \} from "next\/cache"/);
   assert.match(recorderActions, /const VOICE_ADMIN_PATH = "\/admin\/teach\/voice"/);
   assert.match(

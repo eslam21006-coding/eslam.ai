@@ -68,11 +68,22 @@ test("Teach Eslam rejects invalid enums, lengths, topics, and priority", async (
   }
 });
 
-test("Teach Eslam is a protected server-only Brain authoring flow", () => {
+test("training hub routes each teaching method into a dedicated workflow", () => {
+  const hub = readSource("src/app/admin/teach/page.tsx");
+
+  assert.match(hub, /تدريب إسلام/);
+  assert.match(hub, /href: "\/admin\/teach\/text"/);
+  assert.match(hub, /href: "\/admin\/teach\/voice"/);
+  assert.match(hub, /href: "\/admin\/teach\/documents"/);
+  assert.match(hub, /href="\/admin\/brain\?status=draft&page=1"/);
+  assert.doesNotMatch(hub, /<TeachEslamForm/);
+});
+
+test("Teach Eslam text authoring is a protected server-only Brain flow", () => {
   const actions = readSource("src/features/teach-eslam/actions.ts");
   const data = readSource("src/features/teach-eslam/data.ts");
   const form = readSource("src/features/teach-eslam/teach-eslam-form.tsx");
-  const page = readSource("src/app/admin/teach/page.tsx");
+  const page = readSource("src/app/admin/teach/text/page.tsx");
   const navigation = readSource("src/features/admin-shell/navigation.ts");
 
   assert.match(actions, /^"use server";/);
@@ -80,6 +91,7 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(actions, /getSupabaseAdminClient\(\)/);
   assert.match(actions, /create_eslam_brain_draft/);
   assert.match(actions, /publish_eslam_brain_draft_direct/);
+  assert.match(actions, /TEACH_ESLAM_TEXT_PATH = "\/admin\/teach\/text"/);
   assert.match(actions, /p_created_by: authorization\.userId/);
   assert.match(actions, /p_version_number: versionNumber/);
   assert.match(actions, /published !== "published"/);
@@ -97,7 +109,7 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
 
   assert.doesNotMatch(form, /service_role|SUPABASE_SERVICE_ROLE|createClient\(/i);
   assert.match(form, /state\.created && publishStatus !== "published"/);
-  assert.match(page, />\s*Teach Eslam\s*</);
+  assert.match(page, /تعليم إسلام بالنص/);
   assert.match(page, /loadTeachEslamDrafts\(draftPageNumber\)/);
   assert.match(page, /draftPage\.drafts\.map/);
   assert.match(page, /draft\.directPublishEligible/);
@@ -105,12 +117,12 @@ test("Teach Eslam is a protected server-only Brain authoring flow", () => {
   assert.match(page, /name="item_id" value=\{draft\.id\}/);
   assert.match(page, /name="version_number" value=\{draft\.versionNumber\}/);
   assert.match(page, /راجع النسخة المعدلة/);
-  assert.match(navigation, /label: "Teach Eslam"/);
+  assert.match(navigation, /label: "تعليم بالنص"/);
 });
 
-test("Teach Eslam persisted drafts remain reachable through pagination", () => {
+test("Teach Eslam persisted drafts remain reachable through text-route pagination", () => {
   const data = readSource("src/features/teach-eslam/data.ts");
-  const page = readSource("src/app/admin/teach/page.tsx");
+  const page = readSource("src/app/admin/teach/text/page.tsx");
 
   assert.match(data, /from\("eslam_brain_items"\)/);
   assert.match(data, /from\("eslam_brain_versions"\)/);
@@ -122,8 +134,8 @@ test("Teach Eslam persisted drafts remain reachable through pagination", () => {
   assert.match(page, /بعد أي تعديل أو إعادة تصنيف من مركز المراجعة/);
   assert.match(page, /draftPage\.hasPreviousPage/);
   assert.match(page, /draftPage\.hasNextPage/);
-  assert.match(page, /draftPage=\$\{draftPage\.page - 1\}/);
-  assert.match(page, /draftPage=\$\{draftPage\.page \+ 1\}/);
+  assert.match(page, /\/admin\/teach\/text\?draftPage=\$\{draftPage\.page - 1\}/);
+  assert.match(page, /\/admin\/teach\/text\?draftPage=\$\{draftPage\.page \+ 1\}/);
   assert.match(page, /publishTeachEslamDraftAction/);
   assert.match(page, /راجع النسخة المعدلة/);
 });
@@ -154,13 +166,13 @@ test("Teach Eslam draft RPC is transactional and client-inaccessible", () => {
   assert.match(ci, /supabase\/tests\/teach_eslam_runtime\.sql/);
 });
 
-test("Task 15 remains text-authoring only", () => {
+test("text authoring remains isolated from voice and document ingestion internals", () => {
   const sources = [
     readSource("src/features/teach-eslam/core.ts"),
     readSource("src/features/teach-eslam/actions.ts"),
     readSource("src/features/teach-eslam/data.ts"),
     readSource("src/features/teach-eslam/teach-eslam-form.tsx"),
-    readSource("src/app/admin/teach/page.tsx"),
+    readSource("src/app/admin/teach/text/page.tsx"),
   ].join("\n");
 
   assert.doesNotMatch(

@@ -12,6 +12,8 @@ import { requireAdmin } from "@/lib/auth/admin";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 import type { Json } from "@/types/database";
 
+const TEACH_ESLAM_TEXT_PATH = "/admin/teach/text";
+
 function readText(formData: FormData, name: keyof TeachEslamValues) {
   const value = formData.get(name);
   return typeof value === "string" ? value : "";
@@ -81,6 +83,7 @@ export async function createTeachEslamDraftAction(
     return failureState(previousState, values, "save_failed");
   }
 
+  revalidatePath(TEACH_ESLAM_TEXT_PATH);
   revalidatePath("/admin/teach");
   revalidatePath("/admin/brain");
 
@@ -120,7 +123,7 @@ export async function publishTeachEslamDraftAction(formData: FormData) {
   const versionNumber = typeof rawVersionNumber === "string" ? Number(rawVersionNumber) : NaN;
 
   if (!isUuid(itemId) || !Number.isInteger(versionNumber) || versionNumber <= 0) {
-    redirect("/admin/teach?status=publish-invalid");
+    redirect(`${TEACH_ESLAM_TEXT_PATH}?status=publish-invalid`);
   }
 
   const admin = getSupabaseAdminClient();
@@ -139,10 +142,11 @@ export async function publishTeachEslamDraftAction(formData: FormData) {
       code: publishError?.code,
       message: publishError?.message ?? "Draft not found, stale, or requires review",
     });
-    redirect("/admin/teach?status=publish-failed");
+    redirect(`${TEACH_ESLAM_TEXT_PATH}?status=publish-failed`);
   }
 
+  revalidatePath(TEACH_ESLAM_TEXT_PATH);
   revalidatePath("/admin/teach");
   revalidatePath("/admin/brain");
-  redirect("/admin/teach?status=published");
+  redirect(`${TEACH_ESLAM_TEXT_PATH}?status=published`);
 }

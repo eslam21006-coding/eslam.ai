@@ -4,18 +4,21 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
+/** Reads a credential field while trimming only email input and preserving password bytes exactly. */
 function readCredential(formData: FormData, name: "email" | "password") {
   const value = formData.get(name);
   if (typeof value !== "string") return "";
   return name === "email" ? value.trim() : value;
 }
 
+/** Performs the lightweight email-shape validation used by the authentication forms. */
 function isValidEmail(email: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 type ServerSupabaseClient = Awaited<ReturnType<typeof createClient>>;
 
+/** Ensures the authenticated account has its owner-scoped application profile row. */
 async function ensureProfile(
   supabase: ServerSupabaseClient,
   userId: string,
@@ -27,6 +30,7 @@ async function ensureProfile(
   return !error;
 }
 
+/** Signs out after profile initialization failure and returns the user to a recoverable auth state. */
 async function recoverFromProfileFailure(supabase: ServerSupabaseClient) {
   const { error } = await supabase.auth.signOut();
 
@@ -37,6 +41,7 @@ async function recoverFromProfileFailure(supabase: ServerSupabaseClient) {
   redirect("/auth/login?error=profile_init_failed");
 }
 
+/** Authenticates an existing account, ensures its profile, then delegates destination choice to `/`. */
 export async function loginAction(formData: FormData) {
   const email = readCredential(formData, "email");
   const password = readCredential(formData, "password");
@@ -56,9 +61,10 @@ export async function loginAction(formData: FormData) {
     await recoverFromProfileFailure(supabase);
   }
 
-  redirect("/app/chat");
+  redirect("/");
 }
 
+/** Creates an account, handles optional email confirmation, then delegates destination choice to `/`. */
 export async function signupAction(formData: FormData) {
   const email = readCredential(formData, "email");
   const password = readCredential(formData, "password");
@@ -82,9 +88,10 @@ export async function signupAction(formData: FormData) {
     await recoverFromProfileFailure(supabase);
   }
 
-  redirect("/app/chat");
+  redirect("/");
 }
 
+/** Ends the current Supabase session and reports sign-out failures through the user workspace. */
 export async function logoutAction() {
   const supabase = await createClient();
   const { error } = await supabase.auth.signOut();

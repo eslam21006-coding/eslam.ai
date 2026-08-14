@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
 
+/** Returns the verified Supabase Auth user id, or null when the request is unauthenticated. */
 export async function getAuthenticatedUserId() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
@@ -16,6 +17,7 @@ export async function getAuthenticatedUserId() {
   return typeof subject === "string" && subject.length > 0 ? subject : null;
 }
 
+/** Requires an authenticated user and redirects anonymous requests to the login page. */
 export async function requireAuthenticatedUser() {
   const userId = await getAuthenticatedUserId();
 
@@ -26,10 +28,11 @@ export async function requireAuthenticatedUser() {
   return userId;
 }
 
+/** Auth pages hand authenticated users back to the central role router. */
 export async function redirectAuthenticatedUser() {
   const userId = await getAuthenticatedUserId();
 
   if (userId) {
-    redirect("/app/chat");
+    redirect("/");
   }
 }

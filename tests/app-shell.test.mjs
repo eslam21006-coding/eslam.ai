@@ -5,17 +5,18 @@ import test from "node:test";
 const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
-test("/app routes into the mentee chat area and loads persisted conversation navigation", () => {
+test("/app routes into mentee chat and resolves whether the admin switch is available", () => {
   const appPage = readSource("src/app/app/page.tsx");
   const layout = readSource("src/app/app/layout.tsx");
 
   assert.match(appPage, /redirect\("\/app\/chat"\)/);
   assert.match(layout, /listConversations\(userId\)/);
-  assert.match(layout, /<AppShell/);
+  assert.match(layout, /isAdmin\(\)/);
+  assert.match(layout, /showAdminPortal=\{showAdminPortal\}/);
   assert.match(layout, /conversations=\{conversations \?\? \[\]\}/);
 });
 
-test("mentee shell exposes minimal Arabic navigation and persisted conversation links", () => {
+test("user shell keeps normal navigation minimal and exposes admin switch conditionally", () => {
   const shell = readSource("src/features/app-shell/app-shell.tsx");
 
   for (const label of ["محادثة جديدة", "المحادثات السابقة", "الملف التجاري"]) {
@@ -24,13 +25,13 @@ test("mentee shell exposes minimal Arabic navigation and persisted conversation 
 
   assert.match(shell, /aria-label="التنقل الرئيسي"/);
   assert.match(shell, /aria-current=/);
-  assert.match(shell, /showModal\(\)/);
-  assert.match(shell, /aria-label="قائمة التنقل"/);
-  assert.match(shell, /lang="en"/);
-  assert.match(shell, /dir="ltr"/);
+  assert.match(shell, /showAdminPortal \? \(/);
+  assert.match(shell, /href="\/admin"/);
+  assert.match(shell, /لوحة الإدارة/);
+  assert.match(shell, /showAdminPortal = false/);
   assert.match(shell, /conversations\.map/);
   assert.match(shell, /`\/app\/chat\/\$\{conversation\.id\}`/);
-  assert.doesNotMatch(shell, /مراجعة أداء الـ Webinar|ارتفاع تكلفة الـ Meta Ads/);
+  assert.doesNotMatch(shell, /\/admin\/teach|\/admin\/brain/);
 });
 
 test("mobile dialog closes when the shell crosses into the desktop breakpoint", () => {
@@ -57,7 +58,7 @@ test("new chat keeps the Arabic composer simple without suppressing focus", () =
   assert.doesNotMatch(composer, /outline-none/);
 });
 
-test("Business DNA remains a dedicated mentee destination", () => {
+test("Business DNA remains a dedicated user destination", () => {
   const business = readSource("src/app/app/business/page.tsx");
 
   assert.match(business, /الملف التجاري/);
