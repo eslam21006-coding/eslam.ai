@@ -11,7 +11,6 @@ import {
 } from "@/features/document-teaching/actions";
 import {
   DOCUMENT_TEACHING_ACCEPT,
-  DOCUMENT_TEACHING_MAX_BYTES,
   defaultDocumentTeachingTitle,
   formatDocumentTeachingBytes,
   type DocumentTeachingUploadIntent,
@@ -20,21 +19,57 @@ import {
 import { createClient } from "@/lib/supabase/client";
 
 type UploadStatus =
-  | "idle"
+  | "queued"
+  | "preparing"
   | "uploading"
+  | "finalizing"
   | "finalize-error"
   | "cleanup-error"
   | "uploaded"
   | "error";
 
-/** Admin browser uploader that sends a validated document directly to a signed private Storage path. */
+type BatchUploadItem = {
+  id: string;
+  fingerprint: string;
+  file: File;
+  title: string;
+  status: UploadStatus;
+  message: string | null;
+  pendingIntent: DocumentTeachingUploadIntent | null;
+};
+
+const STATUS_LABELS: Record<UploadStatus, string> = {
+  queued: "جاهز للرفع",
+  preparing: "جارٍ التجهيز",
+  uploading: "جارٍ الرفع",
+  finalizing: "جارٍ الحفظ",
+  "finalize-error": "يحتاج إكمال الحفظ",
+  "cleanup-error": "يحتاج تنظيف المحاولة",
+  uploaded: "تم الحفظ",
+  error: "تعذر الرفع",
+};
+
+function fileFingerprint(file: File) {
+  return `${file.name}\u0000${file.size}\u0000${file.lastModified}\u0000${file.type}`;
+}
+
+function validationMessage(file: File, title: string) {
+  return validateDocumentTeachingUploadIntent({
+    fileName: file.name,
+    mimeType: file.type,
+    sizeBytes: file.size,
+    title,
+  })
+    ? null
+    : "راجع اسم الملف، النوع، الحجم، وعنوان المصدر. الصيغ المدعومة: PDF, DOCX, TXT, MD، والحد الأقصى 50 MB.";
+}
+
+/** Admin batch uploader that keeps each private document upload independently recoverable. */
 export function DocumentTeachingUploader() {
   const router = useRouter();
-  const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState("");
-  const [status, setStatus] = useState<UploadStatus>("idle");
-  const [message, setMessage] = useState<string | null>(null);
-  const [pendingIntent, setPendingIntent] = useState<DocumentTeachingUploadIntent | null>(null);
+  const [items, setItems] = useState<BatchUploadItem[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchMessage, setBatchMessage] = useState<string | null>(null);
   const isMountedRef = useRef(false);
 
   useEffect(() => {
@@ -53,152 +88,197 @@ export function DocumentTeachingUploader() {
     };
   }, []);
 
-  const reset = () => {
-    setFile(null);
-    setTitle("");
-    setPendingIntent(null);
-    setStatus("idle");
-    setMessage(null);
+  const updateItem = (itemId: string, patch: Partial<BatchUploadItem>) => {
+    if (!isMountedRef.current) return;
+    setItems((current) =>
+      current.map((item) => (item.id === itemId ? { ...item, ...patch } : item)),
+    );
   };
 
-  const selectFile = (nextFile: File | null) => {
-    setMessage(null);
-    setStatus("idle");
-    setFile(nextFile);
-    setPendingIntent(null);
-    setTitle(nextFile ? defaultDocumentTeachingTitle(nextFile.name) : "");
+  const selectFiles = (nextFiles: File[]) => {
+    if (nextFiles.length === 0) return;
 
-    if (nextFile && nextFile.size > DOCUMENT_TEACHING_MAX_BYTES) {
-      setStatus("error");
-      setMessage("حجم الملف أكبر من 50 MB. اختر ملفاً أصغر قبل الحفظ.");
+    const existingFingerprints = new Set(items.map((item) => item.fingerprint));
+    const additions: BatchUploadItem[] = [];
+    let duplicateCount = 0;
+
+    for (const file of nextFiles) {
+      const fingerprint = fileFingerprint(file);
+      if (
+        existingFingerprints.has(fingerprint) ||
+        additions.some((item) => item.fingerprint === fingerprint)
+      ) {
+        duplicateCount += 1;
+        continue;
+      }
+
+      const title = defaultDocumentTeachingTitle(file.name);
+      const error = validationMessage(file, title);
+      additions.push({
+        id: crypto.randomUUID(),
+        fingerprint,
+        file,
+        title,
+        status: error ? "error" : "queued",
+        message: error,
+        pendingIntent: null,
+      });
     }
+
+    if (additions.length > 0) {
+      setItems((current) => [...current, ...additions]);
+    }
+    setBatchMessage(
+      duplicateCount > 0
+        ? `تم تجاهل ${duplicateCount} ${duplicateCount === 1 ? "ملف مكرر" : "ملفات مكررة"} في قائمة الرفع الحالية.`
+        : null,
+    );
   };
 
-  const cleanupIntent = async (intent: DocumentTeachingUploadIntent) => {
+  const cleanupIntent = async (itemId: string, intent: DocumentTeachingUploadIntent) => {
     try {
       const result = await cancelDocumentTeachingUploadAction({ documentId: intent.documentId });
-      if (!isMountedRef.current) return false;
+      if (!isMountedRef.current) return "failed" as const;
       if (!result.ok) {
-        setStatus("cleanup-error");
-        setPendingIntent(intent);
-        setMessage("تعذر تنظيف محاولة الرفع. احتفظنا بمرجعها؛ أعد محاولة التنظيف.");
-        return false;
+        updateItem(itemId, {
+          status: "cleanup-error",
+          pendingIntent: intent,
+          message: "تعذر تنظيف محاولة الرفع. يمكنك إعادة محاولة التنظيف من هذا الملف.",
+        });
+        return "failed" as const;
       }
       if (result.state === "uploaded") {
-        setPendingIntent(null);
-        setStatus("uploaded");
-        setMessage("الملف كان قد تم تثبيته بالفعل كمصدر Document. تم تحديث القائمة.");
+        updateItem(itemId, {
+          status: "uploaded",
+          pendingIntent: null,
+          message: "تم حفظ الملف بالفعل كمصدر تعليم.",
+        });
         router.refresh();
-        return false;
+        return "uploaded" as const;
       }
-      setPendingIntent(null);
-      return true;
+      updateItem(itemId, { pendingIntent: null });
+      return "cleaned" as const;
     } catch (error) {
       console.error("Document teaching cleanup request failed", {
         message: error instanceof Error ? error.message : "Unknown error",
       });
-      if (!isMountedRef.current) return false;
-      setStatus("cleanup-error");
-      setPendingIntent(intent);
-      setMessage("تعذر الاتصال أثناء تنظيف محاولة الرفع. أعد محاولة التنظيف.");
-      return false;
+      updateItem(itemId, {
+        status: "cleanup-error",
+        pendingIntent: intent,
+        message: "تعذر الاتصال أثناء تنظيف محاولة الرفع. يمكنك إعادة المحاولة.",
+      });
+      return "failed" as const;
     }
   };
 
-  const finalizeIntent = async (intent: DocumentTeachingUploadIntent) => {
+  const finalizeIntent = async (itemId: string, intent: DocumentTeachingUploadIntent) => {
+    updateItem(itemId, {
+      status: "finalizing",
+      pendingIntent: intent,
+      message: "جارٍ التحقق من الملف وحفظ المصدر…",
+    });
+
     try {
       const result = await finalizeDocumentTeachingUploadAction({ documentId: intent.documentId });
-      if (!isMountedRef.current) return;
+      if (!isMountedRef.current) return false;
       if (!result.ok) {
         if (result.error === "not-found") {
-          setPendingIntent(null);
-          setStatus("error");
-          setMessage("انتهت محاولة الحفظ السابقة. اختر الملف من جديد لبدء محاولة رفع جديدة.");
-          return;
+          updateItem(itemId, {
+            status: "error",
+            pendingIntent: null,
+            message: "انتهت محاولة الحفظ السابقة. أعد رفع الملف لبدء محاولة جديدة.",
+          });
+          return false;
         }
-        setPendingIntent(intent);
-        setStatus("finalize-error");
-        setMessage(
-          result.error === "verify-failed"
-            ? "تم رفع الملف لكن فشل التحقق من الحجم أو النوع. يمكنك إعادة التحقق أو حذف محاولة الرفع."
-            : "تم رفع الملف لكن لم يكتمل تسجيل المصدر. الملف محفوظ ويمكن إعادة محاولة التثبيت.",
-        );
-        return;
+        updateItem(itemId, {
+          status: "finalize-error",
+          pendingIntent: intent,
+          message:
+            result.error === "verify-failed"
+              ? "تم رفع الملف لكن تعذر التحقق من الحجم أو النوع. أعد التحقق أو نظّف المحاولة."
+              : "تم رفع الملف لكن لم يكتمل حفظ المصدر. أعد محاولة إكمال الحفظ؛ لا ترفع الملف مرة ثانية.",
+        });
+        return false;
       }
 
-      setPendingIntent(null);
-      setStatus("uploaded");
-      setMessage("تم حفظ الـDocument كمصدر Teaching خاص. لم يتم إنشاء أو نشر أي Brain content.");
-      setFile(null);
-      setTitle("");
+      updateItem(itemId, {
+        status: "uploaded",
+        pendingIntent: null,
+        message: "تم حفظ المستند كمصدر تعليم خاص، وأصبح جاهزاً لاستخراج التعليمات ومراجعتها.",
+      });
       router.refresh();
+      return true;
     } catch (error) {
       console.error("Document teaching finalization request failed", {
         message: error instanceof Error ? error.message : "Unknown error",
       });
-      if (!isMountedRef.current) return;
-      setPendingIntent(intent);
-      setStatus("finalize-error");
-      setMessage("انقطع الاتصال بعد رفع الملف. أعد محاولة تثبيت المصدر؛ لا ترفع الملف مرة ثانية.");
+      updateItem(itemId, {
+        status: "finalize-error",
+        pendingIntent: intent,
+        message: "انقطع الاتصال بعد رفع الملف. أعد محاولة إكمال الحفظ؛ لا ترفع الملف مرة ثانية.",
+      });
+      return false;
     }
   };
 
-  const upload = async () => {
-    if (!file) {
-      setStatus("error");
-      setMessage("اختر Document أولاً.");
-      return;
-    }
-
+  const uploadItem = async (item: BatchUploadItem) => {
     const validated = validateDocumentTeachingUploadIntent({
-      fileName: file.name,
-      mimeType: file.type,
-      sizeBytes: file.size,
-      title,
+      fileName: item.file.name,
+      mimeType: item.file.type,
+      sizeBytes: item.file.size,
+      title: item.title,
     });
     if (!validated) {
-      setStatus("error");
-      setMessage("راجع اسم الملف، النوع، الحجم، وعنوان المصدر. الصيغ المدعومة: PDF, DOCX, TXT, MD.");
-      return;
+      updateItem(item.id, {
+        status: "error",
+        message: validationMessage(item.file, item.title),
+        pendingIntent: null,
+      });
+      return false;
     }
 
-    setStatus("uploading");
-    setMessage(null);
+    updateItem(item.id, { status: "preparing", message: "جارٍ تجهيز مساحة الرفع الخاصة…" });
 
     let intentResult: Awaited<ReturnType<typeof createDocumentTeachingUploadAction>>;
     try {
       intentResult = await createDocumentTeachingUploadAction({
-        fileName: file.name,
-        mimeType: file.type,
-        sizeBytes: file.size,
-        title,
+        fileName: item.file.name,
+        mimeType: item.file.type,
+        sizeBytes: item.file.size,
+        title: item.title,
       });
     } catch (error) {
       console.error("Document teaching upload intent request failed", {
         message: error instanceof Error ? error.message : "Unknown error",
       });
-      if (!isMountedRef.current) return;
-      setStatus("error");
-      setMessage("تعذر تجهيز مساحة الرفع الخاصة. الملف ما زال على جهازك ويمكن المحاولة مرة أخرى.");
-      return;
+      updateItem(item.id, {
+        status: "error",
+        message: "تعذر تجهيز مساحة الرفع الخاصة. الملف ما زال على جهازك ويمكن المحاولة مرة أخرى.",
+      });
+      return false;
     }
 
     if (!intentResult.ok) {
-      if (!isMountedRef.current) return;
-      setStatus("error");
-      setMessage(
-        intentResult.error === "invalid-document"
-          ? "الملف غير صالح للحفظ بهذه الصيغة أو الحجم."
-          : "تعذر تجهيز مساحة الرفع الخاصة. حاول مرة أخرى.",
-      );
-      return;
+      updateItem(item.id, {
+        status: "error",
+        message:
+          intentResult.error === "invalid-document"
+            ? "الملف غير صالح للحفظ بهذه الصيغة أو الحجم."
+            : "تعذر تجهيز مساحة الرفع الخاصة. حاول مرة أخرى.",
+      });
+      return false;
     }
 
     const intent = intentResult.intent;
-    setPendingIntent(intent);
+    updateItem(item.id, {
+      status: "uploading",
+      pendingIntent: intent,
+      message: "جارٍ رفع الملف إلى التخزين الخاص…",
+    });
+
     if (!isMountedRef.current) {
       void cancelDocumentTeachingUploadAction({ documentId: intent.documentId }).catch(() => undefined);
-      return;
+      return false;
     }
 
     const supabase = createClient();
@@ -206,7 +286,7 @@ export function DocumentTeachingUploader() {
     try {
       const { error: uploadError } = await supabase.storage
         .from(intent.bucket)
-        .uploadToSignedUrl(intent.storagePath, intent.token, file, {
+        .uploadToSignedUrl(intent.storagePath, intent.token, item.file, {
           contentType: intent.mimeType,
           upsert: false,
         });
@@ -217,54 +297,97 @@ export function DocumentTeachingUploader() {
 
     if (uploadErrorMessage) {
       console.error("Signed document teaching upload failed", { message: uploadErrorMessage });
-      const cleaned = await cleanupIntent(intent);
-      if (!isMountedRef.current) return;
-      if (cleaned) {
-        setStatus("error");
-        setMessage("فشل رفع الملف وتم تنظيف المحاولة. الملف المحلي ما زال موجوداً ويمكنك المحاولة مرة أخرى.");
+      const cleanupState = await cleanupIntent(item.id, intent);
+      if (!isMountedRef.current) return false;
+      if (cleanupState === "cleaned") {
+        updateItem(item.id, {
+          status: "error",
+          pendingIntent: null,
+          message: "فشل رفع الملف وتم تنظيف المحاولة. يمكنك إعادة رفع هذا الملف من القائمة.",
+        });
       }
-      return;
+      return cleanupState === "uploaded";
     }
 
     if (!isMountedRef.current) {
       void cancelDocumentTeachingUploadAction({ documentId: intent.documentId }).catch(() => undefined);
-      return;
+      return false;
     }
 
-    await finalizeIntent(intent);
+    return finalizeIntent(item.id, intent);
   };
 
-  const retryFinalization = async () => {
-    if (!pendingIntent) return;
-    setStatus("uploading");
-    setMessage("يتم التحقق من الملف وإكمال تسجيل المصدر…");
-    await finalizeIntent(pendingIntent);
-  };
+  const uploadQueued = async () => {
+    const queued = items.filter((item) => item.status === "queued");
+    if (queued.length === 0 || batchBusy) return;
 
-  const retryCleanup = async () => {
-    if (!pendingIntent) return;
-    setStatus("uploading");
-    setMessage("جارٍ تنظيف محاولة الرفع…");
-    const cleaned = await cleanupIntent(pendingIntent);
-    if (cleaned && isMountedRef.current) {
-      setStatus("idle");
-      setMessage("تم تنظيف محاولة الرفع. يمكنك المحاولة من جديد بالملف المحلي.");
+    setBatchBusy(true);
+    setBatchMessage(null);
+    let succeeded = 0;
+
+    for (const item of queued) {
+      if (!isMountedRef.current) break;
+      if (await uploadItem(item)) succeeded += 1;
     }
+
+    if (!isMountedRef.current) return;
+    setBatchBusy(false);
+    setBatchMessage(
+      succeeded === queued.length
+        ? `تم حفظ ${succeeded} ${succeeded === 1 ? "مستند" : "مستندات"} بنجاح.`
+        : `اكتمل رفع الدفعة: نجح ${succeeded} من ${queued.length}. راجع حالة كل ملف وأعد محاولة الملفات التي تحتاج تدخلاً.`,
+    );
   };
 
-  const discardPending = async () => {
-    if (!pendingIntent) {
-      reset();
-      return;
+  const retryUpload = async (item: BatchUploadItem) => {
+    if (batchBusy || item.pendingIntent) return;
+    setBatchBusy(true);
+    setBatchMessage(null);
+    await uploadItem(item);
+    if (isMountedRef.current) setBatchBusy(false);
+  };
+
+  const retryFinalization = async (item: BatchUploadItem) => {
+    if (batchBusy || !item.pendingIntent) return;
+    setBatchBusy(true);
+    setBatchMessage(null);
+    await finalizeIntent(item.id, item.pendingIntent);
+    if (isMountedRef.current) setBatchBusy(false);
+  };
+
+  const retryCleanup = async (item: BatchUploadItem) => {
+    if (batchBusy || !item.pendingIntent) return;
+    setBatchBusy(true);
+    setBatchMessage(null);
+    const cleanupState = await cleanupIntent(item.id, item.pendingIntent);
+    if (cleanupState === "cleaned") {
+      updateItem(item.id, {
+        status: "error",
+        message: "تم تنظيف محاولة الرفع. يمكنك إعادة رفع الملف.",
+        pendingIntent: null,
+      });
     }
-    setStatus("uploading");
-    setMessage("جارٍ حذف محاولة الرفع غير المكتملة…");
-    const cleaned = await cleanupIntent(pendingIntent);
-    if (cleaned && isMountedRef.current) reset();
+    if (isMountedRef.current) setBatchBusy(false);
   };
 
-  const busy = status === "uploading";
-  const canStartUpload = Boolean(file) && !busy && !pendingIntent;
+  const discardPending = async (item: BatchUploadItem) => {
+    if (batchBusy || !item.pendingIntent) return;
+    setBatchBusy(true);
+    setBatchMessage(null);
+    const cleanupState = await cleanupIntent(item.id, item.pendingIntent);
+    if (cleanupState === "cleaned" && isMountedRef.current) {
+      updateItem(item.id, {
+        status: "error",
+        message: "تم حذف محاولة الرفع غير المكتملة. يمكنك إعادة رفع الملف.",
+        pendingIntent: null,
+      });
+    }
+    if (isMountedRef.current) setBatchBusy(false);
+  };
+
+  const queuedCount = items.filter((item) => item.status === "queued").length;
+  const uploadedCount = items.filter((item) => item.status === "uploaded").length;
+  const editableStatus = (status: UploadStatus) => status === "queued" || status === "error";
 
   return (
     <section
@@ -272,109 +395,188 @@ export function DocumentTeachingUploader() {
       aria-labelledby="document-teaching-uploader-title"
     >
       <div>
-        <p className="text-xs font-medium text-[var(--gold-muted)]">Private document source</p>
+        <p className="text-xs font-medium text-[var(--gold-muted)]">مصادر المستندات</p>
         <h2 id="document-teaching-uploader-title" className="mt-2 text-2xl font-semibold">
-          ارفع Document لتعليم Eslam.AI لاحقاً
+          ارفع مستندات كمصادر تعليم
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-7 text-[var(--foreground-muted)]">
-          الملف يُحفظ الآن كمصدر فقط. Task 22 سيستخرج منه Teachings قابلة للمراجعة؛ لا يتم إنشاء Brain draft أو Publish في هذه الخطوة.
+          اختر ملفاً واحداً أو عدة ملفات. يُحفظ كل مستند كمصدر خاص مستقل، ثم يمكنك استخراج التعليمات منه ومراجعتها قبل إنشاء Brain drafts. يظل كل تعليم مرتبطاً بمصدره الأصلي.
         </p>
       </div>
 
       <div className="mt-6 grid gap-4">
         <label className="text-sm font-medium text-[var(--foreground-muted)]">
-          Document
+          المستندات
           <input
             type="file"
+            multiple
             accept={DOCUMENT_TEACHING_ACCEPT}
-            disabled={busy || Boolean(pendingIntent)}
-            onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
+            disabled={batchBusy}
+            onChange={(event) => {
+              selectFiles(Array.from(event.target.files ?? []));
+              event.currentTarget.value = "";
+            }}
             className="mt-2 block w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3 text-sm file:me-3 file:rounded-[var(--radius-sm)] file:border-0 file:bg-[var(--gold-soft)] file:px-3 file:py-2 file:font-semibold file:text-[var(--gold-bright)] disabled:opacity-60"
           />
         </label>
 
-        <label className="text-sm font-medium text-[var(--foreground-muted)]">
-          Source title
-          <input
-            value={title}
-            maxLength={200}
-            disabled={busy || Boolean(pendingIntent)}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder="مثال: High-Ticket Offer Framework"
-            className="mt-2 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3 py-3 text-sm text-[var(--foreground)] outline-none focus:border-[var(--gold-muted)] disabled:opacity-60"
-          />
-        </label>
+        {items.length > 0 ? (
+          <div className="grid gap-3" aria-label="قائمة المستندات المختارة">
+            {items.map((item) => {
+              const busy = ["preparing", "uploading", "finalizing"].includes(item.status);
+              const canEdit = !batchBusy && editableStatus(item.status) && !item.pendingIntent;
+              const errorState = ["error", "finalize-error", "cleanup-error"].includes(item.status);
 
-        {file ? (
-          <div className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm">
-            <p className="break-all font-medium text-[var(--foreground)]">{file.name}</p>
-            <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-              {formatDocumentTeachingBytes(file.size)} · {file.type || "browser MIME unavailable"}
-            </p>
+              return (
+                <article
+                  key={item.id}
+                  className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="break-all text-sm font-semibold text-[var(--foreground)]">{item.file.name}</p>
+                      <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
+                        {formatDocumentTeachingBytes(item.file.size)} · {item.file.type || "MIME غير متاح من المتصفح"}
+                      </p>
+                    </div>
+                    <span
+                      role="status"
+                      className={`w-fit rounded-full border px-2.5 py-1 text-xs font-medium ${
+                        item.status === "uploaded"
+                          ? "border-[color:var(--success)]/30 text-[var(--success)]"
+                          : errorState
+                            ? "border-[color:var(--danger)]/30 text-[var(--danger)]"
+                            : "border-[var(--border-strong)] text-[var(--gold-muted)]"
+                      }`}
+                    >
+                      {STATUS_LABELS[item.status]}
+                    </span>
+                  </div>
+
+                  <label className="mt-4 block text-xs font-medium text-[var(--foreground-muted)]">
+                    عنوان المصدر
+                    <input
+                      value={item.title}
+                      maxLength={200}
+                      disabled={!canEdit}
+                      onChange={(event) => {
+                        const title = event.target.value;
+                        updateItem(item.id, {
+                          title,
+                          status: validationMessage(item.file, title) ? "error" : "queued",
+                          message: validationMessage(item.file, title),
+                        });
+                      }}
+                      className="mt-2 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 text-sm text-[var(--foreground)] outline-none focus:border-[var(--gold-muted)] disabled:opacity-60"
+                    />
+                  </label>
+
+                  {item.message ? (
+                    <p
+                      role={errorState ? "alert" : "status"}
+                      className="mt-3 text-xs leading-6 text-[var(--foreground-muted)]"
+                    >
+                      {item.message}
+                    </p>
+                  ) : null}
+
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {item.status === "error" && !item.pendingIntent ? (
+                      <button
+                        type="button"
+                        disabled={batchBusy || Boolean(validationMessage(item.file, item.title))}
+                        onClick={() => void retryUpload(item)}
+                        className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground-muted)] disabled:opacity-50"
+                      >
+                        إعادة المحاولة
+                      </button>
+                    ) : null}
+
+                    {item.status === "finalize-error" && item.pendingIntent ? (
+                      <>
+                        <button
+                          type="button"
+                          disabled={batchBusy}
+                          onClick={() => void retryFinalization(item)}
+                          className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-3 py-2 text-xs font-semibold text-[var(--gold-bright)] disabled:opacity-50"
+                        >
+                          إكمال الحفظ
+                        </button>
+                        <button
+                          type="button"
+                          disabled={batchBusy}
+                          onClick={() => void discardPending(item)}
+                          className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground-subtle)] disabled:opacity-50"
+                        >
+                          تنظيف المحاولة
+                        </button>
+                      </>
+                    ) : null}
+
+                    {item.status === "cleanup-error" && item.pendingIntent ? (
+                      <button
+                        type="button"
+                        disabled={batchBusy}
+                        onClick={() => void retryCleanup(item)}
+                        className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-xs font-semibold text-[var(--foreground-muted)] disabled:opacity-50"
+                      >
+                        إعادة محاولة التنظيف
+                      </button>
+                    ) : null}
+
+                    {(item.status === "queued" || item.status === "uploaded" || (item.status === "error" && !item.pendingIntent)) && !busy ? (
+                      <button
+                        type="button"
+                        disabled={batchBusy}
+                        onClick={() => setItems((current) => current.filter((currentItem) => currentItem.id !== item.id))}
+                        className="min-h-10 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-medium text-[var(--foreground-subtle)] disabled:opacity-50"
+                      >
+                        إزالة من القائمة
+                      </button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
           </div>
-        ) : null}
+        ) : (
+          <div className="rounded-[var(--radius-sm)] border border-dashed border-[var(--border-strong)] bg-[var(--surface-subtle)] px-4 py-5 text-sm text-[var(--foreground-subtle)]">
+            اختر الملفات التي تريد إضافتها. يمكنك اختيار عدة مستندات في نفس المرة.
+          </div>
+        )}
 
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled={!canStartUpload}
-            onClick={() => void upload()}
+            disabled={batchBusy || queuedCount === 0}
+            onClick={() => void uploadQueued()}
             className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)] disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "جارٍ الحفظ…" : "حفظ Document source"}
+            {batchBusy ? "جارٍ رفع الدفعة…" : `رفع الملفات الجاهزة (${queuedCount})`}
           </button>
 
-          {status === "finalize-error" && pendingIntent ? (
-            <>
-              <button
-                type="button"
-                onClick={() => void retryFinalization()}
-                className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--foreground-muted)]"
-              >
-                إعادة التحقق والتثبيت
-              </button>
-              <button
-                type="button"
-                onClick={() => void discardPending()}
-                className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--foreground-subtle)]"
-              >
-                حذف محاولة الرفع
-              </button>
-            </>
-          ) : null}
-
-          {status === "cleanup-error" && pendingIntent ? (
+          {uploadedCount > 0 && !batchBusy ? (
             <button
               type="button"
-              onClick={() => void retryCleanup()}
+              onClick={() => setItems((current) => current.filter((item) => item.status !== "uploaded"))}
               className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--foreground-muted)]"
             >
-              إعادة محاولة التنظيف
-            </button>
-          ) : null}
-
-          {status === "uploaded" ? (
-            <button
-              type="button"
-              onClick={reset}
-              className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--foreground-muted)]"
-            >
-              رفع Document آخر
+              إخفاء الملفات المحفوظة
             </button>
           ) : null}
         </div>
 
         <p className="text-xs leading-6 text-[var(--foreground-subtle)]">
-          الصيغ الحالية: PDF, DOCX, TXT, MD · الحد الأقصى 50 MB · التخزين Private.
+          الصيغ المدعومة: PDF, DOCX, TXT, MD · الحد الأقصى 50 MB لكل ملف · التخزين Private.
         </p>
 
-        {message ? (
+        {batchMessage ? (
           <p
-            role={status === "error" || status === "cleanup-error" || status === "finalize-error" ? "alert" : "status"}
+            role="status"
             aria-live="polite"
             className="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3 text-sm leading-7 text-[var(--foreground-muted)]"
           >
-            {message}
+            {batchMessage}
           </p>
         ) : null}
       </div>
