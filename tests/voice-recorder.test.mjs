@@ -137,7 +137,10 @@ test("browser recorder turns rejected finalization requests into a retryable sta
     recorder,
     /catch \(error\) \{[\s\S]*setPendingIntent\(intent\);[\s\S]*setStatus\("finalize-error"\)/,
   );
-  assert.match(recorder, /مشكلة اتصال[\s\S]*إعادة محاولة إكمال الحفظ/);
+  assert.match(
+    recorder,
+    /تم رفع الصوت، لكن تعذر إكمال الحفظ بسبب مشكلة اتصال\. التسجيل محفوظ ويمكنك إعادة محاولة إكمال الحفظ\./,
+  );
 });
 
 test("browser recorder returns expired finalization intents to local preview", () => {
@@ -147,7 +150,10 @@ test("browser recorder returns expired finalization intents to local preview", (
     recorder,
     /if \(finalization\.error === "not-found"\) \{[\s\S]*setPendingIntent\(null\);[\s\S]*setStatus\("preview"\)/,
   );
-  assert.match(recorder, /انتهت محاولة الحفظ السابقة[\s\S]*إنشاء محاولة جديدة/);
+  assert.match(
+    recorder,
+    /انتهت محاولة الحفظ السابقة\. التسجيل المحلي ما زال محفوظاً ويمكنك الضغط على حفظ التسجيل لإنشاء محاولة جديدة\./,
+  );
 });
 
 test("browser recorder recovers rejected intent, cleanup, and Storage upload requests", () => {
