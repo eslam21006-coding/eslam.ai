@@ -62,7 +62,7 @@ test("Task 17 review data and mutations remain admin-only server paths", () => {
 test("Task 17 Brain page exposes review, provenance, versioning, lifecycle, and bulk UX", () => {
   const page = readSource("src/app/admin/brain/page.tsx");
   const navigation = readSource("src/features/admin-shell/navigation.ts");
-  const teachPage = readSource("src/app/admin/teach/page.tsx");
+  const textTeachPage = readSource("src/app/admin/teach/text/page.tsx");
 
   assert.match(page, /loadTeachingReviewPage\(status, page\)/);
   assert.match(page, /TEACHING_REVIEW_STATUSES\.map/);
@@ -82,9 +82,9 @@ test("Task 17 Brain page exposes review, provenance, versioning, lifecycle, and 
   assert.match(page, /form="bulk-approve-form"/);
   assert.match(navigation, /href: "\/admin\/brain"/);
   assert.match(navigation, /راجع التعليمات ومصادرها/);
-  assert.match(teachPage, /href="\/admin\/brain\?status=draft&page=1"/);
-  assert.match(teachPage, /directPublishEligible/);
-  assert.match(teachPage, /راجع النسخة المعدلة/);
+  assert.match(textTeachPage, /href="\/admin\/brain\?status=draft&page=1"/);
+  assert.match(textTeachPage, /directPublishEligible/);
+  assert.match(textTeachPage, /راجع النسخة المعدلة/);
 });
 
 test("Task 17 database review workflow binds approval and publication to exact immutable versions", () => {
@@ -181,7 +181,7 @@ test("Task 17 runtime covers immutable edits, lifecycle ordering, provenance, au
 test("Task 15 direct publish remains compatible only for an unedited latest v1 draft", () => {
   const actions = readSource("src/features/teach-eslam/actions.ts");
   const data = readSource("src/features/teach-eslam/data.ts");
-  const page = readSource("src/app/admin/teach/page.tsx");
+  const page = readSource("src/app/admin/teach/text/page.tsx");
 
   assert.match(actions, /publish_eslam_brain_draft_direct/);
   assert.match(actions, /p_version_number: versionNumber/);
