@@ -108,12 +108,13 @@ test("document teaching UI uploads only through signed private Storage and is li
   const data = readSource("src/features/document-teaching/data.ts");
   const teachPage = readSource("src/app/admin/teach/page.tsx");
 
-  assert.match(uploader, /uploadToSignedUrl\(intent\.storagePath, intent\.token, file/);
+  assert.match(uploader, /uploadToSignedUrl\(intent\.storagePath, intent\.token, item\.file/);
   assert.match(uploader, /contentType: intent\.mimeType/);
   assert.match(uploader, /upsert: false/);
   assert.match(uploader, /finalizeDocumentTeachingUploadAction/);
   assert.match(uploader, /cancelDocumentTeachingUploadAction/);
   assert.match(uploader, /retryQueuedDocumentTeachingCleanupsAction/);
+  assert.match(uploader, /type="file"[\s\S]*multiple/);
   assert.doesNotMatch(uploader, /Brain draft.*create|publish_eslam|review_eslam/);
 
   assert.match(page, /await requireAdmin\(\)/);
