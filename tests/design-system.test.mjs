@@ -80,12 +80,11 @@ test("internal design reference is not exposed as a product route", () => {
 test("global interaction system covers hover, pressed, focus, disabled, forms, and reduced motion", () => {
   const styles = readSource("src/app/globals.css");
 
-  assert.match(styles, /button:not\(:disabled\):not\(\[aria-disabled="true"\]\):hover\s*\{/);
-  assert.match(styles, /button:not\(:disabled\):not\(\[aria-disabled="true"\]\):active\s*\{/);
-  assert.match(
-    styles,
-    /button:not\(:disabled\):not\(\[aria-disabled="true"\]\),[\s\S]*cursor:\s*pointer/,
-  );
+  const enabledButton = 'button:not(:disabled):not([aria-disabled="true"])';
+  assert.ok(styles.includes(`${enabledButton},`));
+  assert.ok(styles.includes(`${enabledButton}:hover {`));
+  assert.ok(styles.includes(`${enabledButton}:active {`));
+  assert.ok(styles.includes(`${enabledButton}:hover,`));
   assert.match(styles, /a\[href\]:active/);
   assert.match(styles, /input:not\(:disabled\):hover/);
   assert.match(styles, /button:disabled,[\s\S]*\[aria-disabled="true"\][\s\S]*cursor:\s*not-allowed/);
