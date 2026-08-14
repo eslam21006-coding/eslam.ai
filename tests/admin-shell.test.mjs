@@ -163,6 +163,7 @@ test("admin home exposes only implemented workflows while unfinished direct rout
   assert.match(home, /href: "\/admin\/brain"/);
   assert.doesNotMatch(home, /\/admin\/users|\/admin\/memory|\/admin\/knowledge/);
   assert.match(section, /import \{ notFound \} from "next\/navigation"/);
+  assert.match(section, /export default function AdminSectionPage\(\)/);
   assert.match(section, /notFound\(\)/);
   assert.doesNotMatch(section, /getAdminSection|params|section\.description/);
   assert.doesNotMatch(home + section, /supabase|openai|fetch\(|form action|server action/i);
