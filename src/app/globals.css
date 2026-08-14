@@ -89,19 +89,19 @@ select {
   transition-property: color, background-color, border-color, box-shadow, opacity;
 }
 
-button:not(:disabled),
+button:not(:disabled):not([aria-disabled="true"]),
 a[href],
 summary,
 [role="button"]:not([aria-disabled="true"]) {
   cursor: pointer;
 }
 
-button:not(:disabled):hover {
+button:not(:disabled):not([aria-disabled="true"]):hover {
   filter: brightness(1.06);
   transform: translateY(-1px);
 }
 
-button:not(:disabled):active {
+button:not(:disabled):not([aria-disabled="true"]):active {
   filter: brightness(0.98);
   transform: translateY(0) scale(0.985);
 }
@@ -196,8 +196,8 @@ input:not(:disabled)::file-selector-button:hover {
     transition-duration: 0.01ms;
   }
 
-  button:not(:disabled):hover,
-  button:not(:disabled):active,
+  button:not(:disabled):not([aria-disabled="true"]):hover,
+  button:not(:disabled):not([aria-disabled="true"]):active,
   a[href]:active,
   summary:active,
   [role="button"]:not([aria-disabled="true"]):active,
