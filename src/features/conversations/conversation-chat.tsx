@@ -9,6 +9,10 @@ import {
   type ComposerError,
 } from "@/features/conversations/conversation-composer";
 import {
+  parseChatStreamBuffer,
+  type ChatStreamEvent,
+} from "@/features/conversations/chat-stream-protocol";
+import {
   MAX_MESSAGE_LENGTH,
   type MessageRecord,
 } from "@/features/conversations/contracts";
@@ -241,34 +245,96 @@ export function ConversationChat({
 
       responseStarted = true;
       targetConversationId = response.headers.get("X-Eslam-Conversation-Id");
-      if (!targetConversationId || !response.body) {
-        throw new Error("Streaming response is missing its conversation metadata or body.");
+      if (!response.body) {
+        throw new Error("Streaming response is missing its body.");
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      let frameBuffer = "";
+      let readyReceived = false;
+      let streamCompleted = false;
+      let streamFailed = false;
+
+      const applyFrames = (frames: ChatStreamEvent[]) => {
+        for (const frame of frames) {
+          if (streamCompleted || streamFailed) {
+            throw new Error("Streaming frame arrived after a terminal frame.");
+          }
+
+          if (frame.type === "ready") {
+            if (readyReceived) {
+              throw new Error("Streaming readiness arrived more than once.");
+            }
+            if (
+              targetConversationId &&
+              targetConversationId !== frame.conversationId
+            ) {
+              throw new Error("Streaming conversation metadata mismatch.");
+            }
+            targetConversationId = frame.conversationId;
+            readyReceived = true;
+            continue;
+          }
+
+          if (!readyReceived) {
+            throw new Error("Streaming frame arrived before readiness.");
+          }
+
+          if (frame.type === "delta") {
+            setOptimisticTurn((current) =>
+              current
+                ? { ...current, assistant: current.assistant + frame.delta }
+                : current,
+            );
+            continue;
+          }
+
+          if (frame.type === "error") {
+            streamFailed = true;
+            continue;
+          }
+
+          streamCompleted = true;
+        }
+      };
 
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
-        const delta = decoder.decode(value, { stream: true });
-        if (!delta) continue;
-
-        setOptimisticTurn((current) =>
-          current
-            ? { ...current, assistant: current.assistant + delta }
-            : current,
-        );
+        frameBuffer += decoder.decode(value, { stream: true });
+        const parsed = parseChatStreamBuffer(frameBuffer);
+        frameBuffer = parsed.remainder;
+        applyFrames(parsed.events);
       }
 
-      const tail = decoder.decode();
-      if (tail) {
-        setOptimisticTurn((current) =>
-          current
-            ? { ...current, assistant: current.assistant + tail }
-            : current,
+      frameBuffer += decoder.decode();
+      if (frameBuffer.length > 0) {
+        const parsed = parseChatStreamBuffer(frameBuffer, true);
+        frameBuffer = parsed.remainder;
+        applyFrames(parsed.events);
+      }
+
+      if (frameBuffer.length > 0) {
+        throw new Error("Streaming response ended with a partial frame.");
+      }
+
+      if (!targetConversationId) {
+        throw new Error("Streaming response is missing its conversation metadata.");
+      }
+
+      if (streamFailed) {
+        clearOptimisticTurn();
+        router.replace(
+          `/app/chat/${targetConversationId}?error=response_failed`,
+          { scroll: false },
         );
+        return;
+      }
+
+      if (!streamCompleted) {
+        throw new Error("Streaming response ended before completion.");
       }
 
       if (!mountedRef.current) return;

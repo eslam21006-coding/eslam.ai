@@ -5,6 +5,11 @@ import {
   persistAssistantMessage,
   streamBasicEslamReply,
 } from "@/features/conversations/assistant";
+import {
+  CHAT_STREAM_CONTENT_TYPE,
+  serializeChatStreamEvent,
+  type ChatStreamEvent,
+} from "@/features/conversations/chat-stream-protocol";
 import { isUuid, MAX_MESSAGE_LENGTH } from "@/features/conversations/contracts";
 import { prepareMessageResponseFlow } from "@/features/conversations/response-flow";
 import { createResponsePreparationDependencies } from "@/features/conversations/response-flow-server";
@@ -124,6 +129,15 @@ export async function POST(request: Request) {
 
   const bodyStream = new ReadableStream<Uint8Array>({
     start(controller) {
+      const send = (event: ChatStreamEvent) => {
+        if (cancelled) return;
+        controller.enqueue(encoder.encode(serializeChatStreamEvent(event)));
+      };
+
+      // Commit the HTTP response immediately. Application failures after this point
+      // travel as structured stream events instead of aborting the transport.
+      send({ type: "ready", conversationId: prepared.conversationId });
+
       void executePreparedStreamingResponse(
         {
           userId,
@@ -133,7 +147,7 @@ export async function POST(request: Request) {
             if (cancelled) {
               throw new DOMException("Streaming response cancelled.", "AbortError");
             }
-            controller.enqueue(encoder.encode(delta));
+            send({ type: "delta", delta });
           },
         },
         {
@@ -150,10 +164,20 @@ export async function POST(request: Request) {
         },
       )
         .then(() => {
-          if (!cancelled) controller.close();
+          if (!cancelled) {
+            send({ type: "done" });
+            controller.close();
+          }
         })
-        .catch((error) => {
-          if (!cancelled) controller.error(error);
+        .catch(() => {
+          if (!cancelled) {
+            send({
+              type: "error",
+              error: "response_failed",
+              userMessageSaved: true,
+            });
+            controller.close();
+          }
         })
         .finally(() => {
           request.signal.removeEventListener("abort", abortFromRequest);
@@ -169,7 +193,7 @@ export async function POST(request: Request) {
     status: 200,
     headers: {
       "Cache-Control": "no-store, no-transform",
-      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Type": CHAT_STREAM_CONTENT_TYPE,
       [CONVERSATION_HEADER]: prepared.conversationId,
       "X-Content-Type-Options": "nosniff",
     },

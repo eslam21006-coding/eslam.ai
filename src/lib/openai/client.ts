@@ -7,13 +7,16 @@ import { resolveVoiceTranscriptionModel } from "@/features/voice-transcription/c
 const OPENAI_TIMEOUT_MS = 45_000;
 const OPENAI_TRANSCRIPTION_TIMEOUT_MS = 225_000;
 const OPENAI_VOICE_TEACHING_TIMEOUT_MS = 120_000;
+const OPENAI_DOCUMENT_TEACHING_TIMEOUT_MS = 150_000;
 const OPENAI_MAX_RETRIES = 1;
 const OPENAI_TRANSCRIPTION_MAX_RETRIES = 0;
 const OPENAI_VOICE_TEACHING_MAX_RETRIES = 0;
+const OPENAI_DOCUMENT_TEACHING_MAX_RETRIES = 0;
 
 let openaiClient: OpenAI | null = null;
 let openaiTranscriptionClient: OpenAI | null = null;
 let openaiVoiceTeachingClient: OpenAI | null = null;
+let openaiDocumentTeachingClient: OpenAI | null = null;
 
 function getApiKey() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -59,6 +62,18 @@ export function getOpenAIVoiceTeachingClient() {
   return openaiVoiceTeachingClient;
 }
 
+/** Returns a dedicated Document → Teaching client with retries disabled below the DB lease budget. */
+export function getOpenAIDocumentTeachingClient() {
+  if (!openaiDocumentTeachingClient) {
+    openaiDocumentTeachingClient = new OpenAI({
+      apiKey: getApiKey(),
+      maxRetries: OPENAI_DOCUMENT_TEACHING_MAX_RETRIES,
+      timeout: OPENAI_DOCUMENT_TEACHING_TIMEOUT_MS,
+    });
+  }
+  return openaiDocumentTeachingClient;
+}
+
 /** Resolves the main chat model. */
 export function getOpenAIModel() {
   return process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";
@@ -72,4 +87,9 @@ export function getOpenAITranscriptionModel() {
 /** Resolves the Voice → Teaching model while preserving the main-model fallback. */
 export function getOpenAIVoiceTeachingModel() {
   return process.env.OPENAI_VOICE_TEACHING_MODEL?.trim() || getOpenAIModel();
+}
+
+/** Resolves the Document → Teaching model while preserving the main-model fallback. */
+export function getOpenAIDocumentTeachingModel() {
+  return process.env.OPENAI_DOCUMENT_TEACHING_MODEL?.trim() || getOpenAIModel();
 }
