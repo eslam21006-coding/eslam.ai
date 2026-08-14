@@ -30,7 +30,6 @@ type UploadStatus =
 
 type BatchUploadItem = {
   id: string;
-  fingerprint: string;
   file: File;
   title: string;
   status: UploadStatus;
@@ -48,10 +47,6 @@ const STATUS_LABELS: Record<UploadStatus, string> = {
   uploaded: "تم الحفظ",
   error: "تعذر الرفع",
 };
-
-function fileFingerprint(file: File) {
-  return `${file.name}\u0000${file.size}\u0000${file.lastModified}\u0000${file.type}`;
-}
 
 function validationMessage(file: File, title: string) {
   return validateDocumentTeachingUploadIntent({
@@ -98,41 +93,21 @@ export function DocumentTeachingUploader() {
   const selectFiles = (nextFiles: File[]) => {
     if (nextFiles.length === 0) return;
 
-    const existingFingerprints = new Set(items.map((item) => item.fingerprint));
-    const additions: BatchUploadItem[] = [];
-    let duplicateCount = 0;
-
-    for (const file of nextFiles) {
-      const fingerprint = fileFingerprint(file);
-      if (
-        existingFingerprints.has(fingerprint) ||
-        additions.some((item) => item.fingerprint === fingerprint)
-      ) {
-        duplicateCount += 1;
-        continue;
-      }
-
+    const additions = nextFiles.map((file): BatchUploadItem => {
       const title = defaultDocumentTeachingTitle(file.name);
       const error = validationMessage(file, title);
-      additions.push({
+      return {
         id: crypto.randomUUID(),
-        fingerprint,
         file,
         title,
         status: error ? "error" : "queued",
         message: error,
         pendingIntent: null,
-      });
-    }
+      };
+    });
 
-    if (additions.length > 0) {
-      setItems((current) => [...current, ...additions]);
-    }
-    setBatchMessage(
-      duplicateCount > 0
-        ? `تم تجاهل ${duplicateCount} ${duplicateCount === 1 ? "ملف مكرر" : "ملفات مكررة"} في قائمة الرفع الحالية.`
-        : null,
-    );
+    setItems((current) => [...current, ...additions]);
+    setBatchMessage(null);
   };
 
   const cleanupIntent = async (itemId: string, intent: DocumentTeachingUploadIntent) => {
@@ -281,9 +256,9 @@ export function DocumentTeachingUploader() {
       return false;
     }
 
-    const supabase = createClient();
     let uploadErrorMessage: string | null = null;
     try {
+      const supabase = createClient();
       const { error: uploadError } = await supabase.storage
         .from(intent.bucket)
         .uploadToSignedUrl(intent.storagePath, intent.token, item.file, {
@@ -325,64 +300,79 @@ export function DocumentTeachingUploader() {
     setBatchMessage(null);
     let succeeded = 0;
 
-    for (const item of queued) {
-      if (!isMountedRef.current) break;
-      if (await uploadItem(item)) succeeded += 1;
-    }
+    try {
+      for (const item of queued) {
+        if (!isMountedRef.current) break;
+        if (await uploadItem(item)) succeeded += 1;
+      }
 
-    if (!isMountedRef.current) return;
-    setBatchBusy(false);
-    setBatchMessage(
-      succeeded === queued.length
-        ? `تم حفظ ${succeeded} ${succeeded === 1 ? "مستند" : "مستندات"} بنجاح.`
-        : `اكتمل رفع الدفعة: نجح ${succeeded} من ${queued.length}. راجع حالة كل ملف وأعد محاولة الملفات التي تحتاج تدخلاً.`,
-    );
+      if (!isMountedRef.current) return;
+      setBatchMessage(
+        succeeded === queued.length
+          ? `تم حفظ ${succeeded} ${succeeded === 1 ? "مستند" : "مستندات"} بنجاح.`
+          : `اكتمل رفع الدفعة: نجح ${succeeded} من ${queued.length}. راجع حالة كل ملف وأعد محاولة الملفات التي تحتاج تدخلاً.`,
+      );
+    } finally {
+      if (isMountedRef.current) setBatchBusy(false);
+    }
   };
 
   const retryUpload = async (item: BatchUploadItem) => {
     if (batchBusy || item.pendingIntent) return;
     setBatchBusy(true);
     setBatchMessage(null);
-    await uploadItem(item);
-    if (isMountedRef.current) setBatchBusy(false);
+    try {
+      await uploadItem(item);
+    } finally {
+      if (isMountedRef.current) setBatchBusy(false);
+    }
   };
 
   const retryFinalization = async (item: BatchUploadItem) => {
     if (batchBusy || !item.pendingIntent) return;
     setBatchBusy(true);
     setBatchMessage(null);
-    await finalizeIntent(item.id, item.pendingIntent);
-    if (isMountedRef.current) setBatchBusy(false);
+    try {
+      await finalizeIntent(item.id, item.pendingIntent);
+    } finally {
+      if (isMountedRef.current) setBatchBusy(false);
+    }
   };
 
   const retryCleanup = async (item: BatchUploadItem) => {
     if (batchBusy || !item.pendingIntent) return;
     setBatchBusy(true);
     setBatchMessage(null);
-    const cleanupState = await cleanupIntent(item.id, item.pendingIntent);
-    if (cleanupState === "cleaned") {
-      updateItem(item.id, {
-        status: "error",
-        message: "تم تنظيف محاولة الرفع. يمكنك إعادة رفع الملف.",
-        pendingIntent: null,
-      });
+    try {
+      const cleanupState = await cleanupIntent(item.id, item.pendingIntent);
+      if (cleanupState === "cleaned") {
+        updateItem(item.id, {
+          status: "error",
+          message: "تم تنظيف محاولة الرفع. يمكنك إعادة رفع الملف.",
+          pendingIntent: null,
+        });
+      }
+    } finally {
+      if (isMountedRef.current) setBatchBusy(false);
     }
-    if (isMountedRef.current) setBatchBusy(false);
   };
 
   const discardPending = async (item: BatchUploadItem) => {
     if (batchBusy || !item.pendingIntent) return;
     setBatchBusy(true);
     setBatchMessage(null);
-    const cleanupState = await cleanupIntent(item.id, item.pendingIntent);
-    if (cleanupState === "cleaned" && isMountedRef.current) {
-      updateItem(item.id, {
-        status: "error",
-        message: "تم حذف محاولة الرفع غير المكتملة. يمكنك إعادة رفع الملف.",
-        pendingIntent: null,
-      });
+    try {
+      const cleanupState = await cleanupIntent(item.id, item.pendingIntent);
+      if (cleanupState === "cleaned" && isMountedRef.current) {
+        updateItem(item.id, {
+          status: "error",
+          message: "تم حذف محاولة الرفع غير المكتملة. يمكنك إعادة رفع الملف.",
+          pendingIntent: null,
+        });
+      }
+    } finally {
+      if (isMountedRef.current) setBatchBusy(false);
     }
-    if (isMountedRef.current) setBatchBusy(false);
   };
 
   const queuedCount = items.filter((item) => item.status === "queued").length;
