@@ -57,6 +57,7 @@ export const futureAdminSections = [
 
 export type FutureAdminSectionSlug = (typeof futureAdminSections)[number]["slug"];
 
+/** Resolves an unfinished direct admin section by its stable slug. */
 export function getAdminSection(slug: string) {
   return futureAdminSections.find((item) => item.slug === slug);
 }
