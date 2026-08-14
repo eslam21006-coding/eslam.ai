@@ -26,10 +26,11 @@ export async function requireAuthenticatedUser() {
   return userId;
 }
 
+/** Auth pages hand authenticated users back to the central role router. */
 export async function redirectAuthenticatedUser() {
   const userId = await getAuthenticatedUserId();
 
   if (userId) {
-    redirect("/app/chat");
+    redirect("/");
   }
 }
