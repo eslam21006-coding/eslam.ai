@@ -31,7 +31,7 @@ export default function AdminHomePage() {
             <Link
               key={item.href}
               href={item.href}
-              className="group min-h-40 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 transition-colors hover:border-[var(--gold-muted)] hover:bg-[var(--surface-subtle)]"
+              className="interactive-surface group min-h-40 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 hover:bg-[var(--surface-subtle)]"
             >
               <div className="flex items-start justify-between gap-4">
                 <h3 className="text-lg font-semibold text-[var(--foreground)] group-hover:text-[var(--gold-bright)]">
