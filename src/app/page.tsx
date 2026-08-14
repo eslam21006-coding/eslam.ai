@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { resolveEslamEntryDestination } from "@/features/auth/entry-routing";
 import { isAdmin } from "@/lib/auth/admin";
 import { getAuthenticatedUserId } from "@/lib/auth/session";
 
@@ -8,12 +9,8 @@ export default async function HomePage() {
   const userId = await getAuthenticatedUserId();
 
   if (!userId) {
-    redirect("/auth/login");
+    redirect(resolveEslamEntryDestination(null, false));
   }
 
-  if (await isAdmin()) {
-    redirect("/admin");
-  }
-
-  redirect("/app");
+  redirect(resolveEslamEntryDestination(userId, await isAdmin()));
 }
