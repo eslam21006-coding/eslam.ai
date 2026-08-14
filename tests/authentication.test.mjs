@@ -15,6 +15,18 @@ test("protected routes verify claims rather than trusting session storage", () =
   assert.match(appLayout, /requireAuthenticatedUser\(\)/);
 });
 
+test("central entry routes unauthenticated, admin, and normal users into separate workspaces", () => {
+  const root = readSource("src/app/page.tsx");
+  const session = readSource("src/lib/auth/session.ts");
+
+  assert.match(root, /getAuthenticatedUserId\(\)/);
+  assert.match(root, /redirect\("\/auth\/login"\)/);
+  assert.match(root, /isAdmin\(\)/);
+  assert.match(root, /redirect\("\/admin"\)/);
+  assert.match(root, /redirect\("\/app"\)/);
+  assert.match(session, /redirect\("\/"\)/);
+});
+
 test("Next.js proxy refreshes Supabase auth using bulk cookie APIs", () => {
   const proxy = readSource("src/proxy.ts");
   const sessionProxy = readSource("src/lib/supabase/proxy.ts");
@@ -29,7 +41,7 @@ test("Next.js proxy refreshes Supabase auth using bulk cookie APIs", () => {
   assert.doesNotMatch(sessionProxy, /SERVICE_ROLE|SECRET_KEY/i);
 });
 
-test("email password actions preserve credentials and recover safely", () => {
+test("email password actions preserve credentials and return successful auth to the role router", () => {
   const actions = readSource("src/features/auth/actions.ts");
   const chat = readSource("src/app/app/chat/page.tsx");
 
@@ -42,7 +54,7 @@ test("email password actions preserve credentials and recover safely", () => {
   assert.match(actions, /profile_init_failed/);
   assert.match(actions, /const \{ error \} = await supabase\.auth\.signOut\(\)/);
   assert.match(actions, /logout_failed/);
-  assert.match(actions, /redirect\("\/app\/chat"\)/);
+  assert.equal((actions.match(/redirect\("\/"\)/g) ?? []).length, 2);
   assert.doesNotMatch(actions, /error\.message/);
   assert.match(chat, /role="alert"/);
   assert.match(chat, /logout_failed/);
