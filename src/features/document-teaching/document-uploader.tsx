@@ -375,8 +375,8 @@ export function DocumentTeachingUploader() {
     }
   };
 
-  const queuedCount = items.filter((item) => item.status === "queued").length;
-  const uploadedCount = items.filter((item) => item.status === "uploaded").length;
+  const visibleItems = items.filter((item) => item.status !== "uploaded");
+  const queuedCount = visibleItems.filter((item) => item.status === "queued").length;
   const editableStatus = (status: UploadStatus) => status === "queued" || status === "error";
 
   return (
@@ -410,9 +410,9 @@ export function DocumentTeachingUploader() {
           />
         </label>
 
-        {items.length > 0 ? (
+        {visibleItems.length > 0 ? (
           <div className="grid gap-3" aria-label="قائمة المستندات المختارة">
-            {items.map((item) => {
+            {visibleItems.map((item) => {
               const busy = ["preparing", "uploading", "finalizing"].includes(item.status);
               const canEdit = !batchBusy && editableStatus(item.status) && !item.pendingIntent;
               const errorState = ["error", "finalize-error", "cleanup-error"].includes(item.status);
@@ -432,11 +432,9 @@ export function DocumentTeachingUploader() {
                     <span
                       role="status"
                       className={`w-fit rounded-full border px-2.5 py-1 text-xs font-medium ${
-                        item.status === "uploaded"
-                          ? "border-[color:var(--success)]/30 text-[var(--success)]"
-                          : errorState
-                            ? "border-[color:var(--danger)]/30 text-[var(--danger)]"
-                            : "border-[var(--border-strong)] text-[var(--gold-muted)]"
+                        errorState
+                          ? "border-[color:var(--danger)]/30 text-[var(--danger)]"
+                          : "border-[var(--border-strong)] text-[var(--gold-muted)]"
                       }`}
                     >
                       {STATUS_LABELS[item.status]}
@@ -514,7 +512,7 @@ export function DocumentTeachingUploader() {
                       </button>
                     ) : null}
 
-                    {(item.status === "queued" || item.status === "uploaded" || (item.status === "error" && !item.pendingIntent)) && !busy ? (
+                    {(item.status === "queued" || (item.status === "error" && !item.pendingIntent)) && !busy ? (
                       <button
                         type="button"
                         disabled={batchBusy}
@@ -544,16 +542,6 @@ export function DocumentTeachingUploader() {
           >
             {batchBusy ? "جارٍ رفع الدفعة…" : `رفع الملفات الجاهزة (${queuedCount})`}
           </button>
-
-          {uploadedCount > 0 && !batchBusy ? (
-            <button
-              type="button"
-              onClick={() => setItems((current) => current.filter((item) => item.status !== "uploaded"))}
-              className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm font-semibold text-[var(--foreground-muted)]"
-            >
-              إخفاء الملفات المحفوظة
-            </button>
-          ) : null}
         </div>
 
         <p className="text-xs leading-6 text-[var(--foreground-subtle)]">
