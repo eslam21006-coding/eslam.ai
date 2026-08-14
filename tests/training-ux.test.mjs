@@ -9,13 +9,15 @@ test("document uploader supports one batch with independent per-file recovery", 
   const uploader = readSource("src/features/document-teaching/document-uploader.tsx");
 
   assert.match(uploader, /type="file"[\s\S]*multiple[\s\S]*accept=\{DOCUMENT_TEACHING_ACCEPT\}/);
-  assert.match(uploader, /function fileFingerprint\(file: File\)/);
-  assert.match(uploader, /existingFingerprints\.has\(fingerprint\)/);
-  assert.match(uploader, /duplicateCount \+= 1/);
+  assert.match(uploader, /const additions = nextFiles\.map\(\(file\): BatchUploadItem =>/);
+  assert.doesNotMatch(uploader, /fileFingerprint|existingFingerprints|duplicateCount|fingerprint:/);
   assert.match(uploader, /type BatchUploadItem = \{/);
   assert.match(uploader, /pendingIntent: DocumentTeachingUploadIntent \| null/);
   assert.match(uploader, /for \(const item of queued\) \{[\s\S]*await uploadItem\(item\)/);
   assert.match(uploader, /succeeded === queued\.length/);
+  assert.match(uploader, /const supabase = createClient\(\);[\s\S]*uploadToSignedUrl/);
+  assert.match(uploader, /const uploadQueued = async \(\) => \{[\s\S]*try \{[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
+  assert.match(uploader, /const retryUpload = async[\s\S]*try \{[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
   assert.match(uploader, /retryFinalization/);
   assert.match(uploader, /retryCleanup/);
   assert.match(uploader, /رفع الملفات الجاهزة/);
