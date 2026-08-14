@@ -56,7 +56,7 @@ export async function loginAction(formData: FormData) {
     await recoverFromProfileFailure(supabase);
   }
 
-  redirect("/app/chat");
+  redirect("/");
 }
 
 export async function signupAction(formData: FormData) {
@@ -82,7 +82,7 @@ export async function signupAction(formData: FormData) {
     await recoverFromProfileFailure(supabase);
   }
 
-  redirect("/app/chat");
+  redirect("/");
 }
 
 export async function logoutAction() {
