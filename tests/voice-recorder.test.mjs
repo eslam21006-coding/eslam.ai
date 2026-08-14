@@ -185,16 +185,19 @@ test("browser recorder supports capture controls, local preview, and signed dire
   assert.doesNotMatch(recorder, /openai|vector_store|file_search/i);
 });
 
-test("voice recorder route is protected and linked from Teach Eslam", () => {
+test("voice recorder route is protected and linked from the training hub", () => {
   const page = readSource("src/app/admin/teach/voice/page.tsx");
   const teachPage = readSource("src/app/admin/teach/page.tsx");
   const navigation = readSource("src/features/admin-shell/navigation.ts");
 
   assert.match(page, /await requireAdmin\(\)/);
   assert.match(page, /<VoiceRecorder \/>/);
-  assert.match(teachPage, /href="\/admin\/teach\/voice"/);
-  assert.match(teachPage, />\s*Voice Recorder\s*</);
-  assert.match(navigation, /label: "Teach Eslam"/);
+  assert.match(page, /href="\/admin\/teach"/);
+  assert.match(teachPage, /href: "\/admin\/teach\/voice"/);
+  assert.match(teachPage, /href=\{method\.href\}/);
+  assert.match(teachPage, /title: "تعليم بالصوت"/);
+  assert.match(navigation, /label: "تدريب إسلام"/);
+  assert.match(navigation, /label: "تعليم بالصوت"/);
 });
 
 test("voice recording migrations are private, bounded, and service-only", () => {
