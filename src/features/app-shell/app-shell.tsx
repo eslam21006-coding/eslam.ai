@@ -33,17 +33,22 @@ function NavIcon({ name }: { name: "chat" | "business" }) {
 type SidebarContentProps = {
   conversations: ConversationNavItem[];
   conversationsLoadFailed: boolean;
+  showAdminPortal: boolean;
   onNavigate?: () => void;
 };
 
-function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: SidebarContentProps) {
+function SidebarContent({
+  conversations,
+  conversationsLoadFailed,
+  showAdminPortal,
+  onNavigate,
+}: SidebarContentProps) {
   const pathname = usePathname();
   const activeConversationRef = useRef<HTMLAnchorElement>(null);
 
   useEffect(() => {
     const activeConversation = activeConversationRef.current;
     if (!activeConversation) return;
-
     activeConversation.scrollIntoView({ block: "nearest" });
   }, [pathname, conversations.length]);
 
@@ -132,13 +137,24 @@ function SidebarContent({ conversations, conversationsLoadFailed, onNavigate }: 
       </nav>
 
       <div className="border-t border-[var(--border)] p-4">
+        {showAdminPortal ? (
+          <Link
+            href="/admin"
+            onClick={onNavigate}
+            className="mb-3 flex min-h-11 items-center justify-between rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-3 text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]"
+          >
+            <span>لوحة الإدارة</span>
+            <span aria-hidden="true">←</span>
+          </Link>
+        ) : null}
+
         <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3">
           <div className="flex items-center gap-3">
             <div aria-hidden="true" className="grid size-9 shrink-0 place-items-center rounded-full bg-[var(--gold-soft)] text-sm font-semibold text-[var(--gold-bright)]">
               إ
             </div>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-medium">حساب المتدرب</p>
+              <p className="truncate text-sm font-medium">حساب المستخدم</p>
               <p className="truncate text-xs text-[var(--foreground-subtle)]">Eslam.AI</p>
             </div>
           </div>
@@ -160,9 +176,15 @@ type AppShellProps = {
   children: ReactNode;
   conversations: ConversationNavItem[];
   conversationsLoadFailed?: boolean;
+  showAdminPortal?: boolean;
 };
 
-export function AppShell({ children, conversations, conversationsLoadFailed = false }: AppShellProps) {
+export function AppShell({
+  children,
+  conversations,
+  conversationsLoadFailed = false,
+  showAdminPortal = false,
+}: AppShellProps) {
   const pathname = usePathname();
   const mobileMenuRef = useRef<HTMLDialogElement>(null);
 
@@ -197,7 +219,7 @@ export function AppShell({ children, conversations, conversationsLoadFailed = fa
     });
   };
   const closeMobileMenu = () => mobileMenuRef.current?.close();
-  const sidebarProps = { conversations, conversationsLoadFailed };
+  const sidebarProps = { conversations, conversationsLoadFailed, showAdminPortal };
 
   return (
     <div className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
