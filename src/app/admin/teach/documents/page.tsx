@@ -70,8 +70,17 @@ export default async function DocumentTeachingPage({
       </div>
 
       <DocumentTeachingUploader />
-      <DocumentTeachingList page={documentPage} />
       <DocumentTeachingExtractionWorkbench items={workbenchItems} />
+
+      <details className="mt-7 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">
+          سجل المصادر المحفوظة
+        </summary>
+        <p className="mt-2 text-xs leading-6 text-[var(--foreground-subtle)]">
+          المصادر تظل محفوظة للرجوع وProvenance، لكنها ليست جزءاً من قائمة العمل النشطة بعد انتقال تعليماتها للمرحلة التالية.
+        </p>
+        <DocumentTeachingList page={documentPage} />
+      </details>
 
       <aside className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-5 py-4 text-sm leading-7 text-[var(--foreground-muted)]">
         الاستخراج ينتج candidates للمراجعة، وإنشاء المسودات يتطلب اختياراً صريحاً. Approval وPublish يظلان منفصلين في عقل إسلام.
