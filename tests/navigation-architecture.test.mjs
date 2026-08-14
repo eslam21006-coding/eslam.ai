@@ -5,14 +5,21 @@ import test from "node:test";
 const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
-test("navigation architecture has one role-aware entry and separate user/admin workspaces", () => {
+const importSource = (relativePath) =>
+  import(new URL(`../${relativePath}`, import.meta.url).href);
+
+test("navigation architecture has one role-aware entry and separate user/admin workspaces", async () => {
+  const { resolveEslamEntryDestination } = await importSource(
+    "src/features/auth/entry-routing.ts",
+  );
   const root = readSource("src/app/page.tsx");
   const appLayout = readSource("src/app/app/layout.tsx");
   const adminLayout = readSource("src/app/admin/layout.tsx");
 
-  assert.match(root, /redirect\("\/auth\/login"\)/);
-  assert.match(root, /redirect\("\/admin"\)/);
-  assert.match(root, /redirect\("\/app"\)/);
+  assert.equal(resolveEslamEntryDestination(null, false), "/auth/login");
+  assert.equal(resolveEslamEntryDestination("user-1", true), "/admin");
+  assert.equal(resolveEslamEntryDestination("user-1", false), "/app");
+  assert.match(root, /resolveEslamEntryDestination/);
   assert.match(appLayout, /showAdminPortal/);
   assert.match(adminLayout, /requireAdmin/);
 });
