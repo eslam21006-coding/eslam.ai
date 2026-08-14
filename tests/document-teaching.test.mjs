@@ -102,7 +102,7 @@ test("document teaching server path is admin-only, owner-scoped, verified, and n
   assert.match(database, /finalize_document_teaching_upload/);
 });
 
-test("document teaching UI uploads only through signed private Storage and exposes source-only scope", () => {
+test("document teaching UI uploads only through signed private Storage and is linked from the training hub", () => {
   const uploader = readSource("src/features/document-teaching/document-uploader.tsx");
   const page = readSource("src/app/admin/teach/documents/page.tsx");
   const data = readSource("src/features/document-teaching/data.ts");
@@ -120,11 +120,14 @@ test("document teaching UI uploads only through signed private Storage and expos
   assert.match(page, /loadDocumentTeachingPage\(authorization\.userId, pageNumber\)/);
   assert.match(page, /DocumentTeachingUploader/);
   assert.match(page, /DocumentTeachingList/);
+  assert.match(page, /href="\/admin\/teach"/);
+  assert.match(page, /href="\/admin\/brain\?status=draft&page=1"/);
   assert.match(data, /DOCUMENT_TEACHING_PAGE_SIZE = 20/);
   assert.match(data, /\.eq\("created_by", userId\)/);
   assert.match(data, /\.eq\("status", "uploaded"\)/);
   assert.match(data, /\.range\(offset, offset \+ DOCUMENT_TEACHING_PAGE_SIZE\)/);
-  assert.match(teachPage, /href="\/admin\/teach\/documents"/);
+  assert.match(teachPage, /href: "\/admin\/teach\/documents"/);
+  assert.match(teachPage, /href=\{method\.href\}/);
 });
 
 test("document teaching migration creates immutable document provenance without Brain materialization", () => {
