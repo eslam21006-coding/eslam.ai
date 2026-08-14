@@ -17,7 +17,7 @@ export const adminNavigation = [
   {
     href: "/admin/brain",
     label: "عقل إسلام",
-    description: "راجع Brain drafts وعدّلها واعتمدها وانشرها أو أرشفها.",
+    description: "راجع التعليمات ومصادرها وBrain drafts، وعدّلها واعتمدها وانشرها أو أرشفها.",
   },
 ] as const;
 
