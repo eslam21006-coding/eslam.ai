@@ -95,12 +95,12 @@ export function TeachEslamForm({ publishStatus }: TeachEslamFormProps) {
 
       {state.created && publishStatus !== "published" ? (
         <aside className="rounded-[var(--radius-lg)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] p-5 sm:p-6">
-          <p className="text-xs font-medium text-[var(--gold-muted)]">Draft saved</p>
+          <p className="text-xs font-medium text-[var(--gold-muted)]">تم حفظ المسودة</p>
           <h2 className="mt-2 text-lg font-semibold text-[var(--gold-bright)]">
             {state.created.title}
           </h2>
           <p className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-            المسودة محفوظة كنسخة ثابتة رقم 1. لن تؤثر على إجابات Eslam.AI إلا بعد النشر.
+            المسودة محفوظة للمراجعة ولن تؤثر على إجابات Eslam.AI إلا بعد النشر.
           </p>
           <form action={publishTeachEslamDraftAction} className="mt-4 flex justify-end">
             <input type="hidden" name="item_id" value={state.created.itemId} />
@@ -149,7 +149,7 @@ export function TeachEslamForm({ publishStatus }: TeachEslamFormProps) {
           <label className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-5">
             <span className="block text-sm font-semibold">الطبقة</span>
             <span className="mt-1 block text-xs leading-6 text-[var(--foreground-subtle)]">
-              أين ينتمي هذا التعليم داخل Eslam Brain؟
+              مكان المعرفة داخل Eslam Brain. مثال: Brain لمبدأ أو Framework، Cases لحالة تطبيقية، Voice لقاعدة أسلوب، وIdentity لمعلومة عنك.
             </span>
             <select
               key={`layer-${state.revision}`}
@@ -168,7 +168,7 @@ export function TeachEslamForm({ publishStatus }: TeachEslamFormProps) {
           <label className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-5">
             <span className="block text-sm font-semibold">نوع التعليم</span>
             <span className="mt-1 block text-xs leading-6 text-[var(--foreground-subtle)]">
-              يساعد Eslam.AI على فهم قوة التعليم وطريقة استخدامه.
+              شكل المعرفة نفسها. مثال: Principle = مبدأ، Framework = خطوات أو نظام، Hard rule = قاعدة لا تُكسر، Example = حالة تطبيقية.
             </span>
             <select
               key={`type-${state.revision}`}
@@ -243,9 +243,9 @@ export function TeachEslamForm({ publishStatus }: TeachEslamFormProps) {
         </section>
 
         <aside className="rounded-[var(--radius-md)] border border-dashed border-[var(--border-strong)] bg-[var(--surface-subtle)] p-5">
-          <p className="text-sm font-medium">Draft أولاً</p>
+          <p className="text-sm font-medium">المراجعة قبل النشر</p>
           <p className="mt-2 text-xs leading-6 text-[var(--foreground-subtle)]">
-            الحفظ لا يغيّر سلوك Eslam.AI. التعليم يدخل المحادثات فقط بعد أن تضغط «نشر الآن» بشكل صريح.
+            الحفظ ينشئ مسودة فقط. يمكنك مراجعتها قبل أن تنشرها لتصبح متاحة لـ Eslam.AI في المحادثات.
           </p>
         </aside>
 
