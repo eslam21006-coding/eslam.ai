@@ -16,6 +16,8 @@ test("document uploader supports one batch with independent per-file recovery", 
   assert.match(uploader, /for \(const item of queued\) \{[\s\S]*await uploadItem\(item\)/);
   assert.match(uploader, /succeeded === queued\.length/);
   assert.match(uploader, /try \{\s*const supabase = createClient\(\);[\s\S]*uploadToSignedUrl/);
+  assert.match(uploader, /const visibleItems = items\.filter\(\(item\) => item\.status !== "uploaded"\)/);
+  assert.doesNotMatch(uploader, /إخفاء الملفات المحفوظة/);
 
   for (const operation of [
     "uploadQueued",
@@ -35,6 +37,29 @@ test("document uploader supports one batch with independent per-file recovery", 
   assert.match(uploader, /retryFinalization/);
   assert.match(uploader, /retryCleanup/);
   assert.match(uploader, /رفع الملفات الجاهزة/);
+});
+
+test("Teaching and Brain surfaces behave like active work queues", () => {
+  const documents = readSource("src/features/document-teaching/extraction-workbench.tsx");
+  const voice = readSource("src/features/voice-teaching/workbench.tsx");
+  const brain = readSource("src/app/admin/brain/page.tsx");
+  const brainBulkSelection = readSource("src/features/teaching-review/brain-bulk-selection.tsx");
+  const documentPage = readSource("src/app/admin/teach/documents/page.tsx");
+  const voicePage = readSource("src/app/admin/teach/voice/page.tsx");
+
+  for (const workbench of [documents, voice]) {
+    assert.match(workbench, /filter\(\(candidate\) => !candidate\.brainItemId\)/);
+    assert.match(workbench, /actionableItems/);
+    assert.match(workbench, /تحديد الكل/);
+    assert.match(workbench, /إلغاء تحديد الكل/);
+  }
+
+  assert.match(brain, /BrainBulkSelection/);
+  assert.match(brainBulkSelection, /input\[name="item_id"\]\[form=/);
+  assert.match(brainBulkSelection, /تحديد الكل/);
+  assert.match(brainBulkSelection, /إلغاء تحديد الكل/);
+  assert.match(documentPage, /<details[\s\S]*سجل المصادر المحفوظة/);
+  assert.match(voicePage, /<details[\s\S]*سجل التسجيلات والـTranscripts/);
 });
 
 test("all three teaching paths expose the same canonical Brain metadata before draft creation", () => {
