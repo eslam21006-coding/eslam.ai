@@ -48,10 +48,10 @@ function candidateEdit(candidate: VoiceTeachingCandidateView): CandidateEdit {
 }
 
 function extractionErrorMessage(error: string) {
-  if (error === "not-found") return "لم يعد الـtranscript المكتمل متاحاً للاستخراج.";
-  if (error === "finalize-conflict") return "انتهت محاولة أحدث قبل هذه المحاولة. تم تحديث الحالة.";
-  if (error === "invalid-request") return "طلب الاستخراج غير صالح.";
-  return "تعذر استخراج Teachings من الـtranscript. يمكنك إعادة المحاولة.";
+  if (error === "not-found") return "لم يعد الـTranscript المكتمل متاحاً للاستخراج.";
+  if (error === "finalize-conflict") return "اكتملت محاولة أحدث وتم تحديث الحالة.";
+  if (error === "invalid-request") return "تعذر بدء الاستخراج بهذه البيانات.";
+  return "تعذر استخراج التعليمات من الـTranscript. يمكنك إعادة المحاولة.";
 }
 
 function formatDate(value: string | null) {
@@ -91,7 +91,7 @@ function CandidateEditor({
             onChange={(event) => onSelectedChange(event.target.checked)}
             className="size-4 accent-[var(--gold)]"
           />
-          Candidate {candidate.ordinal}
+          تعليم مقترح {candidate.ordinal}
         </label>
         {candidate.brainItemId ? (
           <Link
@@ -101,12 +101,12 @@ function CandidateEditor({
             تم إنشاء Brain draft
           </Link>
         ) : (
-          <span className="text-xs text-[var(--foreground-subtle)]">اختيار يدوي مطلوب</span>
+          <span className="text-xs text-[var(--foreground-subtle)]">اختره إذا كان يستحق الحفظ</span>
         )}
       </div>
 
       <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-        <p className="text-xs font-semibold text-[var(--gold-muted)]">Exact source excerpt</p>
+        <p className="text-xs font-semibold text-[var(--gold-muted)]">المقتطف الأصلي</p>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--foreground-muted)]">
           {candidate.sourceExcerpt}
         </p>
@@ -114,7 +114,7 @@ function CandidateEditor({
 
       <fieldset disabled={materialized} className="mt-5 grid gap-4 lg:grid-cols-2">
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Semantic layer
+          الطبقة
           <select
             className={inputClass}
             value={edit.semantic_layer}
@@ -129,7 +129,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Teaching type
+          نوع التعليم
           <select
             className={inputClass}
             value={edit.item_type}
@@ -144,7 +144,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Title
+          العنوان
           <input
             className={inputClass}
             value={edit.title}
@@ -154,7 +154,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Content
+          المحتوى
           <textarea
             className={`${inputClass} min-h-32 resize-y leading-7`}
             value={edit.content}
@@ -164,7 +164,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Priority — lower is stronger
+          الأولوية — الرقم الأقل أقوى
           <input
             className={inputClass}
             type="number"
@@ -177,7 +177,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Topics — one per line or comma-separated
+          Topics — موضوع واحد في كل سطر
           <textarea
             className={`${inputClass} min-h-20 resize-y`}
             value={edit.topics}
@@ -187,7 +187,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Summary — optional
+          الملخص — اختياري
           <textarea
             className={`${inputClass} min-h-20 resize-y`}
             value={edit.summary}
@@ -197,7 +197,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Change note — optional
+          ملاحظة النسخة — اختياري
           <input
             className={inputClass}
             value={edit.change_note}
@@ -232,14 +232,14 @@ function TranscriptTeachingCard({ item }: { item: VoiceTeachingWorkbenchItem }) 
       try {
         const result = await extractVoiceTeachingAction({ transcriptionId: item.transcriptionId });
         if (!result.ok) setMessage(extractionErrorMessage(result.error));
-        else if (result.state === "processing") setMessage("هناك محاولة استخراج جارية بالفعل.");
-        else setMessage("اكتمل استخراج Teachings للمراجعة.");
+        else if (result.state === "processing") setMessage("الاستخراج جارٍ بالفعل لهذا الـTranscript.");
+        else setMessage("اكتمل استخراج التعليمات وأصبحت جاهزة للمراجعة.");
         router.refresh();
       } catch (error) {
         console.error("Voice teaching extraction request rejected", {
           message: error instanceof Error ? error.message : "Unknown error",
         });
-        setMessage("انقطع الاتصال أثناء الاستخراج. الـtranscript محفوظ ويمكن إعادة المحاولة.");
+        setMessage("انقطع الاتصال أثناء الاستخراج. الـTranscript محفوظ ويمكن إعادة المحاولة.");
         router.refresh();
       }
     });
@@ -291,14 +291,14 @@ function TranscriptTeachingCard({ item }: { item: VoiceTeachingWorkbenchItem }) 
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-muted)]">
               {extractionStatus === "completed"
-                ? "Candidates جاهزة"
+                ? "التعليمات جاهزة للمراجعة"
                 : extractionStatus === "processing"
                   ? canExtract
-                    ? "Extraction انتهت مهلتها"
-                    : "Extraction جارية"
+                    ? "انتهت مهلة الاستخراج — يمكن إعادته"
+                    : "جارٍ الاستخراج"
                   : extractionStatus === "failed"
-                    ? "Extraction قابلة للإعادة"
-                    : "لم يبدأ extraction"}
+                    ? "تعذر الاستخراج — يمكن إعادته"
+                    : "جاهز للاستخراج"}
             </span>
             {item.completedAt ? (
               <span className="text-xs text-[var(--foreground-subtle)]">
@@ -306,14 +306,6 @@ function TranscriptTeachingCard({ item }: { item: VoiceTeachingWorkbenchItem }) 
               </span>
             ) : null}
           </div>
-          <p className="mt-3 break-all font-mono text-xs text-[var(--foreground-subtle)]" dir="ltr">
-            {item.transcriptionId}
-          </p>
-          {item.extraction.model ? (
-            <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-              {item.extraction.model} · attempt {item.extraction.attemptCount ?? 1}
-            </p>
-          ) : null}
         </div>
 
         {extractionStatus !== "completed" ? (
@@ -324,26 +316,20 @@ function TranscriptTeachingCard({ item }: { item: VoiceTeachingWorkbenchItem }) 
             className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-sm font-semibold text-[var(--gold-bright)] disabled:cursor-not-allowed disabled:opacity-55"
           >
             {isExtracting
-              ? "جارٍ استخراج Teachings…"
+              ? "جارٍ استخراج التعليمات…"
               : extractionStatus === "failed" || (extractionStatus === "processing" && canExtract)
-                ? "إعادة استخراج Teachings"
+                ? "إعادة استخراج التعليمات"
                 : !canExtract
                   ? "الاستخراج جارٍ…"
-                  : "استخراج Teachings"}
+                  : "استخراج التعليمات"}
           </button>
         ) : null}
       </div>
 
-      {extractionStatus === "failed" && item.extraction.lastErrorCode ? (
-        <p className="mt-3 font-mono text-xs text-[var(--foreground-subtle)]" dir="ltr">
-          {item.extraction.lastErrorCode}
-        </p>
-      ) : null}
-
       {extractionStatus === "completed" ? (
         item.extraction.candidates.length === 0 ? (
           <div className="mt-5 rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] px-4 py-5 text-sm text-[var(--foreground-muted)]">
-            لم يجد الاستخراج معرفة durable تستحق التحويل إلى Teach Eslam draft في هذا الـtranscript.
+            لم يجد الاستخراج تعليمات واضحة تستحق التحويل إلى Brain drafts في هذا الـTranscript.
           </div>
         ) : (
           <div className="mt-6 space-y-4">
@@ -371,7 +357,7 @@ function TranscriptTeachingCard({ item }: { item: VoiceTeachingWorkbenchItem }) 
               <div>
                 <p className="text-sm font-semibold">{selectedCandidates.length} محددة</p>
                 <p className="mt-1 text-xs text-[var(--foreground-subtle)]">
-                  الإنشاء هنا ينتج Drafts فقط. Approval وPublish يظلان في Brain Review.
+                  سيتم إنشاء مسودات فقط. راجعها واعتمدها وانشرها من عقل إسلام.
                 </p>
               </div>
               <button
@@ -380,7 +366,7 @@ function TranscriptTeachingCard({ item }: { item: VoiceTeachingWorkbenchItem }) 
                 onClick={createDrafts}
                 className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)] disabled:cursor-not-allowed disabled:opacity-55"
               >
-                {isSaving ? "جارٍ إنشاء المسودات…" : "إنشاء المسودات المحددة"}
+                {isSaving ? "جارٍ إنشاء المسودات…" : "إنشاء Brain drafts المحددة"}
               </button>
             </div>
           </div>
@@ -402,18 +388,18 @@ export function VoiceTeachingWorkbench({ items }: { items: VoiceTeachingWorkbenc
   return (
     <section className="mt-7" aria-labelledby="voice-teaching-title">
       <div className="mb-5">
-        <p className="text-xs font-medium text-[var(--gold-muted)]">Voice → Teaching review</p>
+        <p className="text-xs font-medium text-[var(--gold-muted)]">Voice → Teaching</p>
         <h2 id="voice-teaching-title" className="mt-2 text-2xl font-semibold">
           استخرج وراجع ما يستحق الدخول إلى عقل إسلام
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-7 text-[var(--foreground-muted)]">
-          الـAI يقترح candidates من الـtranscript المكتمل. راجع التصنيف والصياغة، اختر ما تريده فقط، ثم أنشئ Drafts. لا يوجد Auto-publish.
+          يقترح الـAI تعليمات من الـTranscript المكتمل مع التصنيف المناسب. راجع المصدر والتصنيف والصياغة، وعدّل ما يلزم، ثم اختر ما يتحول إلى Brain drafts. لا يُنشر شيء تلقائياً.
         </p>
       </div>
 
       {items.length === 0 ? (
         <div className="rounded-[var(--radius-lg)] border border-dashed border-[var(--border)] bg-[var(--surface)] px-5 py-8 text-center text-sm text-[var(--foreground-muted)]">
-          أكمل transcription واحداً على الأقل ليظهر هنا.
+          أكمل Transcript واحداً على الأقل لتظهر التعليمات المقترحة هنا.
         </div>
       ) : (
         <div className="space-y-5">
