@@ -155,14 +155,15 @@ test("production admin shell renders hierarchy and a deliberate user-space switc
   assert.match(layout, /<AdminShell>\{children\}<\/AdminShell>/);
 });
 
-test("admin home exposes only implemented workflows while future direct placeholders stay presentation-only", () => {
+test("admin home exposes only implemented workflows while unfinished direct routes return not found", () => {
   const home = readSource("src/app/admin/page.tsx");
   const section = readSource("src/app/admin/[section]/page.tsx");
 
   assert.match(home, /href: "\/admin\/teach"/);
   assert.match(home, /href: "\/admin\/brain"/);
   assert.doesNotMatch(home, /\/admin\/users|\/admin\/memory|\/admin\/knowledge/);
-  assert.match(section, /getAdminSection\(slug\)/);
-  assert.match(section, /if \(!section\) notFound\(\)/);
+  assert.match(section, /import \{ notFound \} from "next\/navigation"/);
+  assert.match(section, /notFound\(\)/);
+  assert.doesNotMatch(section, /getAdminSection|params|section\.description/);
   assert.doesNotMatch(home + section, /supabase|openai|fetch\(|form action|server action/i);
 });
