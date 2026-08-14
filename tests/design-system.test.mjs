@@ -80,11 +80,15 @@ test("internal design reference is not exposed as a product route", () => {
 test("global interaction system covers hover, pressed, focus, disabled, forms, and reduced motion", () => {
   const styles = readSource("src/app/globals.css");
 
-  assert.match(styles, /button:not\(:disabled\):hover\s*\{/);
-  assert.match(styles, /button:not\(:disabled\):active\s*\{/);
+  assert.match(styles, /button:not\(:disabled\):not\(\[aria-disabled="true"\]\):hover\s*\{/);
+  assert.match(styles, /button:not\(:disabled\):not\(\[aria-disabled="true"\]\):active\s*\{/);
+  assert.match(
+    styles,
+    /button:not\(:disabled\):not\(\[aria-disabled="true"\]\),[\s\S]*cursor:\s*pointer/,
+  );
   assert.match(styles, /a\[href\]:active/);
   assert.match(styles, /input:not\(:disabled\):hover/);
-  assert.match(styles, /button:disabled,[\s\S]*cursor:\s*not-allowed/);
+  assert.match(styles, /button:disabled,[\s\S]*\[aria-disabled="true"\][\s\S]*cursor:\s*not-allowed/);
   assert.match(styles, /:focus-visible\s*\{/);
   assert.match(styles, /outline:\s*2px solid var\(--focus-ring\)/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
