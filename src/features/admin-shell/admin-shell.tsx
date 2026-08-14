@@ -9,6 +9,7 @@ import {
   closeAdminMobileMenu,
   handleAdminMenuCancel,
   isAdminNavigationActive,
+  isAdminNavigationGroupActive,
   openAdminMobileMenu,
 } from "@/features/admin-shell/runtime";
 import { logoutAction } from "@/features/auth/actions";
@@ -31,20 +32,47 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
         <div className="grid gap-1">
           {adminNavigation.map((item) => {
             const active = isAdminNavigationActive(pathname, item.href);
+            const groupActive = isAdminNavigationGroupActive(pathname, item.href);
+            const hasChildren = "children" in item;
+
             return (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={onNavigate}
-                aria-current={active ? "page" : undefined}
-                className={`flex min-h-11 items-center rounded-[var(--radius-sm)] border-r-2 px-3 text-sm transition-colors ${
-                  active
-                    ? "border-[var(--gold-muted)] bg-[var(--gold-soft)] text-[var(--gold-bright)]"
-                    : "border-transparent text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
-                }`}
-              >
-                {item.label}
-              </Link>
+              <div key={item.href} className="grid gap-1">
+                <Link
+                  href={item.href}
+                  onClick={onNavigate}
+                  aria-current={active ? "page" : undefined}
+                  className={`flex min-h-11 items-center rounded-[var(--radius-sm)] border-r-2 px-3 text-sm transition-colors ${
+                    groupActive
+                      ? "border-[var(--gold-muted)] bg-[var(--gold-soft)] text-[var(--gold-bright)]"
+                      : "border-transparent text-[var(--foreground-muted)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
+                  }`}
+                >
+                  {item.label}
+                </Link>
+
+                {hasChildren ? (
+                  <div className="mr-4 grid gap-1 border-r border-[var(--border)] pr-2">
+                    {item.children.map((child) => {
+                      const childActive = isAdminNavigationActive(pathname, child.href);
+                      return (
+                        <Link
+                          key={child.href}
+                          href={child.href}
+                          onClick={onNavigate}
+                          aria-current={childActive ? "page" : undefined}
+                          className={`flex min-h-10 items-center rounded-[var(--radius-sm)] px-3 text-xs transition-colors ${
+                            childActive
+                              ? "bg-white/[0.04] text-[var(--gold-bright)]"
+                              : "text-[var(--foreground-subtle)] hover:bg-white/[0.03] hover:text-[var(--foreground)]"
+                          }`}
+                        >
+                          {child.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
             );
           })}
         </div>
@@ -52,10 +80,12 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="border-t border-[var(--border)] p-4">
         <Link
-          href="/app/chat"
-          className="flex min-h-11 items-center rounded-[var(--radius-sm)] px-3 text-sm text-[var(--foreground-muted)] transition-colors hover:bg-white/[0.03] hover:text-[var(--foreground)]"
+          href="/app"
+          onClick={onNavigate}
+          className="flex min-h-11 items-center justify-between rounded-[var(--radius-sm)] px-3 text-sm text-[var(--foreground-muted)] transition-colors hover:bg-white/[0.03] hover:text-[var(--foreground)]"
         >
-          العودة إلى مساحة المتدرب
+          <span>فتح مساحة المستخدم</span>
+          <span aria-hidden="true">←</span>
         </Link>
         <form action={logoutAction} className="mt-2">
           <button
