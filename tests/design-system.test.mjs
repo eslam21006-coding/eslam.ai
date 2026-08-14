@@ -69,20 +69,26 @@ test("subtle foreground maintains readable contrast on subtle surfaces", () => {
   );
 });
 
-test("design system reference covers the required component patterns", () => {
+test("internal design reference is not exposed as a product route", () => {
   const page = readSource("src/app/design-system/page.tsx");
 
-  for (const component of [
-    "Button",
-    "TextInput",
-    "TextArea",
-    "DropdownPreview",
-    "DialogPreview",
-    "ToastPreview",
-    "Skeleton",
-  ]) {
-    assert.match(page, new RegExp(`<${component}`));
-  }
+  assert.match(page, /import \{ notFound \} from "next\/navigation"/);
+  assert.match(page, /notFound\(\)/);
+  assert.doesNotMatch(page, /<Button|<DialogPreview|<DropdownPreview|نظام التصميم/);
+});
+
+test("global interaction system covers hover, pressed, focus, disabled, forms, and reduced motion", () => {
+  const styles = readSource("src/app/globals.css");
+
+  assert.match(styles, /button:not\(:disabled\):hover\s*\{/);
+  assert.match(styles, /button:not\(:disabled\):active\s*\{/);
+  assert.match(styles, /a\[href\]:active/);
+  assert.match(styles, /input:not\(:disabled\):hover/);
+  assert.match(styles, /button:disabled,[\s\S]*cursor:\s*not-allowed/);
+  assert.match(styles, /:focus-visible\s*\{/);
+  assert.match(styles, /outline:\s*2px solid var\(--focus-ring\)/);
+  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(styles, /\.interactive-surface:hover\s*\{/);
 });
 
 test("text controls preserve visible keyboard focus and minimum control sizing", () => {
