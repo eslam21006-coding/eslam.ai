@@ -16,11 +16,24 @@ test("document uploader supports one batch with independent per-file recovery", 
   assert.match(uploader, /for \(const item of queued\) \{[\s\S]*await uploadItem\(item\)/);
   assert.match(uploader, /succeeded === queued\.length/);
   assert.match(uploader, /try \{\s*const supabase = createClient\(\);[\s\S]*uploadToSignedUrl/);
-  assert.match(uploader, /const uploadQueued = async \(\) => \{[\s\S]*try \{[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
-  assert.match(uploader, /const retryUpload = async[\s\S]*try \{[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
-  assert.match(uploader, /const retryFinalization = async[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
-  assert.match(uploader, /const retryCleanup = async[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
-  assert.match(uploader, /const discardPending = async[\s\S]*finally \{[\s\S]*setBatchBusy\(false\)/);
+
+  for (const operation of [
+    "uploadQueued",
+    "retryUpload",
+    "retryFinalization",
+    "retryCleanup",
+    "discardPending",
+  ]) {
+    const start = uploader.indexOf(`const ${operation} = async`);
+    assert.notEqual(start, -1, `${operation} should exist`);
+    const next = uploader.indexOf("\n  const ", start + 1);
+    const source = uploader.slice(start, next === -1 ? undefined : next);
+    assert.match(source, /finally \{/);
+    assert.match(source, /setBatchBusy\(false\)/);
+  }
+
+  assert.match(uploader, /retryFinalization/);
+  assert.match(uploader, /retryCleanup/);
   assert.match(uploader, /رفع الملفات الجاهزة/);
 });
 
