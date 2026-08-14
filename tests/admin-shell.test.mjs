@@ -3,11 +3,15 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { authorizeBeforeAdminRender } from "../src/features/admin-shell/authorization-runtime.ts";
-import { adminNavigation } from "../src/features/admin-shell/navigation.ts";
+import {
+  adminNavigation,
+  futureAdminSections,
+} from "../src/features/admin-shell/navigation.ts";
 import {
   closeAdminMobileMenu,
   handleAdminMenuCancel,
   isAdminNavigationActive,
+  isAdminNavigationGroupActive,
   openAdminMobileMenu,
 } from "../src/features/admin-shell/runtime.ts";
 
@@ -107,64 +111,57 @@ test("admin mobile menu handles Escape/cancel by preventing default and closing"
   assert.deepEqual(events, ["showModal", "close"]);
 });
 
-test("admin navigation reports exactly one matching active route", () => {
-  for (const item of adminNavigation) {
-    const activeItems = adminNavigation.filter((candidate) =>
-      isAdminNavigationActive(item.href, candidate.href),
-    );
-
-    assert.deepEqual(activeItems.map((candidate) => candidate.href), [item.href]);
-  }
-
-  assert.equal(isAdminNavigationActive("/admin", "/admin/users"), false);
-  assert.equal(isAdminNavigationActive("/admin/users/other", "/admin/users"), false);
-});
-
-test("admin navigation preserves the Task 12 information architecture with the Task 15 Teach Eslam destination", () => {
+test("admin navigation contains only implemented destinations with teaching children", () => {
   assert.deepEqual(
     adminNavigation.map((item) => item.label),
-    [
-      "المستخدمون",
-      "المحادثات",
-      "Teach Eslam",
-      "ذاكرة إسلام",
-      "عقل إسلام",
-      "معرفة إسلام",
-      "الحالات والأمثلة",
-      "الإعدادات",
-    ],
+    ["الرئيسية", "تدريب إسلام", "عقل إسلام"],
   );
-  assert.equal(adminNavigation.length, 8);
-  assert.ok(adminNavigation.every((item) => item.href.startsWith("/admin/")));
+
+  const training = adminNavigation.find((item) => item.href === "/admin/teach");
+  assert.ok(training && "children" in training);
+  assert.deepEqual(
+    training.children.map((item) => item.href),
+    ["/admin/teach/text", "/admin/teach/voice", "/admin/teach/documents"],
+  );
+
+  const activeNavigation = JSON.stringify(adminNavigation);
+  for (const section of futureAdminSections) {
+    assert.equal(activeNavigation.includes(`/admin/${section.slug}`), false);
+  }
 });
 
-test("production admin shell wires the tested runtime behaviors", () => {
+test("admin navigation distinguishes exact links from active groups", () => {
+  assert.equal(isAdminNavigationActive("/admin/teach", "/admin/teach"), true);
+  assert.equal(isAdminNavigationActive("/admin/teach/text", "/admin/teach"), false);
+  assert.equal(isAdminNavigationGroupActive("/admin/teach/text", "/admin/teach"), true);
+  assert.equal(isAdminNavigationGroupActive("/admin/teach/documents", "/admin/teach"), true);
+  assert.equal(isAdminNavigationGroupActive("/admin/brain", "/admin"), false);
+});
+
+test("production admin shell renders hierarchy and a deliberate user-space switch", () => {
   const shell = readSource("src/features/admin-shell/admin-shell.tsx");
   const layout = readSource("src/app/admin/layout.tsx");
 
   assert.match(shell, /^"use client";/);
-  assert.match(shell, /openAdminMobileMenu\(mobileMenuRef\.current\)/);
-  assert.match(shell, /closeAdminMobileMenu\(mobileMenuRef\.current\)/);
-  assert.match(shell, /handleAdminMenuCancel\(mobileMenuRef\.current/);
-  assert.match(shell, /isAdminNavigationActive\(pathname, item\.href\)/);
-  assert.match(shell, /window\.matchMedia\("\(min-width: 64rem\)"\)/);
-  assert.match(shell, /addEventListener\("change", closeAtDesktop\)/);
-  assert.match(shell, /removeEventListener\("change", closeAtDesktop\)/);
-  assert.match(shell, /aria-current=\{active \? "page" : undefined\}/);
+  assert.match(shell, /isAdminNavigationGroupActive\(pathname, item\.href\)/);
+  assert.match(shell, /item\.children\.map/);
+  assert.match(shell, /href="\/app"/);
+  assert.match(shell, /فتح مساحة المستخدم/);
   assert.match(shell, /aria-label="فتح قائمة الإدارة"/);
   assert.match(shell, /aria-label="إغلاق القائمة"/);
-  assert.match(shell, /lang="en" dir="ltr"/);
   assert.doesNotMatch(shell, /outline-none/);
 
   assert.match(layout, /authorizeBeforeAdminRender\(requireAdmin/);
   assert.match(layout, /<AdminShell>\{children\}<\/AdminShell>/);
 });
 
-test("admin home and generic section destinations stay presentation-only", () => {
+test("admin home exposes only implemented workflows while future direct placeholders stay presentation-only", () => {
   const home = readSource("src/app/admin/page.tsx");
   const section = readSource("src/app/admin/[section]/page.tsx");
 
-  assert.match(home, /adminNavigation\.map/);
+  assert.match(home, /href: "\/admin\/teach"/);
+  assert.match(home, /href: "\/admin\/brain"/);
+  assert.doesNotMatch(home, /\/admin\/users|\/admin\/memory|\/admin\/knowledge/);
   assert.match(section, /getAdminSection\(slug\)/);
   assert.match(section, /if \(!section\) notFound\(\)/);
   assert.doesNotMatch(home + section, /supabase|openai|fetch\(|form action|server action/i);

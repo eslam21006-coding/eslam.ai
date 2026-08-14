@@ -47,9 +47,7 @@ export default async function DocumentTeachingPage({
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-medium text-[var(--gold-muted)]">Admin · Document teaching</p>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight" dir="ltr">
-            Documents → Teach Eslam
-          </h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight">تعليم إسلام بالمستندات</h1>
           <p className="mt-3 max-w-3xl text-sm leading-7 text-[var(--foreground-muted)] sm:text-base">
             ارفع مصادر المعرفة الخاصة، ثم استخرج منها Teachings قابلة للمراجعة. أنت تختار وتعدّل ما يتحول إلى Brain draft؛ لا شيء يُعتمد أو يُنشر تلقائياً.
           </p>
@@ -57,16 +55,16 @@ export default async function DocumentTeachingPage({
 
         <div className="flex flex-wrap gap-2">
           <Link
-            href="/admin/brain?status=draft&page=1"
-            className="min-h-11 shrink-0 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] px-4 py-3 text-center text-sm font-semibold text-[var(--gold-bright)]"
-          >
-            Brain Review
-          </Link>
-          <Link
             href="/admin/teach"
             className="min-h-11 shrink-0 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-center text-sm font-semibold text-[var(--foreground-muted)] transition hover:border-[var(--gold-muted)] hover:text-[var(--foreground)]"
           >
-            العودة إلى Teach Eslam
+            العودة إلى تدريب إسلام
+          </Link>
+          <Link
+            href="/admin/brain?status=draft&page=1"
+            className="min-h-11 shrink-0 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-center text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]"
+          >
+            فتح عقل إسلام
           </Link>
         </div>
       </div>
@@ -76,7 +74,7 @@ export default async function DocumentTeachingPage({
       <DocumentTeachingExtractionWorkbench items={workbenchItems} />
 
       <aside className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-5 py-4 text-sm leading-7 text-[var(--foreground-muted)]">
-        <strong className="text-[var(--foreground)]">حدود Task 22:</strong> الاستخراج ينتج candidates للمراجعة، وإنشاء المسودات يتطلب اختياراً صريحاً. Approval وPublish يظلان منفصلين في Brain Review. RAG وFile Search تأتي في Task 23.
+        الاستخراج ينتج candidates للمراجعة، وإنشاء المسودات يتطلب اختياراً صريحاً. Approval وPublish يظلان منفصلين في عقل إسلام.
       </aside>
     </div>
   );
