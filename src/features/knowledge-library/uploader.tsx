@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -21,7 +21,7 @@ type UploadItem = {
   id: string;
   file: File;
   title: string;
-  status: "queued" | "uploading" | "finalizing" | "error";
+  status: "queued" | "uploading" | "finalizing" | "error" | "cleanup-error";
   message: string | null;
   pendingIntent: KnowledgeUploadIntent | null;
 };
@@ -43,7 +43,14 @@ export function KnowledgeUploader() {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const mounted = useRef(true);
+  const mounted = useRef(false);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const patchItem = (id: string, patch: Partial<UploadItem>) => {
     if (!mounted.current) return;
@@ -147,11 +154,11 @@ export function KnowledgeUploader() {
       });
       const cleanup = await deleteKnowledgeSourceAction({ sourceId: intent.sourceId });
       patchItem(item.id, {
-        status: "error",
+        status: cleanup.ok ? "error" : "cleanup-error",
         pendingIntent: cleanup.ok ? null : intent,
         message: cleanup.ok
           ? "فشل رفع الملف وتم تنظيف المحاولة. يمكنك إعادة المحاولة."
-          : "فشل الرفع ولم يكتمل تنظيف المحاولة. استخدم حذف المحاولة ثم أعد الرفع.",
+          : "فشل الرفع ولم يكتمل تنظيف المحاولة. أكمل حذف المحاولة قبل إعادة الرفع.",
       });
       return false;
     }
@@ -181,7 +188,7 @@ export function KnowledgeUploader() {
   };
 
   const retryItem = async (item: UploadItem) => {
-    if (busy) return;
+    if (busy || item.status === "cleanup-error") return;
     setBusy(true);
     setMessage(null);
     try {
@@ -201,7 +208,12 @@ export function KnowledgeUploader() {
     try {
       const result = await deleteKnowledgeSourceAction({ sourceId: item.pendingIntent.sourceId });
       if (result.ok) removeItem(item.id);
-      else patchItem(item.id, { status: "error", message: "تعذر حذف المحاولة الآن. حاول مرة أخرى." });
+      else {
+        patchItem(item.id, {
+          status: "cleanup-error",
+          message: "تعذر حذف المحاولة الآن. أعد محاولة إكمال الحذف.",
+        });
+      }
       router.refresh();
     } finally {
       if (mounted.current) setBusy(false);
@@ -251,7 +263,9 @@ export function KnowledgeUploader() {
                       ? "جارٍ الرفع"
                       : item.status === "finalizing"
                         ? "جارٍ الحفظ والفهرسة"
-                        : "يحتاج تدخلاً"}
+                        : item.status === "cleanup-error"
+                          ? "يحتاج إكمال الحذف"
+                          : "يحتاج تدخلاً"}
                 </span>
               </div>
 
@@ -286,14 +300,18 @@ export function KnowledgeUploader() {
                     إعادة المحاولة
                   </button>
                 ) : null}
-                {(item.status === "queued" || item.status === "error") ? (
+                {(item.status === "queued" || item.status === "error" || item.status === "cleanup-error") ? (
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => void discardItem(item)}
                     className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground-subtle)] disabled:opacity-50"
                   >
-                    {item.pendingIntent ? "حذف المحاولة" : "إزالة من القائمة"}
+                    {item.pendingIntent
+                      ? item.status === "cleanup-error"
+                        ? "إكمال حذف المحاولة"
+                        : "حذف المحاولة"
+                      : "إزالة من القائمة"}
                   </button>
                 ) : null}
               </div>
