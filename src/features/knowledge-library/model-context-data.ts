@@ -4,7 +4,7 @@ import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 
 const KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000;
 
-/** Resolves the ready global Knowledge vector store for chat and fails open on dependency errors. */
+/** Resolves the global Knowledge vector store only when its application lifecycle is retrieval-safe. */
 export async function loadKnowledgeVectorStoreId() {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -23,6 +23,12 @@ export async function loadKnowledgeVectorStoreId() {
         .select("id,vector_store_id")
         .eq("status", "ready")
         .not("vector_store_id", "is", null)
+        .limit(1)
+        .abortSignal(controller.signal),
+      admin
+        .from("knowledge_sources")
+        .select("id")
+        .eq("status", "indexing")
         .limit(1)
         .abortSignal(controller.signal),
       admin
@@ -49,11 +55,17 @@ export async function loadKnowledgeVectorStoreId() {
       return null;
     }
 
-    const [configResult, readyResult, cleanupResult] = result;
-    if (configResult.error || readyResult.error || cleanupResult.error) {
+    const [configResult, readyResult, indexingResult, cleanupResult] = result;
+    if (
+      configResult.error ||
+      readyResult.error ||
+      indexingResult.error ||
+      cleanupResult.error
+    ) {
       console.error("knowledge_library search config load failed", {
         configError: configResult.error?.message,
         readyError: readyResult.error?.message,
+        indexingError: indexingResult.error?.message,
         cleanupError: cleanupResult.error?.message,
       });
       return null;
@@ -67,11 +79,12 @@ export async function loadKnowledgeVectorStoreId() {
       readyResult.data?.[0] && typeof readyResult.data[0].vector_store_id === "string"
         ? readyResult.data[0].vector_store_id
         : null;
+    const hasActiveIndexing = Boolean(indexingResult.data?.length);
     const cleanupBlocksStore = Boolean(
       vectorStoreId && cleanupResult.data?.some((row) => row.vector_store_id === vectorStoreId),
     );
 
-    if (cleanupBlocksStore) return null;
+    if (hasActiveIndexing || cleanupBlocksStore) return null;
     return vectorStoreId && vectorStoreId === readyStoreId ? vectorStoreId : null;
   } catch (error) {
     console.error("knowledge_library search config load failed", {
