@@ -18,12 +18,14 @@ import {
   createKnowledgeOpenAIFile,
   createKnowledgeVectorStore,
   deleteKnowledgeOpenAIFile,
+  deleteKnowledgeVectorStore,
   knowledgeProviderErrorCode,
   retrieveKnowledgeVectorStoreFile,
 } from "@/features/knowledge-library/openai";
 import { requireAdmin } from "@/lib/auth/admin";
 
 const KNOWLEDGE_ADMIN_PATH = "/admin/knowledge";
+const KNOWLEDGE_INDEX_LEASE_SECONDS = 180;
 
 type KnowledgeAdminClient = ReturnType<typeof getKnowledgeAdminClient>;
 
@@ -40,6 +42,15 @@ type StoredKnowledgeSource = {
   size_bytes: number | null;
   openai_file_id: string | null;
   vector_store_id: string | null;
+  index_claim_token: string | null;
+  index_lease_expires_at: string | null;
+};
+
+type KnowledgeIndexClaim = {
+  state: "claimed" | "busy" | "provider_indexing" | "ready" | "deleting" | "not_found" | "not_claimable";
+  token: string | null;
+  previousOpenAIFileId: string | null;
+  previousVectorStoreId: string | null;
 };
 
 function refreshKnowledgePage() {
@@ -54,13 +65,23 @@ async function loadOwnedSource(
   const { data, error } = await admin
     .from("knowledge_sources")
     .select(
-      "id,created_by,storage_bucket,storage_path,status,title,original_filename,mime_type,declared_size_bytes,size_bytes,openai_file_id,vector_store_id",
+      "id,created_by,storage_bucket,storage_path,status,title,original_filename,mime_type,declared_size_bytes,size_bytes,openai_file_id,vector_store_id,index_claim_token,index_lease_expires_at",
     )
     .eq("id", sourceId)
     .eq("created_by", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as StoredKnowledgeSource | null;
+}
+
+async function deleteVectorStoreBestEffort(vectorStoreId: string) {
+  try {
+    await deleteKnowledgeVectorStore(vectorStoreId);
+  } catch (error) {
+    console.error("Knowledge Library unused vector store cleanup failed", {
+      message: error instanceof Error ? error.message : "Unknown vector store cleanup error",
+    });
+  }
 }
 
 async function ensureKnowledgeVectorStore(admin: KnowledgeAdminClient) {
@@ -83,7 +104,10 @@ async function ensureKnowledgeVectorStore(admin: KnowledgeAdminClient) {
     .is("vector_store_id", null)
     .select("vector_store_id")
     .maybeSingle();
-  if (claimError) throw new Error(claimError.message);
+  if (claimError) {
+    await deleteVectorStoreBestEffort(createdId);
+    throw new Error(claimError.message);
+  }
   if (claimed?.vector_store_id === createdId) return createdId;
 
   const { data: winner, error: winnerError } = await admin
@@ -92,40 +116,165 @@ async function ensureKnowledgeVectorStore(admin: KnowledgeAdminClient) {
     .eq("library_key", "global")
     .maybeSingle();
   if (winnerError || !winner?.vector_store_id) {
+    await deleteVectorStoreBestEffort(createdId);
     throw new Error(winnerError?.message ?? "Knowledge vector store was not persisted");
+  }
+
+  if (winner.vector_store_id !== createdId) {
+    await deleteVectorStoreBestEffort(createdId);
   }
   return winner.vector_store_id as string;
 }
 
-async function markIndexFailure(
+async function claimKnowledgeSourceIndex(
   admin: KnowledgeAdminClient,
   userId: string,
   sourceId: string,
+  sizeBytes: number,
+): Promise<KnowledgeIndexClaim> {
+  const { data, error } = await admin.rpc("claim_knowledge_source_index", {
+    p_source_id: sourceId,
+    p_created_by: userId,
+    p_size_bytes: sizeBytes,
+    p_lease_seconds: KNOWLEDGE_INDEX_LEASE_SECONDS,
+  });
+  if (error) throw new Error(error.message);
+
+  const row = data?.[0];
+  if (!row || typeof row.claim_state !== "string") {
+    throw new Error("Knowledge index claim returned no state");
+  }
+
+  const state = row.claim_state as KnowledgeIndexClaim["state"];
+  if (!["claimed", "busy", "provider_indexing", "ready", "deleting", "not_found", "not_claimable"].includes(state)) {
+    throw new Error("Knowledge index claim returned an invalid state");
+  }
+
+  return {
+    state,
+    token: row.claim_token,
+    previousOpenAIFileId: row.previous_openai_file_id,
+    previousVectorStoreId: row.previous_vector_store_id,
+  };
+}
+
+async function deleteOpenAIFileBestEffort(fileId: string) {
+  try {
+    await deleteKnowledgeOpenAIFile(fileId);
+    return true;
+  } catch (error) {
+    console.error("Knowledge Library OpenAI file cleanup failed", {
+      message: error instanceof Error ? error.message : "Unknown OpenAI file cleanup error",
+    });
+    return false;
+  }
+}
+
+async function markClaimFailure(
+  admin: KnowledgeAdminClient,
+  userId: string,
+  sourceId: string,
+  claimToken: string,
   sizeBytes: number,
   errorCode: string,
   openaiFileId: string | null = null,
   vectorStoreId: string | null = null,
 ) {
-  const { error } = await admin
+  const { data, error } = await admin
     .from("knowledge_sources")
     .update({
       status: "failed",
       size_bytes: sizeBytes,
       openai_file_id: openaiFileId,
-      vector_store_id: vectorStoreId,
+      vector_store_id: openaiFileId ? vectorStoreId : null,
       last_error_code: errorCode.slice(0, 100) || "provider-error",
       indexed_at: null,
+      index_claim_token: null,
+      index_lease_expires_at: null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", sourceId)
-    .eq("created_by", userId);
+    .eq("created_by", userId)
+    .eq("status", "indexing")
+    .eq("index_claim_token", claimToken)
+    .select("id")
+    .maybeSingle();
+
   if (error) {
     console.error("Knowledge Library failed-state persistence failed", {
       sourceId,
       code: error.code,
       message: error.message,
     });
+    return false;
   }
+  return Boolean(data);
+}
+
+async function markProviderFailure(
+  admin: KnowledgeAdminClient,
+  userId: string,
+  source: StoredKnowledgeSource,
+  errorCode: string,
+) {
+  if (!source.size_bytes || !source.openai_file_id || !source.vector_store_id) return false;
+  const deleted = await deleteOpenAIFileBestEffort(source.openai_file_id);
+  const { data, error } = await admin
+    .from("knowledge_sources")
+    .update({
+      status: "failed",
+      size_bytes: source.size_bytes,
+      openai_file_id: deleted ? null : source.openai_file_id,
+      vector_store_id: deleted ? null : source.vector_store_id,
+      last_error_code: errorCode.slice(0, 100) || "provider-error",
+      indexed_at: null,
+      index_claim_token: null,
+      index_lease_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", source.id)
+    .eq("created_by", userId)
+    .eq("status", "indexing")
+    .is("index_claim_token", null)
+    .eq("openai_file_id", source.openai_file_id)
+    .select("id")
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function persistClaimedProviderState(
+  admin: KnowledgeAdminClient,
+  userId: string,
+  sourceId: string,
+  claimToken: string,
+  sizeBytes: number,
+  openaiFileId: string,
+  vectorStoreId: string,
+  ready: boolean,
+) {
+  const { data, error } = await admin
+    .from("knowledge_sources")
+    .update({
+      status: ready ? "ready" : "indexing",
+      size_bytes: sizeBytes,
+      openai_file_id: openaiFileId,
+      vector_store_id: vectorStoreId,
+      last_error_code: null,
+      indexed_at: ready ? new Date().toISOString() : null,
+      index_claim_token: null,
+      index_lease_expires_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sourceId)
+    .eq("created_by", userId)
+    .eq("status", "indexing")
+    .eq("index_claim_token", claimToken)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return Boolean(data);
 }
 
 async function indexStoredSource(
@@ -133,11 +282,32 @@ async function indexStoredSource(
   userId: string,
   source: StoredKnowledgeSource,
   sizeBytes: number,
+  claimToken: string,
+  previousOpenAIFileId: string | null,
+  previousVectorStoreId: string | null,
 ): Promise<"indexing" | "ready" | null> {
   let vectorStoreId: string | null = null;
   let openaiFileId: string | null = null;
 
   try {
+    if (previousOpenAIFileId) {
+      const previousDeleted = await deleteOpenAIFileBestEffort(previousOpenAIFileId);
+      if (!previousDeleted) {
+        await markClaimFailure(
+          admin,
+          userId,
+          source.id,
+          claimToken,
+          sizeBytes,
+          "previous-file-cleanup-failed",
+          previousOpenAIFileId,
+          previousVectorStoreId,
+        );
+        refreshKnowledgePage();
+        return null;
+      }
+    }
+
     vectorStoreId = await ensureKnowledgeVectorStore(admin);
     const { data: sourceBlob, error: downloadError } = await admin.storage
       .from(source.storage_bucket)
@@ -157,54 +327,92 @@ async function indexStoredSource(
 
     if (vectorFile.status === "failed" || vectorFile.status === "cancelled") {
       const errorCode = vectorFile.last_error?.code ?? vectorFile.status;
-      await deleteKnowledgeOpenAIFile(openaiFileId).catch(() => undefined);
-      await markIndexFailure(admin, userId, source.id, sizeBytes, errorCode, null, vectorStoreId);
+      const deleted = await deleteOpenAIFileBestEffort(openaiFileId);
+      const persisted = await markClaimFailure(
+        admin,
+        userId,
+        source.id,
+        claimToken,
+        sizeBytes,
+        errorCode,
+        deleted ? null : openaiFileId,
+        deleted ? null : vectorStoreId,
+      );
+      if (!persisted && !deleted) await deleteOpenAIFileBestEffort(openaiFileId);
+      refreshKnowledgePage();
       return null;
     }
 
     const ready = vectorFile.status === "completed";
-    const { error: updateError } = await admin
-      .from("knowledge_sources")
-      .update({
-        status: ready ? "ready" : "indexing",
-        size_bytes: sizeBytes,
-        openai_file_id: openaiFileId,
-        vector_store_id: vectorStoreId,
-        last_error_code: null,
-        indexed_at: ready ? new Date().toISOString() : null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", source.id)
-      .eq("created_by", userId);
-
-    if (updateError) {
-      await deleteKnowledgeOpenAIFile(openaiFileId).catch(() => undefined);
-      throw new Error(updateError.message);
+    const persisted = await persistClaimedProviderState(
+      admin,
+      userId,
+      source.id,
+      claimToken,
+      sizeBytes,
+      openaiFileId,
+      vectorStoreId,
+      ready,
+    );
+    if (!persisted) {
+      await deleteOpenAIFileBestEffort(openaiFileId);
+      throw new Error("Knowledge index claim expired or was superseded");
     }
 
     refreshKnowledgePage();
     return ready ? "ready" : "indexing";
   } catch (error) {
     if (openaiFileId) {
-      await deleteKnowledgeOpenAIFile(openaiFileId).catch(() => undefined);
-      openaiFileId = null;
+      const deleted = await deleteOpenAIFileBestEffort(openaiFileId);
+      if (deleted) openaiFileId = null;
     }
     console.error("Knowledge Library indexing failed", {
       sourceId: source.id,
       message: error instanceof Error ? error.message : "Unknown indexing error",
     });
-    await markIndexFailure(
+    await markClaimFailure(
       admin,
       userId,
       source.id,
+      claimToken,
       sizeBytes,
       knowledgeProviderErrorCode(error),
       openaiFileId,
-      vectorStoreId,
+      openaiFileId ? vectorStoreId : null,
     );
     refreshKnowledgePage();
     return null;
   }
+}
+
+function claimStatusResult(
+  claim: KnowledgeIndexClaim,
+): "indexing" | "ready" | null {
+  if (claim.state === "ready") return "ready";
+  if (claim.state === "busy" || claim.state === "provider_indexing") return "indexing";
+  return null;
+}
+
+async function executeClaimedIndex(
+  admin: KnowledgeAdminClient,
+  userId: string,
+  source: StoredKnowledgeSource,
+  sizeBytes: number,
+): Promise<"indexing" | "ready" | null> {
+  const claim = await claimKnowledgeSourceIndex(admin, userId, source.id, sizeBytes);
+  const existingStatus = claimStatusResult(claim);
+  if (existingStatus) return existingStatus;
+  if (claim.state !== "claimed" || !claim.token) return null;
+
+  return indexStoredSource(
+    admin,
+    userId,
+    source,
+    sizeBytes,
+    claim.token,
+    claim.previousOpenAIFileId,
+    claim.previousVectorStoreId,
+  );
 }
 
 /** Creates an owner-scoped Knowledge source and a signed private Storage upload token. */
@@ -264,7 +472,7 @@ export async function createKnowledgeUploadAction(input: unknown): Promise<Knowl
   };
 }
 
-/** Verifies the private object, then starts durable OpenAI File Search indexing. */
+/** Verifies the private object, atomically claims the source, then starts File Search indexing. */
 export async function finalizeKnowledgeUploadAction(input: unknown): Promise<KnowledgeFinalizeResult> {
   const authorization = await requireAdmin();
   const sourceId = validateKnowledgeSourceId(input);
@@ -283,33 +491,53 @@ export async function finalizeKnowledgeUploadAction(input: unknown): Promise<Kno
   }
   if (!source) return { ok: false, error: "not-found" };
   if (source.status === "ready") return { ok: true, sourceId, status: "ready" };
-  if (source.status === "indexing") return { ok: true, sourceId, status: "indexing" };
-  if (source.status !== "pending") return { ok: false, error: "index-failed" };
-
-  const { data: storedObject, error: infoError } = await admin.storage
-    .from(source.storage_bucket)
-    .info(source.storage_path);
-  if (infoError || !storedObject) return { ok: false, error: "verify-failed" };
-
-  const sizeBytes = Number(storedObject.size);
-  const contentType = storedObject.contentType?.split(";", 1)[0]?.trim().toLowerCase();
-  if (
-    !Number.isSafeInteger(sizeBytes) ||
-    sizeBytes <= 0 ||
-    sizeBytes > KNOWLEDGE_LIBRARY_MAX_BYTES ||
-    sizeBytes !== source.declared_size_bytes ||
-    contentType !== source.mime_type
-  ) {
-    return { ok: false, error: "verify-failed" };
+  if (source.status === "failed" || source.status === "deleting") {
+    return { ok: false, error: "index-failed" };
   }
 
-  const status = await indexStoredSource(admin, authorization.userId, source, sizeBytes);
-  return status
-    ? { ok: true, sourceId, status }
-    : { ok: false, error: "index-failed" };
+  let sizeBytes = source.size_bytes;
+  if (source.status === "pending") {
+    const { data: storedObject, error: infoError } = await admin.storage
+      .from(source.storage_bucket)
+      .info(source.storage_path);
+    if (infoError || !storedObject) return { ok: false, error: "verify-failed" };
+
+    const verifiedSize = Number(storedObject.size);
+    const contentType = storedObject.contentType?.split(";", 1)[0]?.trim().toLowerCase();
+    if (
+      !Number.isSafeInteger(verifiedSize) ||
+      verifiedSize <= 0 ||
+      verifiedSize > KNOWLEDGE_LIBRARY_MAX_BYTES ||
+      verifiedSize !== source.declared_size_bytes ||
+      contentType !== source.mime_type
+    ) {
+      return { ok: false, error: "verify-failed" };
+    }
+    sizeBytes = verifiedSize;
+  }
+
+  if (!sizeBytes) return { ok: false, error: "index-failed" };
+
+  try {
+    const status = await executeClaimedIndex(
+      admin,
+      authorization.userId,
+      source,
+      sizeBytes,
+    );
+    return status
+      ? { ok: true, sourceId, status }
+      : { ok: false, error: "index-failed" };
+  } catch (error) {
+    console.error("Knowledge Library claim/finalization failed", {
+      sourceId,
+      message: error instanceof Error ? error.message : "Unknown claim error",
+    });
+    return { ok: false, error: "index-failed" };
+  }
 }
 
-/** Refreshes an in-progress source from the provider without changing ready sources. */
+/** Refreshes provider indexing or reclaims a worker whose indexing lease expired. */
 export async function refreshKnowledgeSourceAction(input: unknown): Promise<KnowledgeMutationResult> {
   const authorization = await requireAdmin();
   const sourceId = validateKnowledgeSourceId(input);
@@ -318,18 +546,39 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
   const source = await loadOwnedSource(admin, authorization.userId, sourceId).catch(() => null);
   if (!source) return { ok: false, error: "not-found" };
   if (source.status === "ready") return { ok: true, status: "ready" };
-  if (source.status !== "indexing" || !source.openai_file_id || !source.vector_store_id || !source.size_bytes) {
+  if (source.status !== "indexing" || !source.size_bytes) {
     return { ok: false, error: "operation-failed" };
   }
 
   try {
+    if (source.index_claim_token) {
+      const leaseExpiresAt = source.index_lease_expires_at
+        ? Date.parse(source.index_lease_expires_at)
+        : Number.NaN;
+      if (Number.isFinite(leaseExpiresAt) && leaseExpiresAt > Date.now()) {
+        return { ok: true, status: "indexing" };
+      }
+
+      const status = await executeClaimedIndex(
+        admin,
+        authorization.userId,
+        source,
+        source.size_bytes,
+      );
+      return status ? { ok: true, status } : { ok: true, status: "failed" };
+    }
+
+    if (!source.openai_file_id || !source.vector_store_id) {
+      return { ok: false, error: "operation-failed" };
+    }
+
     const providerState = await retrieveKnowledgeVectorStoreFile(
       source.vector_store_id,
       source.openai_file_id,
     );
     if (providerState.status === "in_progress") return { ok: true, status: "indexing" };
     if (providerState.status === "completed") {
-      const { error } = await admin
+      const { data, error } = await admin
         .from("knowledge_sources")
         .update({
           status: "ready",
@@ -339,20 +588,22 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
         })
         .eq("id", source.id)
         .eq("created_by", authorization.userId)
-        .eq("status", "indexing");
+        .eq("status", "indexing")
+        .is("index_claim_token", null)
+        .eq("openai_file_id", source.openai_file_id)
+        .select("id")
+        .maybeSingle();
       if (error) throw new Error(error.message);
+      if (!data) return { ok: true, status: "indexing" };
       refreshKnowledgePage();
       return { ok: true, status: "ready" };
     }
 
-    await markIndexFailure(
+    await markProviderFailure(
       admin,
       authorization.userId,
-      source.id,
-      source.size_bytes,
+      source,
       providerState.last_error?.code ?? providerState.status,
-      source.openai_file_id,
-      source.vector_store_id,
     );
     refreshKnowledgePage();
     return { ok: true, status: "failed" };
@@ -365,7 +616,7 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
   }
 }
 
-/** Rebuilds the provider index for a failed source from its preserved private file. */
+/** Rebuilds the provider index for a failed source through the same atomic claim fence. */
 export async function retryKnowledgeIndexAction(input: unknown): Promise<KnowledgeMutationResult> {
   const authorization = await requireAdmin();
   const sourceId = validateKnowledgeSourceId(input);
@@ -378,25 +629,10 @@ export async function retryKnowledgeIndexAction(input: unknown): Promise<Knowled
   }
 
   try {
-    if (source.openai_file_id) await deleteKnowledgeOpenAIFile(source.openai_file_id);
-    const { error: clearError } = await admin
-      .from("knowledge_sources")
-      .update({
-        openai_file_id: null,
-        vector_store_id: null,
-        last_error_code: "retry-pending",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", source.id)
-      .eq("created_by", authorization.userId)
-      .eq("status", "failed");
-    if (clearError) throw new Error(clearError.message);
-
-    const retrySource = { ...source, openai_file_id: null, vector_store_id: null };
-    const status = await indexStoredSource(
+    const status = await executeClaimedIndex(
       admin,
       authorization.userId,
-      retrySource,
+      source,
       source.size_bytes,
     );
     return status ? { ok: true, status } : { ok: true, status: "failed" };
