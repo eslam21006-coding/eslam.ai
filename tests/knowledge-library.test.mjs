@@ -51,7 +51,7 @@ test("Knowledge Library is a real top-level Admin destination, not an unfinished
 
   const page = readSource("src/app/admin/knowledge/page.tsx");
   assert.match(page, /مكتبة المعرفة/);
-  assert.match(page, /لن تتحول تلقائياً إلى تعليمات داخل عقل إسلام/);
+  assert.match(page, /ولا تتحول تلقائياً إلى تعليمات داخل عقل إسلام/);
   assert.match(page, /href="\/admin\/teach\/documents"/);
   assert.match(page, /المستندات التعليمية/);
 });
