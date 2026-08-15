@@ -5,17 +5,12 @@ import { KNOWLEDGE_LIBRARY_VECTOR_STORE_NAME } from "@/features/knowledge-librar
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const OPENAI_KNOWLEDGE_TIMEOUT_MS = 90_000;
 
-export const KNOWLEDGE_PROVIDER_STATUS_ATTRIBUTE = "library_status";
-export const KNOWLEDGE_PROVIDER_READY_VALUE = "ready";
-
 type VectorStoreFileState = {
   id: string;
   vector_store_id: string;
   status: "in_progress" | "completed" | "cancelled" | "failed";
   last_error: { code?: string; message?: string } | null;
 };
-
-type VectorStoreAttributeValue = string | number | boolean;
 
 export class KnowledgeProviderError extends Error {
   readonly status: number | null;
@@ -124,7 +119,7 @@ export async function createKnowledgeOpenAIFile(file: File) {
   return id;
 }
 
-/** Attaches a file as non-searchable until both provider indexing and app persistence are ready. */
+/** Attaches an uploaded OpenAI file to the global Knowledge Library vector store. */
 export async function attachKnowledgeVectorStoreFile(
   vectorStoreId: string,
   fileId: string,
@@ -137,34 +132,12 @@ export async function attachKnowledgeVectorStoreFile(
       method: "POST",
       body: JSON.stringify({
         file_id: fileId,
-        attributes: {
-          source_id: sourceId,
-          title,
-          [KNOWLEDGE_PROVIDER_STATUS_ATTRIBUTE]: "indexing",
-        },
+        attributes: { source_id: sourceId, title },
       }),
     },
     { beta: true },
   );
   if (!payload) throw new KnowledgeProviderError("Vector store file response was empty", { code: "invalid-response" });
-  return payload;
-}
-
-/** Updates vector-store file attributes used to gate retrieval to application-ready sources. */
-export async function updateKnowledgeVectorStoreFileAttributes(
-  vectorStoreId: string,
-  fileId: string,
-  attributes: Record<string, VectorStoreAttributeValue>,
-) {
-  const payload = await openAIRequest<VectorStoreFileState>(
-    `/vector_stores/${encodeURIComponent(vectorStoreId)}/files/${encodeURIComponent(fileId)}`,
-    {
-      method: "POST",
-      body: JSON.stringify({ attributes }),
-    },
-    { beta: true },
-  );
-  if (!payload) throw new KnowledgeProviderError("Vector store file attribute update was empty", { code: "invalid-response" });
   return payload;
 }
 
