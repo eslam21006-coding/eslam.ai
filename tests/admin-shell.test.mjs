@@ -114,7 +114,7 @@ test("admin mobile menu handles Escape/cancel by preventing default and closing"
 test("admin navigation contains only implemented destinations with teaching children", () => {
   assert.deepEqual(
     adminNavigation.map((item) => item.label),
-    ["الرئيسية", "تدريب إسلام", "عقل إسلام"],
+    ["الرئيسية", "تدريب إسلام", "عقل إسلام", "مكتبة المعرفة"],
   );
 
   const training = adminNavigation.find((item) => item.href === "/admin/teach");
@@ -122,6 +122,10 @@ test("admin navigation contains only implemented destinations with teaching chil
   assert.deepEqual(
     training.children.map((item) => item.href),
     ["/admin/teach/text", "/admin/teach/voice", "/admin/teach/documents"],
+  );
+  assert.deepEqual(
+    training.children.map((item) => item.label),
+    ["تعليم بالنص", "تعليم بالصوت", "مستندات تعليمية"],
   );
 
   const activeNavigation = JSON.stringify(adminNavigation);
@@ -135,6 +139,7 @@ test("admin navigation distinguishes exact links from active groups", () => {
   assert.equal(isAdminNavigationActive("/admin/teach/text", "/admin/teach"), false);
   assert.equal(isAdminNavigationGroupActive("/admin/teach/text", "/admin/teach"), true);
   assert.equal(isAdminNavigationGroupActive("/admin/teach/documents", "/admin/teach"), true);
+  assert.equal(isAdminNavigationActive("/admin/knowledge", "/admin/knowledge"), true);
   assert.equal(isAdminNavigationGroupActive("/admin/brain", "/admin"), false);
 });
 
@@ -155,13 +160,14 @@ test("production admin shell renders hierarchy and a deliberate user-space switc
   assert.match(layout, /<AdminShell>\{children\}<\/AdminShell>/);
 });
 
-test("admin home exposes only implemented workflows while unfinished direct routes return not found", () => {
+test("admin home exposes implemented workflows while unfinished direct routes return not found", () => {
   const home = readSource("src/app/admin/page.tsx");
   const section = readSource("src/app/admin/[section]/page.tsx");
 
   assert.match(home, /href: "\/admin\/teach"/);
   assert.match(home, /href: "\/admin\/brain"/);
-  assert.doesNotMatch(home, /\/admin\/users|\/admin\/memory|\/admin\/knowledge/);
+  assert.match(home, /href: "\/admin\/knowledge"/);
+  assert.doesNotMatch(home, /\/admin\/users|\/admin\/memory|\/admin\/cases|\/admin\/settings/);
   assert.match(section, /import \{ notFound \} from "next\/navigation"/);
   assert.match(section, /export default function AdminSectionPage\(\)/);
   assert.match(section, /notFound\(\)/);
