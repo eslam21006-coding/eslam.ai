@@ -31,7 +31,7 @@ type KnowledgeSourceRow = {
   indexed_at: string | null;
 };
 
-/** Loads one deterministic page of owner-scoped Knowledge Library sources. */
+/** Loads one deterministic owner-scoped page and clamps stale page numbers after deletion. */
 export async function loadKnowledgeSourcePage(userId: string, page: number): Promise<KnowledgeSourcePage> {
   const admin = getKnowledgeAdminClient();
   const from = (page - 1) * KNOWLEDGE_LIBRARY_PAGE_SIZE;
@@ -47,6 +47,10 @@ export async function loadKnowledgeSourcePage(userId: string, page: number): Pro
   if (error) throw new Error(`Unable to load Knowledge Library sources: ${error.message}`);
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / KNOWLEDGE_LIBRARY_PAGE_SIZE));
+
+  if (total > 0 && page > totalPages) {
+    return loadKnowledgeSourcePage(userId, totalPages);
+  }
 
   return {
     items: ((data ?? []) as KnowledgeSourceRow[]).map((row) => ({
