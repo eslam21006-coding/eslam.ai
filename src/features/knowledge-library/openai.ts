@@ -141,15 +141,21 @@ export async function attachKnowledgeVectorStoreFile(
   return payload;
 }
 
-/** Reads the provider indexing status for one Knowledge Library file. */
+/** Reads provider indexing state; a missing file is surfaced as a retryable failed state. */
 export async function retrieveKnowledgeVectorStoreFile(vectorStoreId: string, fileId: string) {
   const payload = await openAIRequest<VectorStoreFileState>(
     `/vector_stores/${encodeURIComponent(vectorStoreId)}/files/${encodeURIComponent(fileId)}`,
     { method: "GET" },
-    { beta: true },
+    { beta: true, allowNotFound: true },
   );
-  if (!payload) throw new KnowledgeProviderError("Vector store file was not found", { code: "not-found" });
-  return payload;
+  return (
+    payload ?? {
+      id: fileId,
+      vector_store_id: vectorStoreId,
+      status: "failed" as const,
+      last_error: { code: "not-found", message: "Provider file is missing" },
+    }
+  );
 }
 
 /** Deletes the durable OpenAI File; OpenAI also removes it from every vector store. */
