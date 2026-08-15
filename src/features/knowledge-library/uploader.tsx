@@ -85,7 +85,22 @@ export function KnowledgeUploader() {
       pendingIntent: intent,
       message: "جارٍ التحقق من المصدر وإرساله إلى فهرس البحث…",
     });
-    const result = await finalizeKnowledgeUploadAction({ sourceId: intent.sourceId });
+
+    let result: Awaited<ReturnType<typeof finalizeKnowledgeUploadAction>>;
+    try {
+      result = await finalizeKnowledgeUploadAction({ sourceId: intent.sourceId });
+    } catch (error) {
+      console.error("Knowledge Library finalization request failed", {
+        message: error instanceof Error ? error.message : "Unknown finalization error",
+      });
+      patchItem(item.id, {
+        status: "error",
+        pendingIntent: intent,
+        message: "تعذر الاتصال أثناء إكمال الحفظ. أعد المحاولة؛ لا ترفع الملف مرة ثانية.",
+      });
+      return false;
+    }
+
     if (!mounted.current) return false;
 
     if (result.ok) {
@@ -121,12 +136,26 @@ export function KnowledgeUploader() {
     if (item.pendingIntent) return finalizeIntent(item, item.pendingIntent);
     patchItem(item.id, { status: "uploading", message: "جارٍ رفع المصدر إلى التخزين الخاص…" });
 
-    const intentResult = await createKnowledgeUploadAction({
-      fileName: item.file.name,
-      mimeType: item.file.type,
-      sizeBytes: item.file.size,
-      title: item.title,
-    });
+    let intentResult: Awaited<ReturnType<typeof createKnowledgeUploadAction>>;
+    try {
+      intentResult = await createKnowledgeUploadAction({
+        fileName: item.file.name,
+        mimeType: item.file.type,
+        sizeBytes: item.file.size,
+        title: item.title,
+      });
+    } catch (error) {
+      console.error("Knowledge Library upload intent request failed", {
+        message: error instanceof Error ? error.message : "Unknown upload intent error",
+      });
+      patchItem(item.id, {
+        status: "error",
+        pendingIntent: null,
+        message: "تعذر الاتصال أثناء تجهيز الرفع. الملف ما زال على جهازك ويمكن المحاولة مرة أخرى.",
+      });
+      return false;
+    }
+
     if (!intentResult.ok) {
       patchItem(item.id, {
         status: "error",
@@ -152,11 +181,22 @@ export function KnowledgeUploader() {
       console.error("Knowledge Library signed upload failed", {
         message: error instanceof Error ? error.message : "Unknown upload error",
       });
-      const cleanup = await deleteKnowledgeSourceAction({ sourceId: intent.sourceId });
+
+      let cleanupOk = false;
+      try {
+        const cleanup = await deleteKnowledgeSourceAction({ sourceId: intent.sourceId });
+        cleanupOk = cleanup.ok;
+      } catch (cleanupError) {
+        console.error("Knowledge Library failed-upload cleanup request failed", {
+          message:
+            cleanupError instanceof Error ? cleanupError.message : "Unknown cleanup error",
+        });
+      }
+
       patchItem(item.id, {
-        status: cleanup.ok ? "error" : "cleanup-error",
-        pendingIntent: cleanup.ok ? null : intent,
-        message: cleanup.ok
+        status: cleanupOk ? "error" : "cleanup-error",
+        pendingIntent: cleanupOk ? null : intent,
+        message: cleanupOk
           ? "فشل رفع الملف وتم تنظيف المحاولة. يمكنك إعادة المحاولة."
           : "فشل الرفع ولم يكتمل تنظيف المحاولة. أكمل حذف المحاولة قبل إعادة الرفع.",
       });
@@ -206,12 +246,22 @@ export function KnowledgeUploader() {
     }
     setBusy(true);
     try {
-      const result = await deleteKnowledgeSourceAction({ sourceId: item.pendingIntent.sourceId });
-      if (result.ok) removeItem(item.id);
-      else {
+      try {
+        const result = await deleteKnowledgeSourceAction({ sourceId: item.pendingIntent.sourceId });
+        if (result.ok) removeItem(item.id);
+        else {
+          patchItem(item.id, {
+            status: "cleanup-error",
+            message: "تعذر حذف المحاولة الآن. أعد محاولة إكمال الحذف.",
+          });
+        }
+      } catch (error) {
+        console.error("Knowledge Library cleanup request failed", {
+          message: error instanceof Error ? error.message : "Unknown cleanup request error",
+        });
         patchItem(item.id, {
           status: "cleanup-error",
-          message: "تعذر حذف المحاولة الآن. أعد محاولة إكمال الحذف.",
+          message: "تعذر الاتصال أثناء حذف المحاولة. أعد محاولة إكمال الحذف.",
         });
       }
       router.refresh();
