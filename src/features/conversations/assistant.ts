@@ -13,12 +13,14 @@ export async function generateBasicEslamReply(
   messages: MessageRecord[],
   businessDnaContext: string | null = null,
   eslamBrainContext: string | null = null,
+  knowledgeVectorStoreId: string | null = null,
 ) {
   const request = buildBasicEslamResponseRequest(
     messages,
     getOpenAIModel(),
     businessDnaContext,
     eslamBrainContext,
+    knowledgeVectorStoreId,
   );
   const response = await getOpenAIClient().responses.create(request);
 
@@ -38,12 +40,14 @@ export async function streamBasicEslamReply(
   },
   businessDnaContext: string | null = null,
   eslamBrainContext: string | null = null,
+  knowledgeVectorStoreId: string | null = null,
 ) {
   const request = buildBasicEslamStreamingResponseRequest(
     messages,
     getOpenAIModel(),
     businessDnaContext,
     eslamBrainContext,
+    knowledgeVectorStoreId,
   );
   const stream = await getOpenAIClient().responses.create(request, {
     signal: options.signal,
