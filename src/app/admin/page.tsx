@@ -11,6 +11,11 @@ const adminHomeDestinations = [
     label: "عقل إسلام",
     description: "راجع المسودات وعدّلها واعتمد ما يستحق أن يصبح جزءاً من عقل إسلام المنشور.",
   },
+  {
+    href: "/admin/knowledge",
+    label: "مكتبة المعرفة",
+    description: "أضف الكتب والتقارير والمراجع التي تريد من إسلام البحث داخلها فقط عندما يحتاجها.",
+  },
 ] as const;
 
 export default function AdminHomePage() {
@@ -20,13 +25,13 @@ export default function AdminHomePage() {
         <p className="text-xs font-medium text-[var(--gold-muted)]">لوحة الإدارة</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">إدارة Eslam.AI</h1>
         <p className="mt-4 text-sm leading-7 text-[var(--foreground-muted)] sm:text-base">
-          ابدأ من تدريب إسلام لإدخال معرفة جديدة، ثم استخدم عقل إسلام لمراجعة المسودات واعتمادها ونشرها.
+          استخدم تدريب إسلام لما تريد أن يتبناه كطريقة تفكير، وعقل إسلام للمراجعة والنشر، ومكتبة المعرفة للمراجع التي يبحث فيها عند الحاجة.
         </p>
       </div>
 
       <section aria-labelledby="admin-sections" className="mt-9">
         <h2 id="admin-sections" className="sr-only">أقسام الإدارة</h2>
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {adminHomeDestinations.map((item) => (
             <Link
               key={item.href}
