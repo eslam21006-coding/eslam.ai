@@ -99,6 +99,15 @@ export async function createKnowledgeVectorStore() {
   return id;
 }
 
+/** Deletes an unused vector store created by a lost singleton-creation race. */
+export async function deleteKnowledgeVectorStore(vectorStoreId: string) {
+  await openAIRequest<{ deleted?: boolean }>(
+    `/vector_stores/${encodeURIComponent(vectorStoreId)}`,
+    { method: "DELETE" },
+    { beta: true, allowNotFound: true },
+  );
+}
+
 /** Uploads a durable Knowledge Library file to OpenAI for later vector-store indexing. */
 export async function createKnowledgeOpenAIFile(file: File) {
   const body = new FormData();
