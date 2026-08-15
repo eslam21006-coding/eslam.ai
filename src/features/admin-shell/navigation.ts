@@ -11,7 +11,7 @@ export const adminNavigation = [
     children: [
       { href: "/admin/teach/text", label: "تعليم بالنص" },
       { href: "/admin/teach/voice", label: "تعليم بالصوت" },
-      { href: "/admin/teach/documents", label: "تعليم بالمستندات" },
+      { href: "/admin/teach/documents", label: "مستندات تعليمية" },
     ],
   },
   {
@@ -19,39 +19,39 @@ export const adminNavigation = [
     label: "عقل إسلام",
     description: "راجع التعليمات ومصادرها وBrain drafts، وعدّلها واعتمدها وانشرها أو أرشفها.",
   },
+  {
+    href: "/admin/knowledge",
+    label: "مكتبة المعرفة",
+    description: "أضف المراجع التي يبحث فيها إسلام عند الحاجة من غير تحويلها تلقائياً إلى تعليمات داخل العقل.",
+  },
 ] as const;
 
-/** Future admin destinations remain addressable while unfinished, but are hidden from navigation. */
+/** Admin destinations that stay hidden until their product workflows exist. */
 export const futureAdminSections = [
   {
     slug: "users",
     label: "المستخدمون",
-    description: "إدارة حسابات المتدربين وصلاحياتهم ستُبنى في مهمة مخصصة.",
+    description: "إدارة حسابات المتدربين وصلاحياتهم.",
   },
   {
     slug: "conversations",
     label: "المحادثات",
-    description: "مراجعة محادثات المتدربين ستُبنى في مهمة مخصصة.",
+    description: "مراجعة محادثات المتدربين.",
   },
   {
     slug: "memory",
     label: "ذاكرة إسلام",
-    description: "إدارة طبقات الذاكرة العامة ستُبنى في مهمة مخصصة.",
-  },
-  {
-    slug: "knowledge",
-    label: "معرفة إسلام",
-    description: "مصادر المعرفة والمكتبة المركزية ستُدار هنا لاحقاً.",
+    description: "إدارة طبقات الذاكرة العامة.",
   },
   {
     slug: "cases",
     label: "الحالات والأمثلة",
-    description: "الحالات العملية والأمثلة المعتمدة ستُدار هنا لاحقاً.",
+    description: "إدارة الحالات العملية والأمثلة المعتمدة.",
   },
   {
     slug: "settings",
     label: "الإعدادات",
-    description: "إعدادات الإدارة العامة ستظهر هنا عند تنفيذها.",
+    description: "إعدادات الإدارة العامة.",
   },
 ] as const;
 
