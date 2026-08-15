@@ -60,12 +60,16 @@ reset role;
 
 set local role service_role;
 
-if not exists (
-  select 1 from public.knowledge_library_config
-  where library_key = 'global' and vector_store_id is null
-) then
-  do $$ begin raise exception 'global Knowledge Library config row missing'; end $$;
-end if;
+do $$
+begin
+  if not exists (
+    select 1 from public.knowledge_library_config
+    where library_key = 'global' and vector_store_id is null
+  ) then
+    raise exception 'global Knowledge Library config row missing';
+  end if;
+end;
+$$;
 
 insert into public.knowledge_sources (
   id,
