@@ -56,7 +56,7 @@ test("Knowledge Library is a real top-level Admin destination, not an unfinished
   assert.match(page, /المستندات التعليمية/);
 });
 
-test("chat enables built-in file_search only when a ready Knowledge vector store exists", () => {
+test("chat enables built-in file_search only when Knowledge lifecycle returns a safe vector store", () => {
   const messages = [{ role: "user", content: "راجع المرجع لو محتاج" }];
   const withoutKnowledge = buildBasicEslamResponseRequest(messages, "gpt-test", null, null, null);
   assert.equal(withoutKnowledge.tools, undefined);
@@ -77,6 +77,19 @@ test("chat enables built-in file_search only when a ready Knowledge vector store
   assert.match(withKnowledge.instructions, /follow the Published Eslam Brain/);
   assert.match(withKnowledge.instructions, /prefer the user's current message/);
   assert.equal(withKnowledge.store, false);
+});
+
+test("Knowledge retrieval is disabled during indexing or provider cleanup contamination", () => {
+  const loader = readSource("src/features/knowledge-library/model-context-data.ts");
+
+  assert.match(loader, /\.eq\("status", "ready"\)/);
+  assert.match(loader, /\.eq\("status", "indexing"\)/);
+  assert.match(loader, /\.in\("status", \["failed", "deleting"\]\)/);
+  assert.match(loader, /hasActiveIndexing/);
+  assert.match(loader, /cleanupBlocksStore/);
+  assert.match(loader, /if \(hasActiveIndexing \|\| cleanupBlocksStore\) return null/);
+  assert.match(loader, /KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000/);
+  assert.match(loader, /controller\.abort\(\)/);
 });
 
 test("blocking and streaming response paths load and pass the same Knowledge search configuration", () => {
