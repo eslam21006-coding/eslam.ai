@@ -16,6 +16,7 @@ export async function loadKnowledgeVectorStoreId() {
         .from("knowledge_library_config")
         .select("vector_store_id")
         .eq("library_key", "global")
+        .abortSignal(controller.signal)
         .maybeSingle(),
       admin
         .from("knowledge_sources")
