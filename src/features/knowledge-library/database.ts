@@ -23,9 +23,19 @@ type KnowledgeSourceRow = {
   openai_file_id: string | null;
   vector_store_id: string | null;
   last_error_code: string | null;
+  index_claim_token: string | null;
+  index_lease_expires_at: string | null;
   created_at: string;
   updated_at: string;
   indexed_at: string | null;
+};
+
+type KnowledgeIndexClaimRow = {
+  source_id: string | null;
+  claim_state: string;
+  claim_token: string | null;
+  previous_openai_file_id: string | null;
+  previous_vector_store_id: string | null;
 };
 
 type KnowledgeDatabase = {
@@ -52,7 +62,17 @@ type KnowledgeDatabase = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      claim_knowledge_source_index: {
+        Args: {
+          p_source_id: string;
+          p_created_by: string;
+          p_size_bytes: number;
+          p_lease_seconds?: number;
+        };
+        Returns: KnowledgeIndexClaimRow[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };
