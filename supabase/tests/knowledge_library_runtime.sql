@@ -58,6 +58,34 @@ end;
 $$;
 reset role;
 
+do $$
+begin
+  if has_function_privilege(
+    'authenticated',
+    'public.claim_knowledge_source_index(uuid,uuid,bigint,integer)',
+    'EXECUTE'
+  ) then
+    raise exception 'authenticated unexpectedly has Knowledge index claim EXECUTE';
+  end if;
+
+  if has_function_privilege(
+    'anon',
+    'public.claim_knowledge_source_index(uuid,uuid,bigint,integer)',
+    'EXECUTE'
+  ) then
+    raise exception 'anon unexpectedly has Knowledge index claim EXECUTE';
+  end if;
+
+  if not has_function_privilege(
+    'service_role',
+    'public.claim_knowledge_source_index(uuid,uuid,bigint,integer)',
+    'EXECUTE'
+  ) then
+    raise exception 'service_role is missing Knowledge index claim EXECUTE';
+  end if;
+end;
+$$;
+
 set local role service_role;
 
 do $$
@@ -99,6 +127,8 @@ begin
       and openai_file_id is null
       and vector_store_id is null
       and indexed_at is null
+      and index_claim_token is null
+      and index_lease_expires_at is null
   ) then
     raise exception 'valid Knowledge source did not begin pending';
   end if;
@@ -139,6 +169,56 @@ begin
 end;
 $$;
 
+do $$
+declare
+  v_first record;
+  v_second record;
+  v_reclaimed record;
+begin
+  select * into v_first
+  from public.claim_knowledge_source_index(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '33333333-3333-4333-8333-333333333333',
+    4096,
+    180
+  );
+
+  if v_first.claim_state <> 'claimed' or v_first.claim_token is null then
+    raise exception 'first Knowledge index claim did not claim the source';
+  end if;
+
+  select * into v_second
+  from public.claim_knowledge_source_index(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '33333333-3333-4333-8333-333333333333',
+    4096,
+    180
+  );
+
+  if v_second.claim_state <> 'busy' or v_second.claim_token is not null then
+    raise exception 'concurrent Knowledge index claim was not fenced as busy';
+  end if;
+
+  update public.knowledge_sources
+  set index_lease_expires_at = timezone('utc', now()) - interval '1 second'
+  where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+  select * into v_reclaimed
+  from public.claim_knowledge_source_index(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '33333333-3333-4333-8333-333333333333',
+    4096,
+    180
+  );
+
+  if v_reclaimed.claim_state <> 'claimed'
+    or v_reclaimed.claim_token is null
+    or v_reclaimed.claim_token = v_first.claim_token then
+    raise exception 'expired Knowledge index claim was not safely reclaimed';
+  end if;
+end;
+$$;
+
 update public.knowledge_library_config
 set vector_store_id = 'vs_test', updated_at = now()
 where library_key = 'global';
@@ -148,8 +228,28 @@ set status = 'indexing',
     size_bytes = 4096,
     openai_file_id = 'file_test',
     vector_store_id = 'vs_test',
+    index_claim_token = null,
+    index_lease_expires_at = null,
     updated_at = now()
 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+do $$
+declare
+  v_provider record;
+begin
+  select * into v_provider
+  from public.claim_knowledge_source_index(
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    '33333333-3333-4333-8333-333333333333',
+    4096,
+    180
+  );
+
+  if v_provider.claim_state <> 'provider_indexing' then
+    raise exception 'provider indexing state was unexpectedly reclaimable';
+  end if;
+end;
+$$;
 
 update public.knowledge_sources
 set status = 'ready',
@@ -167,6 +267,8 @@ begin
       and openai_file_id = 'file_test'
       and vector_store_id = 'vs_test'
       and indexed_at is not null
+      and index_claim_token is null
+      and index_lease_expires_at is null
   ) then
     raise exception 'Knowledge source did not reach valid ready state';
   end if;
