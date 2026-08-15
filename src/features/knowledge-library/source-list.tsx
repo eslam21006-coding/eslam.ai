@@ -6,6 +6,7 @@ import { useState, useTransition } from "react";
 
 import {
   deleteKnowledgeSourceAction,
+  finalizeKnowledgeUploadAction,
   refreshKnowledgeSourceAction,
   retryKnowledgeIndexAction,
 } from "@/features/knowledge-library/actions";
@@ -102,6 +103,23 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
+                {source.status === "pending" ? (
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={() =>
+                      run(
+                        source.id,
+                        () => finalizeKnowledgeUploadAction({ sourceId: source.id }),
+                        "تعذر إكمال حفظ المصدر. إذا لم يعد الملف موجوداً يمكنك حذف المحاولة وإعادة الرفع.",
+                      )
+                    }
+                    className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-3 py-2 text-xs font-semibold text-[var(--gold-bright)] disabled:opacity-50"
+                  >
+                    {itemBusy ? "جارٍ الإكمال…" : "إكمال الحفظ"}
+                  </button>
+                ) : null}
+
                 {source.status === "indexing" ? (
                   <button
                     type="button"
