@@ -4,7 +4,7 @@ import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 
 const KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000;
 
-/** Resolves the ready global Knowledge vector store for chat and fails open on any dependency error. */
+/** Resolves the ready global Knowledge vector store for chat and fails open on dependency errors. */
 export async function loadKnowledgeVectorStoreId() {
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -25,6 +25,14 @@ export async function loadKnowledgeVectorStoreId() {
         .not("vector_store_id", "is", null)
         .limit(1)
         .abortSignal(controller.signal),
+      admin
+        .from("knowledge_sources")
+        .select("id,vector_store_id")
+        .in("status", ["failed", "deleting"])
+        .not("openai_file_id", "is", null)
+        .not("vector_store_id", "is", null)
+        .limit(20)
+        .abortSignal(controller.signal),
     ]);
     const deadline = new Promise<null>((resolve) => {
       timer = setTimeout(() => {
@@ -41,11 +49,12 @@ export async function loadKnowledgeVectorStoreId() {
       return null;
     }
 
-    const [configResult, readyResult] = result;
-    if (configResult.error || readyResult.error) {
+    const [configResult, readyResult, cleanupResult] = result;
+    if (configResult.error || readyResult.error || cleanupResult.error) {
       console.error("knowledge_library search config load failed", {
         configError: configResult.error?.message,
         readyError: readyResult.error?.message,
+        cleanupError: cleanupResult.error?.message,
       });
       return null;
     }
@@ -58,7 +67,11 @@ export async function loadKnowledgeVectorStoreId() {
       readyResult.data?.[0] && typeof readyResult.data[0].vector_store_id === "string"
         ? readyResult.data[0].vector_store_id
         : null;
+    const cleanupBlocksStore = Boolean(
+      vectorStoreId && cleanupResult.data?.some((row) => row.vector_store_id === vectorStoreId),
+    );
 
+    if (cleanupBlocksStore) return null;
     return vectorStoreId && vectorStoreId === readyStoreId ? vectorStoreId : null;
   } catch (error) {
     console.error("knowledge_library search config load failed", {
