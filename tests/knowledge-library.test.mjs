@@ -130,7 +130,7 @@ test("chat enables built-in file_search only when Knowledge lifecycle returns a 
 
 test("Knowledge retrieval safety is computed atomically by the database", () => {
   const loader = readSource("src/features/knowledge-library/model-context-data.ts");
-  const hardening = readSource("supabase/migrations/20260815215000_harden_knowledge_global_lifecycle.sql");
+  const hardening = readSource("supabase/migrations/20260815215232_harden_knowledge_global_lifecycle.sql");
 
   assert.match(loader, /get_knowledge_retrieval_state/);
   assert.doesNotMatch(loader, /Promise\.all/);
@@ -161,7 +161,7 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, globally
   const provider = readSource("src/features/knowledge-library/openai.ts");
   const migration = readSource("supabase/migrations/20260815184404_create_knowledge_library.sql");
   const hardening = readSource("supabase/migrations/20260815190421_harden_knowledge_index_claim.sql");
-  const globalHardening = readSource("supabase/migrations/20260815215000_harden_knowledge_global_lifecycle.sql");
+  const globalHardening = readSource("supabase/migrations/20260815215232_harden_knowledge_global_lifecycle.sql");
 
   assert.match(actions, /requireAdmin\(\)/);
   assert.match(actions, /createSignedUploadUrl/);
