@@ -127,6 +127,9 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fe
   assert.match(provider, /^import "server-only";/);
   assert.match(provider, /body\.set\("purpose", "assistants"\)/);
   assert.match(provider, /deleteKnowledgeVectorStore/);
+  assert.match(provider, /allowNotFound: true/);
+  assert.match(provider, /status: "failed" as const/);
+  assert.match(provider, /code: "not-found"/);
   assert.match(provider, /\/vector_stores/);
   assert.match(provider, /\/files/);
 
@@ -144,6 +147,25 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fe
   assert.match(hardening, /'provider_indexing'::text/);
   assert.match(hardening, /revoke execute[\s\S]*from public, anon, authenticated/);
   assert.match(hardening, /grant execute[\s\S]*to service_role/);
+});
+
+test("Knowledge uploader recovers rejected server actions instead of leaving in-progress rows stuck", () => {
+  const uploader = readSource("src/features/knowledge-library/uploader.tsx");
+
+  assert.match(uploader, /try \{[\s\S]*finalizeKnowledgeUploadAction/);
+  assert.match(uploader, /Knowledge Library finalization request failed/);
+  assert.match(uploader, /status: "error"[\s\S]*pendingIntent: intent/);
+  assert.match(uploader, /try \{[\s\S]*createKnowledgeUploadAction/);
+  assert.match(uploader, /Knowledge Library upload intent request failed/);
+  assert.match(uploader, /pendingIntent: null/);
+  assert.match(uploader, /cleanup-error/);
+});
+
+test("Knowledge pagination clamps stale page numbers after deletions", () => {
+  const data = readSource("src/features/knowledge-library/data.ts");
+
+  assert.match(data, /if \(total > 0 && page > totalPages\)/);
+  assert.match(data, /return loadKnowledgeSourcePage\(userId, totalPages\)/);
 });
 
 test("Knowledge UI keeps provider internals out of rendered product copy", () => {
