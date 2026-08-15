@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { adminNavigation } from "../src/features/admin-shell/navigation.ts";
+
 const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
@@ -9,9 +11,13 @@ test("unfinished admin sections stay hidden and direct placeholder routes do not
   const shell = readSource("src/features/admin-shell/admin-shell.tsx");
   const navigation = readSource("src/features/admin-shell/navigation.ts");
   const placeholderRoute = readSource("src/app/admin/[section]/page.tsx");
+  const visibleLabels = adminNavigation.flatMap((item) => [
+    item.label,
+    ...("children" in item ? item.children.map((child) => child.label) : []),
+  ]);
 
   for (const label of ["المستخدمون", "المحادثات", "ذاكرة إسلام", "الحالات والأمثلة", "الإعدادات"]) {
-    assert.doesNotMatch(shell, new RegExp(label));
+    assert.ok(!visibleLabels.includes(label), `hidden section "${label}" is exposed in adminNavigation`);
   }
 
   assert.match(shell, /adminNavigation\.map/);

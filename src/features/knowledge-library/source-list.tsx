@@ -40,6 +40,11 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
         const result = await operation();
         if (!result.ok) setMessage(failureMessage);
         router.refresh();
+      } catch (error) {
+        console.error("Knowledge Library source operation failed", {
+          message: error instanceof Error ? error.message : "Unknown source operation error",
+        });
+        setMessage(failureMessage);
       } finally {
         setPendingId(null);
       }
@@ -94,7 +99,10 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
                   <p className="mt-2 text-xs text-[var(--foreground-subtle)]">
                     {source.sizeBytes ? formatKnowledgeBytes(source.sizeBytes) : "لم يكتمل التحقق من الحجم"}
                     {" · "}
-                    {new Intl.DateTimeFormat("ar-EG", { dateStyle: "medium" }).format(new Date(source.createdAt))}
+                    {new Intl.DateTimeFormat("ar-EG", {
+                      dateStyle: "medium",
+                      timeZone: "Africa/Cairo",
+                    }).format(new Date(source.createdAt))}
                   </p>
                 </div>
                 <span className={`w-fit rounded-full border px-2.5 py-1 text-xs font-medium ${statusTone}`}>
@@ -162,7 +170,7 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
                     run(
                       source.id,
                       () => deleteKnowledgeSourceAction({ sourceId: source.id }),
-                      "لم يكتمل حذف المصدر. يمكنك إعادة محاولة الحذف.",
+                      "لم يكتمل حذف المصدر. إذا كانت الفهرسة ما زالت نشطة، انتظر قليلاً ثم أعد المحاولة.",
                     );
                   }}
                   className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border)] px-3 py-2 text-xs font-medium text-[var(--foreground-subtle)] disabled:opacity-50"

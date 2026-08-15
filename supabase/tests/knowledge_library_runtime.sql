@@ -6,6 +6,14 @@ values
     '33333333-3333-4333-8333-333333333333',
     'authenticated',
     'authenticated',
+    'knowledge-owner@example.com',
+    now(),
+    now()
+  ),
+  (
+    '44444444-4444-4444-8444-444444444444',
+    'authenticated',
+    'authenticated',
     'knowledge-admin@example.com',
     now(),
     now()
@@ -76,12 +84,44 @@ begin
     raise exception 'anon unexpectedly has Knowledge index claim EXECUTE';
   end if;
 
+  if has_function_privilege(
+    'authenticated',
+    'public.claim_knowledge_source_delete(uuid)',
+    'EXECUTE'
+  ) then
+    raise exception 'authenticated unexpectedly has Knowledge delete claim EXECUTE';
+  end if;
+
+  if has_function_privilege(
+    'authenticated',
+    'public.get_knowledge_retrieval_state()',
+    'EXECUTE'
+  ) then
+    raise exception 'authenticated unexpectedly has Knowledge retrieval-state EXECUTE';
+  end if;
+
   if not has_function_privilege(
     'service_role',
     'public.claim_knowledge_source_index(uuid,uuid,bigint,integer)',
     'EXECUTE'
   ) then
     raise exception 'service_role is missing Knowledge index claim EXECUTE';
+  end if;
+
+  if not has_function_privilege(
+    'service_role',
+    'public.claim_knowledge_source_delete(uuid)',
+    'EXECUTE'
+  ) then
+    raise exception 'service_role is missing Knowledge delete claim EXECUTE';
+  end if;
+
+  if not has_function_privilege(
+    'service_role',
+    'public.get_knowledge_retrieval_state()',
+    'EXECUTE'
+  ) then
+    raise exception 'service_role is missing Knowledge retrieval-state EXECUTE';
   end if;
 end;
 $$;
@@ -173,18 +213,20 @@ do $$
 declare
   v_first record;
   v_second record;
+  v_delete_busy record;
   v_reclaimed record;
 begin
+  -- The acting Admin differs from created_by: Knowledge management is intentionally global.
   select * into v_first
   from public.claim_knowledge_source_index(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    '33333333-3333-4333-8333-333333333333',
+    '44444444-4444-4444-8444-444444444444',
     4096,
     180
   );
 
   if v_first.claim_state <> 'claimed' or v_first.claim_token is null then
-    raise exception 'first Knowledge index claim did not claim the source';
+    raise exception 'global Admin could not claim another Admin-authored Knowledge source';
   end if;
 
   select * into v_second
@@ -197,6 +239,13 @@ begin
 
   if v_second.claim_state <> 'busy' or v_second.claim_token is not null then
     raise exception 'concurrent Knowledge index claim was not fenced as busy';
+  end if;
+
+  select * into v_delete_busy
+  from public.claim_knowledge_source_delete('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+
+  if v_delete_busy.claim_state <> 'busy' then
+    raise exception 'active Knowledge index lease was not fenced from deletion';
   end if;
 
   update public.knowledge_sources
@@ -236,11 +285,19 @@ where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 do $$
 declare
   v_provider record;
+  v_retrieval text;
 begin
+  select vector_store_id into v_retrieval
+  from public.get_knowledge_retrieval_state();
+
+  if v_retrieval is not null then
+    raise exception 'Knowledge retrieval was enabled during provider indexing';
+  end if;
+
   select * into v_provider
   from public.claim_knowledge_source_index(
     'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-    '33333333-3333-4333-8333-333333333333',
+    '44444444-4444-4444-8444-444444444444',
     4096,
     180
   );
@@ -258,7 +315,16 @@ set status = 'ready',
 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 do $$
+declare
+  v_retrieval text;
 begin
+  select vector_store_id into v_retrieval
+  from public.get_knowledge_retrieval_state();
+
+  if v_retrieval <> 'vs_test' then
+    raise exception 'ready Knowledge source did not enable the configured vector store';
+  end if;
+
   if not exists (
     select 1 from public.knowledge_sources
     where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
@@ -290,8 +356,55 @@ end;
 $$;
 
 update public.knowledge_sources
-set status = 'deleting', updated_at = now()
+set status = 'failed',
+    indexed_at = null,
+    last_error_code = 'cleanup-required',
+    updated_at = now()
 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+do $$
+declare
+  v_retrieval text;
+begin
+  select vector_store_id into v_retrieval
+  from public.get_knowledge_retrieval_state();
+
+  if v_retrieval is not null then
+    raise exception 'Knowledge retrieval was enabled while attached provider cleanup was unresolved';
+  end if;
+end;
+$$;
+
+update public.knowledge_sources
+set status = 'ready',
+    indexed_at = now(),
+    last_error_code = null,
+    updated_at = now()
+where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+do $$
+declare
+  v_delete record;
+begin
+  select * into v_delete
+  from public.claim_knowledge_source_delete('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
+
+  if v_delete.claim_state <> 'claimed' then
+    raise exception 'ready Knowledge source could not be claimed for deletion';
+  end if;
+
+  if not exists (
+    select 1 from public.knowledge_sources
+    where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+      and status = 'deleting'
+      and index_claim_token is null
+      and index_lease_expires_at is null
+      and openai_file_id = 'file_test'
+  ) then
+    raise exception 'Knowledge delete claim did not preserve provider cleanup pointer';
+  end if;
+end;
+$$;
 
 delete from public.knowledge_sources
 where id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';

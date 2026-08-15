@@ -14,7 +14,7 @@ import { adminNavigation, futureAdminSections } from "../src/features/admin-shel
 const readSource = (relativePath) =>
   readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
 
-test("Knowledge Library validates the same bounded safe document family without becoming teaching", () => {
+test("Knowledge Library validates every supported bounded document type without becoming teaching", () => {
   assert.equal(KNOWLEDGE_LIBRARY_BUCKET, "eslam-knowledge-documents");
   assert.equal(KNOWLEDGE_LIBRARY_MAX_BYTES, 50 * 1024 * 1024);
   assert.equal(defaultKnowledgeTitle("Meta Ads Manual.pdf"), "Meta Ads Manual");
@@ -33,6 +33,55 @@ test("Knowledge Library validates the same bounded safe document family without 
       sizeBytes: 4096,
       extension: "pdf",
     },
+  );
+
+  for (const sample of [
+    {
+      fileName: "playbook.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      extension: "docx",
+      canonicalMime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+    {
+      fileName: "notes.txt",
+      mimeType: "text/plain",
+      extension: "txt",
+      canonicalMime: "text/plain",
+    },
+    {
+      fileName: "guide.md",
+      mimeType: "text/plain",
+      extension: "md",
+      canonicalMime: "text/markdown",
+    },
+  ]) {
+    const validated = validateKnowledgeUploadIntent({
+      fileName: sample.fileName,
+      mimeType: sample.mimeType,
+      sizeBytes: 4096,
+      title: "Reference",
+    });
+    assert.ok(validated, `${sample.extension} upload should be accepted`);
+    assert.equal(validated.extension, sample.extension);
+    assert.equal(validated.mimeType, sample.canonicalMime);
+  }
+
+  assert.ok(
+    validateKnowledgeUploadIntent({
+      fileName: "max-size.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: KNOWLEDGE_LIBRARY_MAX_BYTES,
+      title: "Maximum allowed size",
+    }),
+  );
+  assert.equal(
+    validateKnowledgeUploadIntent({
+      fileName: "too-large.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: KNOWLEDGE_LIBRARY_MAX_BYTES + 1,
+      title: "Too large",
+    }),
+    null,
   );
   assert.equal(
     validateKnowledgeUploadIntent({
@@ -79,17 +128,19 @@ test("chat enables built-in file_search only when Knowledge lifecycle returns a 
   assert.equal(withKnowledge.store, false);
 });
 
-test("Knowledge retrieval is disabled during indexing or provider cleanup contamination", () => {
+test("Knowledge retrieval safety is computed atomically by the database", () => {
   const loader = readSource("src/features/knowledge-library/model-context-data.ts");
+  const hardening = readSource("supabase/migrations/20260815215000_harden_knowledge_global_lifecycle.sql");
 
-  assert.match(loader, /\.eq\("status", "ready"\)/);
-  assert.match(loader, /\.eq\("status", "indexing"\)/);
-  assert.match(loader, /\.in\("status", \["failed", "deleting"\]\)/);
-  assert.match(loader, /hasActiveIndexing/);
-  assert.match(loader, /cleanupBlocksStore/);
-  assert.match(loader, /if \(hasActiveIndexing \|\| cleanupBlocksStore\) return null/);
+  assert.match(loader, /get_knowledge_retrieval_state/);
+  assert.doesNotMatch(loader, /Promise\.all/);
   assert.match(loader, /KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000/);
   assert.match(loader, /controller\.abort\(\)/);
+
+  assert.match(hardening, /create or replace function public\.get_knowledge_retrieval_state/);
+  assert.match(hardening, /not exists \([\s\S]*status = 'indexing'/);
+  assert.match(hardening, /status in \('failed', 'deleting'\)/);
+  assert.match(hardening, /cleanup_source\.vector_store_id = config\.vector_store_id/);
 });
 
 test("blocking and streaming response paths load and pass the same Knowledge search configuration", () => {
@@ -104,11 +155,13 @@ test("blocking and streaming response paths load and pass the same Knowledge sea
   }
 });
 
-test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fenced, and separate from Brain materialization", () => {
+test("Knowledge upload/index lifecycle is admin-only, private, durable, globally manageable, claim-fenced, and separate from Brain materialization", () => {
   const actions = readSource("src/features/knowledge-library/actions.ts");
+  const data = readSource("src/features/knowledge-library/data.ts");
   const provider = readSource("src/features/knowledge-library/openai.ts");
   const migration = readSource("supabase/migrations/20260815184404_create_knowledge_library.sql");
   const hardening = readSource("supabase/migrations/20260815190421_harden_knowledge_index_claim.sql");
+  const globalHardening = readSource("supabase/migrations/20260815215000_harden_knowledge_global_lifecycle.sql");
 
   assert.match(actions, /requireAdmin\(\)/);
   assert.match(actions, /createSignedUploadUrl/);
@@ -116,12 +169,16 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fe
   assert.match(actions, /\.download\(source\.storage_path\)/);
   assert.match(actions, /claimKnowledgeSourceIndex/);
   assert.match(actions, /claim_knowledge_source_index/);
+  assert.match(actions, /claim_knowledge_source_delete/);
   assert.match(actions, /index_claim_token/);
   assert.match(actions, /createKnowledgeOpenAIFile/);
   assert.match(actions, /attachKnowledgeVectorStoreFile/);
   assert.match(actions, /retrieveKnowledgeVectorStoreFile/);
   assert.match(actions, /deleteKnowledgeOpenAIFile/);
   assert.match(actions, /deleteKnowledgeVectorStore/);
+  assert.match(actions, /async function loadKnowledgeSource\(/);
+  assert.doesNotMatch(data, /\.eq\("created_by"/);
+  assert.doesNotMatch(actions, /async function loadOwnedSource/);
   assert.doesNotMatch(actions, /create_eslam_brain_draft|createDocumentTeachingDraftsAction|teaching_sources/);
 
   assert.match(provider, /^import "server-only";/);
@@ -130,6 +187,8 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fe
   assert.match(provider, /allowNotFound: true/);
   assert.match(provider, /status: "failed" as const/);
   assert.match(provider, /code: "not-found"/);
+  assert.match(provider, /\.eq\("index_claim_token", claimToken\)/);
+  assert.match(provider, /persistClaimedProviderIds\(sourceId, claimToken, vectorStoreId, fileId\)/);
   assert.match(provider, /\/vector_stores/);
   assert.match(provider, /\/files/);
 
@@ -147,6 +206,12 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fe
   assert.match(hardening, /'provider_indexing'::text/);
   assert.match(hardening, /revoke execute[\s\S]*from public, anon, authenticated/);
   assert.match(hardening, /grant execute[\s\S]*to service_role/);
+
+  assert.match(globalHardening, /where id = p_source_id\s+for update/);
+  assert.doesNotMatch(globalHardening, /where id = p_source_id\s+and created_by = p_created_by/);
+  assert.match(globalHardening, /claim_knowledge_source_delete/);
+  assert.match(globalHardening, /index_lease_expires_at > v_now/);
+  assert.match(globalHardening, /get_knowledge_retrieval_state/);
 });
 
 test("Knowledge uploader recovers rejected server actions instead of leaving in-progress rows stuck", () => {
@@ -161,11 +226,20 @@ test("Knowledge uploader recovers rejected server actions instead of leaving in-
   assert.match(uploader, /cleanup-error/);
 });
 
+test("Knowledge source management recovers rejected actions and formats dates deterministically", () => {
+  const sourceList = readSource("src/features/knowledge-library/source-list.tsx");
+
+  assert.match(sourceList, /catch \(error\)/);
+  assert.match(sourceList, /Knowledge Library source operation failed/);
+  assert.match(sourceList, /setMessage\(failureMessage\)/);
+  assert.match(sourceList, /timeZone: "Africa\/Cairo"/);
+});
+
 test("Knowledge pagination clamps stale page numbers after deletions", () => {
   const data = readSource("src/features/knowledge-library/data.ts");
 
   assert.match(data, /if \(total > 0 && page > totalPages\)/);
-  assert.match(data, /return loadKnowledgeSourcePage\(userId, totalPages\)/);
+  assert.match(data, /return loadKnowledgeSourcePage\(totalPages\)/);
 });
 
 test("Knowledge UI keeps provider internals out of rendered product copy", () => {

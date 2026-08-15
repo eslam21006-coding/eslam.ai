@@ -31,7 +31,6 @@ type KnowledgeAdminClient = ReturnType<typeof getKnowledgeAdminClient>;
 
 type StoredKnowledgeSource = {
   id: string;
-  created_by: string;
   storage_bucket: string;
   storage_path: string;
   status: KnowledgeSourceStatus;
@@ -57,18 +56,16 @@ function refreshKnowledgePage() {
   revalidatePath(KNOWLEDGE_ADMIN_PATH);
 }
 
-async function loadOwnedSource(
+async function loadKnowledgeSource(
   admin: KnowledgeAdminClient,
-  userId: string,
   sourceId: string,
 ): Promise<StoredKnowledgeSource | null> {
   const { data, error } = await admin
     .from("knowledge_sources")
     .select(
-      "id,created_by,storage_bucket,storage_path,status,title,original_filename,mime_type,declared_size_bytes,size_bytes,openai_file_id,vector_store_id,index_claim_token,index_lease_expires_at",
+      "id,storage_bucket,storage_path,status,title,original_filename,mime_type,declared_size_bytes,size_bytes,openai_file_id,vector_store_id,index_claim_token,index_lease_expires_at",
     )
     .eq("id", sourceId)
-    .eq("created_by", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data as StoredKnowledgeSource | null;
@@ -128,13 +125,13 @@ async function ensureKnowledgeVectorStore(admin: KnowledgeAdminClient) {
 
 async function claimKnowledgeSourceIndex(
   admin: KnowledgeAdminClient,
-  userId: string,
+  actorId: string,
   sourceId: string,
   sizeBytes: number,
 ): Promise<KnowledgeIndexClaim> {
   const { data, error } = await admin.rpc("claim_knowledge_source_index", {
     p_source_id: sourceId,
-    p_created_by: userId,
+    p_created_by: actorId,
     p_size_bytes: sizeBytes,
     p_lease_seconds: KNOWLEDGE_INDEX_LEASE_SECONDS,
   });
@@ -172,7 +169,6 @@ async function deleteOpenAIFileBestEffort(fileId: string) {
 
 async function markClaimFailure(
   admin: KnowledgeAdminClient,
-  userId: string,
   sourceId: string,
   claimToken: string,
   sizeBytes: number,
@@ -194,7 +190,6 @@ async function markClaimFailure(
       updated_at: new Date().toISOString(),
     })
     .eq("id", sourceId)
-    .eq("created_by", userId)
     .eq("status", "indexing")
     .eq("index_claim_token", claimToken)
     .select("id")
@@ -213,7 +208,6 @@ async function markClaimFailure(
 
 async function markProviderFailure(
   admin: KnowledgeAdminClient,
-  userId: string,
   source: StoredKnowledgeSource,
   errorCode: string,
 ) {
@@ -233,7 +227,6 @@ async function markProviderFailure(
       updated_at: new Date().toISOString(),
     })
     .eq("id", source.id)
-    .eq("created_by", userId)
     .eq("status", "indexing")
     .is("index_claim_token", null)
     .eq("openai_file_id", source.openai_file_id)
@@ -246,7 +239,6 @@ async function markProviderFailure(
 
 async function persistClaimedProviderState(
   admin: KnowledgeAdminClient,
-  userId: string,
   sourceId: string,
   claimToken: string,
   sizeBytes: number,
@@ -268,7 +260,6 @@ async function persistClaimedProviderState(
       updated_at: new Date().toISOString(),
     })
     .eq("id", sourceId)
-    .eq("created_by", userId)
     .eq("status", "indexing")
     .eq("index_claim_token", claimToken)
     .select("id")
@@ -279,7 +270,6 @@ async function persistClaimedProviderState(
 
 async function indexStoredSource(
   admin: KnowledgeAdminClient,
-  userId: string,
   source: StoredKnowledgeSource,
   sizeBytes: number,
   claimToken: string,
@@ -295,7 +285,6 @@ async function indexStoredSource(
       if (!previousDeleted) {
         await markClaimFailure(
           admin,
-          userId,
           source.id,
           claimToken,
           sizeBytes,
@@ -322,6 +311,7 @@ async function indexStoredSource(
       vectorStoreId,
       openaiFileId,
       source.id,
+      claimToken,
       source.title,
     );
 
@@ -330,7 +320,6 @@ async function indexStoredSource(
       const deleted = await deleteOpenAIFileBestEffort(openaiFileId);
       const persisted = await markClaimFailure(
         admin,
-        userId,
         source.id,
         claimToken,
         sizeBytes,
@@ -346,7 +335,6 @@ async function indexStoredSource(
     const ready = vectorFile.status === "completed";
     const persisted = await persistClaimedProviderState(
       admin,
-      userId,
       source.id,
       claimToken,
       sizeBytes,
@@ -372,7 +360,6 @@ async function indexStoredSource(
     });
     await markClaimFailure(
       admin,
-      userId,
       source.id,
       claimToken,
       sizeBytes,
@@ -395,18 +382,17 @@ function claimStatusResult(
 
 async function executeClaimedIndex(
   admin: KnowledgeAdminClient,
-  userId: string,
+  actorId: string,
   source: StoredKnowledgeSource,
   sizeBytes: number,
 ): Promise<"indexing" | "ready" | null> {
-  const claim = await claimKnowledgeSourceIndex(admin, userId, source.id, sizeBytes);
+  const claim = await claimKnowledgeSourceIndex(admin, actorId, source.id, sizeBytes);
   const existingStatus = claimStatusResult(claim);
   if (existingStatus) return existingStatus;
   if (claim.state !== "claimed" || !claim.token) return null;
 
   return indexStoredSource(
     admin,
-    userId,
     source,
     sizeBytes,
     claim.token,
@@ -415,7 +401,7 @@ async function executeClaimedIndex(
   );
 }
 
-/** Creates an owner-scoped Knowledge source and a signed private Storage upload token. */
+/** Creates an Admin-authored Knowledge source and a signed private Storage upload token. */
 export async function createKnowledgeUploadAction(input: unknown): Promise<KnowledgeUploadIntentResult> {
   const authorization = await requireAdmin();
   const validated = validateKnowledgeUploadIntent(input);
@@ -472,7 +458,7 @@ export async function createKnowledgeUploadAction(input: unknown): Promise<Knowl
   };
 }
 
-/** Verifies the private object, atomically claims the source, then starts File Search indexing. */
+/** Verifies the private object, atomically claims the global source, then starts File Search indexing. */
 export async function finalizeKnowledgeUploadAction(input: unknown): Promise<KnowledgeFinalizeResult> {
   const authorization = await requireAdmin();
   const sourceId = validateKnowledgeSourceId(input);
@@ -481,7 +467,7 @@ export async function finalizeKnowledgeUploadAction(input: unknown): Promise<Kno
   const admin = getKnowledgeAdminClient();
   let source: StoredKnowledgeSource | null;
   try {
-    source = await loadOwnedSource(admin, authorization.userId, sourceId);
+    source = await loadKnowledgeSource(admin, sourceId);
   } catch (error) {
     console.error("Knowledge Library finalization failed", {
       stage: "load",
@@ -543,7 +529,7 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
   const sourceId = validateKnowledgeSourceId(input);
   if (!sourceId) return { ok: false, error: "invalid-request" };
   const admin = getKnowledgeAdminClient();
-  const source = await loadOwnedSource(admin, authorization.userId, sourceId).catch(() => null);
+  const source = await loadKnowledgeSource(admin, sourceId).catch(() => null);
   if (!source) return { ok: false, error: "not-found" };
   if (source.status === "ready") return { ok: true, status: "ready" };
   if (source.status !== "indexing" || !source.size_bytes) {
@@ -587,7 +573,6 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
           updated_at: new Date().toISOString(),
         })
         .eq("id", source.id)
-        .eq("created_by", authorization.userId)
         .eq("status", "indexing")
         .is("index_claim_token", null)
         .eq("openai_file_id", source.openai_file_id)
@@ -601,7 +586,6 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
 
     await markProviderFailure(
       admin,
-      authorization.userId,
       source,
       providerState.last_error?.code ?? providerState.status,
     );
@@ -616,13 +600,13 @@ export async function refreshKnowledgeSourceAction(input: unknown): Promise<Know
   }
 }
 
-/** Rebuilds the provider index for a failed source through the same atomic claim fence. */
+/** Rebuilds the provider index for a failed global source through the same atomic claim fence. */
 export async function retryKnowledgeIndexAction(input: unknown): Promise<KnowledgeMutationResult> {
   const authorization = await requireAdmin();
   const sourceId = validateKnowledgeSourceId(input);
   if (!sourceId) return { ok: false, error: "invalid-request" };
   const admin = getKnowledgeAdminClient();
-  const source = await loadOwnedSource(admin, authorization.userId, sourceId).catch(() => null);
+  const source = await loadKnowledgeSource(admin, sourceId).catch(() => null);
   if (!source) return { ok: false, error: "not-found" };
   if (source.status !== "failed" || !source.size_bytes) {
     return { ok: false, error: "operation-failed" };
@@ -645,22 +629,26 @@ export async function retryKnowledgeIndexAction(input: unknown): Promise<Knowled
   }
 }
 
-/** Claims a source for deletion and retries provider/Storage cleanup idempotently. */
+/** Atomically fences active indexing before deleting a global source and its derived provider file. */
 export async function deleteKnowledgeSourceAction(input: unknown): Promise<KnowledgeMutationResult> {
-  const authorization = await requireAdmin();
+  await requireAdmin();
   const sourceId = validateKnowledgeSourceId(input);
   if (!sourceId) return { ok: false, error: "invalid-request" };
   const admin = getKnowledgeAdminClient();
 
-  const { error: claimError } = await admin
-    .from("knowledge_sources")
-    .update({ status: "deleting", updated_at: new Date().toISOString() })
-    .eq("id", sourceId)
-    .eq("created_by", authorization.userId)
-    .neq("status", "deleting");
+  const { data: claimRows, error: claimError } = await admin.rpc("claim_knowledge_source_delete", {
+    p_source_id: sourceId,
+  });
   if (claimError) return { ok: false, error: "operation-failed" };
 
-  const source = await loadOwnedSource(admin, authorization.userId, sourceId).catch(() => null);
+  const claimState = claimRows?.[0]?.claim_state;
+  if (claimState === "not_found") return { ok: true };
+  if (claimState === "busy") return { ok: false, error: "operation-failed" };
+  if (claimState !== "claimed" && claimState !== "deleting") {
+    return { ok: false, error: "operation-failed" };
+  }
+
+  const source = await loadKnowledgeSource(admin, sourceId).catch(() => null);
   if (!source) return { ok: true };
   if (source.status !== "deleting") return { ok: false, error: "operation-failed" };
 
@@ -675,7 +663,6 @@ export async function deleteKnowledgeSourceAction(input: unknown): Promise<Knowl
       .from("knowledge_sources")
       .delete()
       .eq("id", source.id)
-      .eq("created_by", authorization.userId)
       .eq("status", "deleting");
     if (deleteError) throw new Error(deleteError.message);
     refreshKnowledgePage();

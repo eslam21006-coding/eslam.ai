@@ -20,10 +20,10 @@ export default async function KnowledgeLibraryPage({
 }: {
   searchParams: Promise<{ page?: string | string[] }>;
 }) {
-  const authorization = await requireAdmin();
+  await requireAdmin();
   const params = await searchParams;
   const pageNumber = parsePage(params.page);
-  const sourcePage = await loadKnowledgeSourcePage(authorization.userId, pageNumber);
+  const sourcePage = await loadKnowledgeSourcePage(pageNumber);
 
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">

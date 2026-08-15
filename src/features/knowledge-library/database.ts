@@ -38,6 +38,15 @@ type KnowledgeIndexClaimRow = {
   previous_vector_store_id: string | null;
 };
 
+type KnowledgeDeleteClaimRow = {
+  source_id: string | null;
+  claim_state: string;
+};
+
+type KnowledgeRetrievalStateRow = {
+  vector_store_id: string | null;
+};
+
 type KnowledgeDatabase = {
   public: {
     Tables: {
@@ -71,6 +80,16 @@ type KnowledgeDatabase = {
           p_lease_seconds?: number;
         };
         Returns: KnowledgeIndexClaimRow[];
+      };
+      claim_knowledge_source_delete: {
+        Args: {
+          p_source_id: string;
+        };
+        Returns: KnowledgeDeleteClaimRow[];
+      };
+      get_knowledge_retrieval_state: {
+        Args: Record<string, never>;
+        Returns: KnowledgeRetrievalStateRow[];
       };
     };
     Enums: Record<string, never>;

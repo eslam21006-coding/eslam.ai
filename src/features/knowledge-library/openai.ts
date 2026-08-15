@@ -5,6 +5,7 @@ import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const OPENAI_KNOWLEDGE_TIMEOUT_MS = 90_000;
+const KNOWLEDGE_INDEX_LEASE_MS = 180_000;
 
 type VectorStoreFileState = {
   id: string;
@@ -121,10 +122,11 @@ export async function createKnowledgeOpenAIFile(file: File) {
 }
 
 /**
- * Records provider IDs under the active index claim before attaching the file, so a crashed worker can be recovered safely.
+ * Records provider IDs under the exact active index claim before attaching the file, so a stale worker cannot mutate a newer attempt.
  */
 async function persistClaimedProviderIds(
   sourceId: string,
+  claimToken: string,
   vectorStoreId: string,
   fileId: string,
 ) {
@@ -134,11 +136,12 @@ async function persistClaimedProviderIds(
     .update({
       openai_file_id: fileId,
       vector_store_id: vectorStoreId,
+      index_lease_expires_at: new Date(Date.now() + KNOWLEDGE_INDEX_LEASE_MS).toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("id", sourceId)
     .eq("status", "indexing")
-    .not("index_claim_token", "is", null)
+    .eq("index_claim_token", claimToken)
     .is("openai_file_id", null)
     .is("vector_store_id", null)
     .select("id")
@@ -156,14 +159,15 @@ async function persistClaimedProviderIds(
   }
 }
 
-/** Attaches an uploaded OpenAI file only after its provider IDs are durably tracked by the active claim. */
+/** Attaches an uploaded OpenAI file only after its provider IDs are durably tracked by the exact active claim. */
 export async function attachKnowledgeVectorStoreFile(
   vectorStoreId: string,
   fileId: string,
   sourceId: string,
+  claimToken: string,
   title: string,
 ) {
-  await persistClaimedProviderIds(sourceId, vectorStoreId, fileId);
+  await persistClaimedProviderIds(sourceId, claimToken, vectorStoreId, fileId);
 
   const payload = await openAIRequest<VectorStoreFileState>(
     `/vector_stores/${encodeURIComponent(vectorStoreId)}/files`,

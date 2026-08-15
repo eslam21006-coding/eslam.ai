@@ -31,15 +31,14 @@ type KnowledgeSourceRow = {
   indexed_at: string | null;
 };
 
-/** Loads one deterministic owner-scoped page and clamps stale page numbers after deletion. */
-export async function loadKnowledgeSourcePage(userId: string, page: number): Promise<KnowledgeSourcePage> {
+/** Loads one deterministic global Admin page and clamps stale page numbers after deletion. */
+export async function loadKnowledgeSourcePage(page: number): Promise<KnowledgeSourcePage> {
   const admin = getKnowledgeAdminClient();
   const from = (page - 1) * KNOWLEDGE_LIBRARY_PAGE_SIZE;
   const to = from + KNOWLEDGE_LIBRARY_PAGE_SIZE - 1;
   const { data, count, error } = await admin
     .from("knowledge_sources")
     .select("id,title,original_filename,size_bytes,status,created_at,indexed_at", { count: "exact" })
-    .eq("created_by", userId)
     .order("created_at", { ascending: false })
     .order("id", { ascending: false })
     .range(from, to);
@@ -49,7 +48,7 @@ export async function loadKnowledgeSourcePage(userId: string, page: number): Pro
   const totalPages = Math.max(1, Math.ceil(total / KNOWLEDGE_LIBRARY_PAGE_SIZE));
 
   if (total > 0 && page > totalPages) {
-    return loadKnowledgeSourcePage(userId, totalPages);
+    return loadKnowledgeSourcePage(totalPages);
   }
 
   return {
