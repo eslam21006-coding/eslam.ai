@@ -91,23 +91,29 @@ test("blocking and streaming response paths load and pass the same Knowledge sea
   }
 });
 
-test("Knowledge upload/index lifecycle is admin-only, private, durable, and separate from Brain materialization", () => {
+test("Knowledge upload/index lifecycle is admin-only, private, durable, claim-fenced, and separate from Brain materialization", () => {
   const actions = readSource("src/features/knowledge-library/actions.ts");
   const provider = readSource("src/features/knowledge-library/openai.ts");
   const migration = readSource("supabase/migrations/20260815184404_create_knowledge_library.sql");
+  const hardening = readSource("supabase/migrations/20260815190421_harden_knowledge_index_claim.sql");
 
   assert.match(actions, /requireAdmin\(\)/);
   assert.match(actions, /createSignedUploadUrl/);
   assert.match(actions, /\.info\(source\.storage_path\)/);
   assert.match(actions, /\.download\(source\.storage_path\)/);
+  assert.match(actions, /claimKnowledgeSourceIndex/);
+  assert.match(actions, /claim_knowledge_source_index/);
+  assert.match(actions, /index_claim_token/);
   assert.match(actions, /createKnowledgeOpenAIFile/);
   assert.match(actions, /attachKnowledgeVectorStoreFile/);
   assert.match(actions, /retrieveKnowledgeVectorStoreFile/);
   assert.match(actions, /deleteKnowledgeOpenAIFile/);
+  assert.match(actions, /deleteKnowledgeVectorStore/);
   assert.doesNotMatch(actions, /create_eslam_brain_draft|createDocumentTeachingDraftsAction|teaching_sources/);
 
   assert.match(provider, /^import "server-only";/);
   assert.match(provider, /body\.set\("purpose", "assistants"\)/);
+  assert.match(provider, /deleteKnowledgeVectorStore/);
   assert.match(provider, /\/vector_stores/);
   assert.match(provider, /\/files/);
 
@@ -116,6 +122,15 @@ test("Knowledge upload/index lifecycle is admin-only, private, durable, and sepa
   assert.match(migration, /'eslam-knowledge-documents'/);
   assert.match(migration, /public\.knowledge_library_config/);
   assert.match(migration, /status in \('pending', 'indexing', 'ready', 'failed', 'deleting'\)/);
+
+  assert.match(hardening, /index_claim_token uuid/);
+  assert.match(hardening, /index_lease_expires_at timestamptz/);
+  assert.match(hardening, /claim_knowledge_source_index/);
+  assert.match(hardening, /for update/);
+  assert.match(hardening, /'busy'::text/);
+  assert.match(hardening, /'provider_indexing'::text/);
+  assert.match(hardening, /revoke execute[\s\S]*from public, anon, authenticated/);
+  assert.match(hardening, /grant execute[\s\S]*to service_role/);
 });
 
 test("Knowledge UI keeps provider internals out of rendered product copy", () => {
@@ -125,6 +140,6 @@ test("Knowledge UI keeps provider internals out of rendered product copy", () =>
     "src/features/knowledge-library/source-list.tsx",
   ].map(readSource).join("\n");
 
-  assert.doesNotMatch(surfaces, /vector_store_id|openai_file_id|last_error_code|Task\s+23/i);
+  assert.doesNotMatch(surfaces, /vector_store_id|openai_file_id|last_error_code|index_claim_token|Task\s+23/i);
   assert.match(surfaces, /مكتبة المعرفة/);
 });
