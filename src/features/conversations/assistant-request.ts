@@ -9,11 +9,6 @@ type KnowledgeFileSearchTool = {
   type: "file_search";
   vector_store_ids: string[];
   max_num_results: number;
-  filters: {
-    type: "eq";
-    key: "library_status";
-    value: "ready";
-  };
 };
 
 export type BasicEslamResponseRequest = {
@@ -156,11 +151,6 @@ export function buildBasicEslamResponseRequest(
               type: "file_search" as const,
               vector_store_ids: [knowledgeVectorStoreId],
               max_num_results: KNOWLEDGE_FILE_SEARCH_RESULTS,
-              filters: {
-                type: "eq" as const,
-                key: "library_status" as const,
-                value: "ready" as const,
-              },
             },
           ],
         }
