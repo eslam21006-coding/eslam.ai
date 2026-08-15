@@ -77,13 +77,22 @@ export default async function VoiceRecorderPage({
       </div>
 
       <VoiceRecorder />
-      <VoiceTranscriptionList
-        items={transcriptionItems}
-        page={transcriptionPage.page}
-        hasPrevious={transcriptionPage.hasPrevious}
-        hasNext={transcriptionPage.hasNext}
-      />
       <VoiceTeachingWorkbench items={teachingItems} />
+
+      <details className="mt-7 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-[var(--foreground-muted)]">
+          سجل التسجيلات والـTranscripts
+        </summary>
+        <p className="mt-2 text-xs leading-6 text-[var(--foreground-subtle)]">
+          التسجيلات والـTranscripts تظل محفوظة كسجل ومصدر، بينما تعرض قائمة العمل الرئيسية ما يزال يحتاج مراجعة فقط.
+        </p>
+        <VoiceTranscriptionList
+          items={transcriptionItems}
+          page={transcriptionPage.page}
+          hasPrevious={transcriptionPage.hasPrevious}
+          hasNext={transcriptionPage.hasNext}
+        />
+      </details>
 
       <aside className="mt-6 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-5 py-4 text-sm leading-7 text-[var(--foreground-muted)]">
         الاستخراج ينتج candidates فقط، وإنشاء المسودات يتطلب اختياراً ومراجعة منك. المسودات لا تصبح جزءاً فعالاً من إجابات Eslam.AI إلا بعد Approval وPublish صريحين من عقل إسلام.

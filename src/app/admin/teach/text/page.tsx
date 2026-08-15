@@ -1,6 +1,10 @@
 import Link from "next/link";
 
 import { publishTeachEslamDraftAction } from "@/features/teach-eslam/actions";
+import {
+  TEACH_ESLAM_ITEM_TYPES,
+  TEACH_ESLAM_SEMANTIC_LAYERS,
+} from "@/features/teach-eslam/core";
 import { loadTeachEslamDrafts } from "@/features/teach-eslam/data";
 import { TeachEslamForm } from "@/features/teach-eslam/teach-eslam-form";
 
@@ -11,6 +15,10 @@ type TeachEslamTextPageProps = {
 function parseDraftPage(value: string | undefined) {
   const page = Number(value);
   return Number.isInteger(page) && page > 0 ? page : 1;
+}
+
+function optionLabel(options: readonly { value: string; label: string }[], value: string) {
+  return options.find((option) => option.value === value)?.label ?? value;
 }
 
 export default async function TeachEslamTextPage({ searchParams }: TeachEslamTextPageProps) {
@@ -29,7 +37,7 @@ export default async function TeachEslamTextPage({ searchParams }: TeachEslamTex
       <div className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="text-xs font-medium text-[var(--gold-muted)]">Admin · Text teaching</p>
+            <p className="text-xs font-medium text-[var(--gold-muted)]">Text Teaching</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight">تعليم إسلام بالنص</h1>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -55,7 +63,7 @@ export default async function TeachEslamTextPage({ searchParams }: TeachEslamTex
 
         <section className="mt-10 border-t border-[var(--border)] pt-8" aria-labelledby="saved-drafts-title">
           <div>
-            <p className="text-xs font-medium text-[var(--gold-muted)]">Persisted drafts</p>
+            <p className="text-xs font-medium text-[var(--gold-muted)]">Brain drafts</p>
             <h2 id="saved-drafts-title" className="mt-2 text-xl font-semibold">
               المسودات المحفوظة
             </h2>
@@ -75,8 +83,8 @@ export default async function TeachEslamTextPage({ searchParams }: TeachEslamTex
                     <h3 className="truncate text-sm font-semibold text-[var(--foreground)]">
                       {draft.title}
                     </h3>
-                    <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                      {draft.semanticLayer} · {draft.itemType} · priority {draft.priority} · v{draft.versionNumber}
+                    <p className="mt-1 text-xs text-[var(--foreground-subtle)]">
+                      {optionLabel(TEACH_ESLAM_SEMANTIC_LAYERS, draft.semanticLayer)} · {optionLabel(TEACH_ESLAM_ITEM_TYPES, draft.itemType)} · أولوية {draft.priority} · النسخة {draft.versionNumber}
                     </p>
                   </div>
 
@@ -124,8 +132,8 @@ export default async function TeachEslamTextPage({ searchParams }: TeachEslamTex
                 <span />
               )}
 
-              <span className="text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                Page {draftPage.page}
+              <span className="text-xs text-[var(--foreground-subtle)]">
+                صفحة {draftPage.page}
               </span>
 
               {draftPage.hasNextPage ? (

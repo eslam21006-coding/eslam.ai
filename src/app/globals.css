@@ -19,11 +19,14 @@
   --success: #9fba8f;
   --focus-ring: #d6b86f;
   --shadow-soft: 0 18px 50px rgba(0, 0, 0, 0.28);
+  --shadow-interactive: 0 10px 26px rgba(0, 0, 0, 0.2);
   --radius-sm: 0.625rem;
   --radius-md: 0.875rem;
   --radius-lg: 1.125rem;
   --font-arabic: "IBM Plex Sans Arabic", "Noto Sans Arabic", "Segoe UI", "Tahoma", "Arial", sans-serif;
   --font-latin: "Inter", "Segoe UI", "Arial", sans-serif;
+  --interaction-duration: 140ms;
+  --interaction-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 
 * {
@@ -62,9 +65,84 @@ summary {
   -webkit-tap-highlight-color: transparent;
 }
 
+button,
+a[href],
+summary,
+[role="button"],
+input,
+textarea,
+select {
+  transition-duration: var(--interaction-duration);
+  transition-timing-function: var(--interaction-ease);
+}
+
+button,
+a[href],
+summary,
+[role="button"] {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform, filter;
+}
+
+input,
+textarea,
+select {
+  transition-property: color, background-color, border-color, box-shadow, opacity;
+}
+
+button:not(:disabled):not([aria-disabled="true"]),
+a[href],
+summary,
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:not(:disabled):not([aria-disabled="true"]):hover {
+  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+button:not(:disabled):not([aria-disabled="true"]):active {
+  filter: brightness(0.98);
+  transform: translateY(0) scale(0.985);
+}
+
+a[href]:active,
+summary:active,
+[role="button"]:not([aria-disabled="true"]):active {
+  opacity: 0.82;
+  transform: translateY(1px);
+}
+
+input:not(:disabled):hover,
+textarea:not(:disabled):hover,
+select:not(:disabled):hover {
+  border-color: var(--border-strong);
+}
+
+button:disabled,
+input:disabled,
+textarea:disabled,
+select:disabled,
+[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
+}
+
+::file-selector-button {
+  cursor: pointer;
+  transition: filter var(--interaction-duration) var(--interaction-ease);
+}
+
+input:disabled::file-selector-button {
+  cursor: not-allowed;
+}
+
+input:not(:disabled)::file-selector-button:hover {
+  filter: brightness(1.08);
 }
 
 ::selection {
@@ -85,4 +163,46 @@ summary {
     linear-gradient(rgba(199, 165, 91, 0.025) 1px, transparent 1px),
     linear-gradient(90deg, rgba(199, 165, 91, 0.025) 1px, transparent 1px);
   background-size: 32px 32px;
+}
+
+.interactive-surface {
+  transition-property: color, background-color, border-color, box-shadow, opacity, transform;
+  transition-duration: var(--interaction-duration);
+  transition-timing-function: var(--interaction-ease);
+}
+
+.interactive-surface:hover {
+  border-color: var(--gold-muted);
+  box-shadow: var(--shadow-interactive);
+  transform: translateY(-1px);
+}
+
+.interactive-surface:active {
+  box-shadow: none;
+  transform: translateY(0) scale(0.995);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  a[href],
+  summary,
+  [role="button"],
+  input,
+  textarea,
+  select,
+  ::file-selector-button,
+  .interactive-surface {
+    scroll-behavior: auto;
+    transition-duration: 0.01ms;
+  }
+
+  button:not(:disabled):not([aria-disabled="true"]):hover,
+  button:not(:disabled):not([aria-disabled="true"]):active,
+  a[href]:active,
+  summary:active,
+  [role="button"]:not([aria-disabled="true"]):active,
+  .interactive-surface:hover,
+  .interactive-surface:active {
+    transform: none;
+  }
 }

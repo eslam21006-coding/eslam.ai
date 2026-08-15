@@ -1,8 +1,6 @@
 import Link from "next/link";
 
-import {
-  formatDocumentTeachingBytes,
-} from "@/features/document-teaching/core";
+import { formatDocumentTeachingBytes } from "@/features/document-teaching/core";
 import type { DocumentTeachingPage } from "@/features/document-teaching/data";
 
 function formatUploadedAt(value: string) {
@@ -20,10 +18,10 @@ function documentTypeLabel(mimeType: string) {
   }
   if (mimeType === "text/markdown") return "MD";
   if (mimeType === "text/plain") return "TXT";
-  return mimeType;
+  return "Document";
 }
 
-/** Renders immutable saved document teaching sources with deterministic pagination. */
+/** Renders saved private document sources with deterministic pagination. */
 export function DocumentTeachingList({ page }: { page: DocumentTeachingPage }) {
   return (
     <section
@@ -31,12 +29,12 @@ export function DocumentTeachingList({ page }: { page: DocumentTeachingPage }) {
       aria-labelledby="document-teaching-list-title"
     >
       <div>
-        <p className="text-xs font-medium text-[var(--gold-muted)]">Saved document sources</p>
+        <p className="text-xs font-medium text-[var(--gold-muted)]">مصادر المستندات</p>
         <h2 id="document-teaching-list-title" className="mt-2 text-xl font-semibold">
-          الـDocuments المحفوظة
+          المستندات المحفوظة
         </h2>
         <p className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">
-          كل صف هنا مصدر immutable جاهز لمرحلة Document → Teaching في Task 22. وجوده هنا لا يعني أنه دخل Brain.
+          كل مستند هنا مصدر خاص محفوظ يمكنك استخراج التعليمات منه ومراجعتها. حفظ المصدر وحده لا يضيف شيئاً إلى عقل إسلام.
         </p>
       </div>
 
@@ -52,9 +50,6 @@ export function DocumentTeachingList({ page }: { page: DocumentTeachingPage }) {
                   <h3 className="text-sm font-semibold text-[var(--foreground)]">{item.title}</h3>
                   <p className="mt-2 break-all text-sm text-[var(--foreground-muted)]">
                     {item.originalFilename}
-                  </p>
-                  <p className="mt-2 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                    Source {item.sourceId}
                   </p>
                 </div>
                 <div className="shrink-0 text-start sm:text-end">
@@ -74,12 +69,12 @@ export function DocumentTeachingList({ page }: { page: DocumentTeachingPage }) {
         </div>
       ) : (
         <p className="mt-5 rounded-[var(--radius-sm)] border border-dashed border-[var(--border-strong)] px-4 py-5 text-sm text-[var(--foreground-subtle)]">
-          لا توجد Documents محفوظة في هذه الصفحة بعد.
+          لا توجد مستندات محفوظة في هذه الصفحة بعد.
         </p>
       )}
 
       {page.hasPrevious || page.hasNext ? (
-        <nav className="mt-5 flex items-center justify-between gap-3" aria-label="التنقل بين صفحات Documents">
+        <nav className="mt-5 flex items-center justify-between gap-3" aria-label="التنقل بين صفحات المستندات">
           {page.hasPrevious ? (
             <Link
               href={`/admin/teach/documents?page=${page.page - 1}`}
@@ -91,8 +86,8 @@ export function DocumentTeachingList({ page }: { page: DocumentTeachingPage }) {
             <span />
           )}
 
-          <span className="text-xs text-[var(--foreground-subtle)]" dir="ltr">
-            Page {page.page}
+          <span className="text-xs text-[var(--foreground-subtle)]">
+            صفحة {page.page}
           </span>
 
           {page.hasNext ? (

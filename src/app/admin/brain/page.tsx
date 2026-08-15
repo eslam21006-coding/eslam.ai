@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { TEACH_ESLAM_ITEM_TYPES, TEACH_ESLAM_SEMANTIC_LAYERS } from "@/features/teach-eslam/core";
+import { BrainBulkSelection } from "@/features/teaching-review/brain-bulk-selection";
 import {
   approveTeachingAction,
   archiveTeachingAction,
@@ -178,9 +179,12 @@ export default async function BrainReviewPage({ searchParams }: BrainReviewPageP
             className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] p-3"
           >
             <HiddenReturnFields status={status} page={page} />
-            <p className="text-xs leading-5 text-[var(--foreground-subtle)]">
-              اختر المسودات من القائمة ثم اعتمدها دفعة واحدة. الحد الأقصى 50 تعليماً في العملية.
-            </p>
+            <div className="flex flex-col gap-2">
+              <BrainBulkSelection formId="bulk-approve-form" total={draftItemsOnPage.length} />
+              <p className="text-xs leading-5 text-[var(--foreground-subtle)]">
+                اعتمد المسودات المحددة دفعة واحدة. الحد الأقصى 50 تعليماً في العملية.
+              </p>
+            </div>
             <button
               type="submit"
               className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] px-4 py-2 text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]"

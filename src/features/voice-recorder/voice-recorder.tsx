@@ -329,7 +329,7 @@ export function VoiceRecorder() {
         setPendingIntent(intent);
         setStatus("cleanup-error");
         setMessage(
-          "تعذر تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف.",
+          "تعذر تنظيف محاولة الحفظ السابقة. يمكنك إعادة محاولة التنظيف دون فقد التسجيل المحلي.",
         );
         return false;
       }
@@ -345,7 +345,7 @@ export function VoiceRecorder() {
       setPendingIntent(intent);
       setStatus("cleanup-error");
       setMessage(
-        "تعذر الاتصال أثناء تنظيف محاولة الحفظ السابقة. احتفظنا بمرجع التسجيل؛ اضغط إعادة محاولة التنظيف.",
+        "تعذر الاتصال أثناء تنظيف محاولة الحفظ السابقة. يمكنك إعادة محاولة التنظيف دون فقد التسجيل المحلي.",
       );
       return false;
     }
@@ -379,7 +379,7 @@ export function VoiceRecorder() {
             setPendingIntent(null);
             setStatus("preview");
             setMessage(
-              "انتهت محاولة الحفظ السابقة. التسجيل المحلي ما زال محفوظاً ويمكنك الضغط على حفظ التسجيل لإنشاء محاولة رفع جديدة.",
+              "انتهت محاولة الحفظ السابقة. التسجيل المحلي ما زال محفوظاً ويمكنك الضغط على حفظ التسجيل لإنشاء محاولة جديدة.",
             );
             return;
           }
@@ -387,7 +387,7 @@ export function VoiceRecorder() {
           setPendingIntent(intent);
           setStatus("finalize-error");
           setMessage(
-            "تم رفع الصوت، لكن لم يكتمل تثبيت بياناته. الملف لم يضع، واضغط إعادة المحاولة لإكمال الحفظ.",
+            "تم رفع الصوت، لكن لم يكتمل حفظ المصدر. التسجيل محفوظ ويمكنك إعادة المحاولة لإكمال الحفظ دون رفعه مرة ثانية.",
           );
           return;
         }
@@ -396,7 +396,7 @@ export function VoiceRecorder() {
         setPendingIntent(null);
         setUploadedId(finalization.recordingId);
         setStatus("uploaded");
-        setMessage("تم حفظ التسجيل في مساحة خاصة بنجاح. أصبح جاهزاً لمهمة التحويل إلى نص لاحقاً.");
+        setMessage("تم حفظ التسجيل بشكل خاص. أصبح جاهزاً للتحويل إلى Transcript ثم استخراج التعليمات للمراجعة.");
       } catch (error) {
         console.error("Voice recording finalization request failed", {
           message: error instanceof Error ? error.message : "Unknown error",
@@ -406,7 +406,7 @@ export function VoiceRecorder() {
         setPendingIntent(intent);
         setStatus("finalize-error");
         setMessage(
-          "تم رفع الصوت، لكن تعذر إكمال التحقق من الحفظ بسبب مشكلة اتصال. التسجيل المحلي محفوظ ويمكنك إعادة محاولة تثبيت الحفظ.",
+          "تم رفع الصوت، لكن تعذر إكمال الحفظ بسبب مشكلة اتصال. التسجيل محفوظ ويمكنك إعادة محاولة إكمال الحفظ.",
         );
       }
     },
@@ -546,7 +546,7 @@ export function VoiceRecorder() {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-medium text-[var(--gold-muted)]">Private voice capture</p>
+          <p className="text-xs font-medium text-[var(--gold-muted)]">مصدر صوتي خاص</p>
           <h2 id="voice-recorder-title" className="mt-2 text-2xl font-semibold">
             سجّل ما تريد أن تعلّمه لإسلام
           </h2>
@@ -641,7 +641,7 @@ export function VoiceRecorder() {
             <div>
               <h3 className="text-sm font-semibold">راجع التسجيل قبل الحفظ</h3>
               <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                {formatVoiceDuration(durationMs)} · {formatVoiceBytes(audioBlob.size)} · {mimeType}
+                {formatVoiceDuration(durationMs)} · {formatVoiceBytes(audioBlob.size)}
               </p>
             </div>
           </div>
@@ -687,7 +687,7 @@ export function VoiceRecorder() {
                 onClick={retryFinalization}
                 className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)]"
               >
-                إعادة محاولة تثبيت الحفظ
+                إعادة محاولة إكمال الحفظ
               </button>
             ) : null}
 
@@ -716,10 +716,7 @@ export function VoiceRecorder() {
 
       {uploadedId ? (
         <div className="mt-5 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-4">
-          <p className="text-sm font-semibold text-[var(--gold-bright)]">التسجيل محفوظ بشكل خاص.</p>
-          <p className="mt-1 break-all text-xs text-[var(--foreground-muted)]" dir="ltr">
-            Recording ID: {uploadedId}
-          </p>
+          <p className="text-sm font-semibold text-[var(--gold-bright)]">التسجيل محفوظ بشكل خاص وجاهز للخطوة التالية.</p>
         </div>
       ) : null}
 
@@ -728,7 +725,7 @@ export function VoiceRecorder() {
       </div>
 
       <div className="mt-5 border-t border-[var(--border)] pt-5 text-xs leading-6 text-[var(--foreground-subtle)]">
-        الصوت يُحفظ في مساحة خاصة ولا يصبح جزءاً من Brain تلقائياً. Task 18 لا يقوم بأي transcription أو استخراج تعليمات من التسجيل.
+        الصوت يُحفظ في مساحة خاصة ولا يصبح جزءاً من عقل إسلام تلقائياً. بعد الحفظ يمكنك تحويله إلى Transcript ثم مراجعة التعليمات المقترحة قبل إنشاء Brain drafts.
       </div>
     </section>
   );

@@ -16,7 +16,7 @@ function statusLabel(status: string | null) {
   if (status === "completed") return "مكتمل";
   if (status === "processing") return "جارٍ التحويل";
   if (status === "failed") return "قابل لإعادة المحاولة";
-  return "لم يبدأ";
+  return "جاهز للتحويل";
 }
 
 /** Renders one paginated page of saved private voice sources and their transcript lifecycle. */
@@ -38,12 +38,12 @@ export function VoiceTranscriptionList({
     >
       <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-xs font-medium text-[var(--gold-muted)]">Private source library</p>
+          <p className="text-xs font-medium text-[var(--gold-muted)]">مصادر الصوت</p>
           <h2 id="saved-voice-title" className="mt-2 text-2xl font-semibold">
             التسجيلات المحفوظة
           </h2>
           <p className="mt-2 max-w-2xl text-sm leading-7 text-[var(--foreground-muted)]">
-            حوّل أي تسجيل محفوظ إلى transcript للمراجعة. النص الناتج يظل مادة مشتقة من المصدر الصوتي ولا يدخل Brain تلقائياً.
+            حوّل أي تسجيل محفوظ إلى Transcript للمراجعة. يظل النص مرتبطاً بالمصدر الصوتي ولا يدخل عقل إسلام تلقائياً.
           </p>
         </div>
         <span className="text-xs text-[var(--foreground-subtle)]">
@@ -72,17 +72,10 @@ export function VoiceTranscriptionList({
                       {formatDate(item.uploadedAt)}
                     </span>
                   </div>
-                  <p className="mt-3 break-all font-mono text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                    {item.recordingId}
-                  </p>
+                  <p className="mt-3 text-sm font-semibold">تسجيل صوتي</p>
                   <p className="mt-2 text-xs text-[var(--foreground-muted)]" dir="ltr">
-                    {formatVoiceDuration(item.durationMs)} · {formatVoiceBytes(item.sizeBytes)} · {item.mimeType}
+                    {formatVoiceDuration(item.durationMs)} · {formatVoiceBytes(item.sizeBytes)}
                   </p>
-                  {item.model ? (
-                    <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                      {item.model} · attempt {item.attemptCount ?? 1}
-                    </p>
-                  ) : null}
                 </div>
 
                 <TranscribeButton
@@ -94,18 +87,13 @@ export function VoiceTranscriptionList({
 
               {item.transcriptionStatus === "processing" && !item.canTranscribe ? (
                 <p className="mt-4 text-sm leading-6 text-[var(--foreground-muted)]">
-                  محاولة التحويل الحالية ما زالت داخل مهلة التنفيذ. إذا انقطعت العملية، تصبح قابلة لإعادة المحاولة تلقائياً بعد انتهاء الـ lease.
+                  التحويل جارٍ الآن. إذا لم يكتمل، سيصبح التسجيل قابلاً لإعادة المحاولة تلقائياً.
                 </p>
               ) : null}
 
               {item.transcriptionStatus === "failed" ? (
                 <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--border)] px-4 py-3 text-sm text-[var(--foreground-muted)]">
-                  المحاولة السابقة لم تكتمل. التسجيل الأصلي ما زال محفوظاً ويمكن إعادة التحويل.
-                  {item.lastErrorCode ? (
-                    <span className="ms-2 font-mono text-xs text-[var(--foreground-subtle)]" dir="ltr">
-                      {item.lastErrorCode}
-                    </span>
-                  ) : null}
+                  لم يكتمل التحويل السابق. التسجيل الأصلي ما زال محفوظاً ويمكن إعادة المحاولة.
                 </div>
               ) : null}
 

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 
@@ -49,11 +48,11 @@ function candidateEdit(candidate: DocumentTeachingCandidateView): CandidateEdit 
 }
 
 function extractionErrorMessage(error: string) {
-  if (error === "not-found") return "لم يعد مصدر الـDocument متاحاً للاستخراج.";
-  if (error === "download-failed") return "تعذر تحميل الملف الخاص من Storage. يمكنك إعادة المحاولة.";
-  if (error === "finalize-conflict") return "انتهت محاولة أحدث قبل هذه المحاولة. تم تحديث الحالة.";
-  if (error === "invalid-request") return "طلب الاستخراج غير صالح.";
-  return "تعذر استخراج Teachings من الـDocument. يمكنك إعادة المحاولة.";
+  if (error === "not-found") return "لم يعد مصدر المستند متاحاً للاستخراج.";
+  if (error === "download-failed") return "تعذر تحميل المستند الخاص. يمكنك إعادة المحاولة.";
+  if (error === "finalize-conflict") return "اكتملت محاولة أحدث وتم تحديث الحالة.";
+  if (error === "invalid-request") return "تعذر بدء الاستخراج بهذه البيانات.";
+  return "تعذر استخراج التعليمات من المستند. يمكنك إعادة المحاولة.";
 }
 
 function CandidateEditor({
@@ -69,7 +68,6 @@ function CandidateEditor({
   onSelectedChange: (selected: boolean) => void;
   onEditChange: (next: CandidateEdit) => void;
 }) {
-  const materialized = Boolean(candidate.brainItemId);
   const inputClass =
     "mt-1 w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)] outline-none focus:border-[var(--gold-muted)] disabled:opacity-60";
 
@@ -79,39 +77,29 @@ function CandidateEditor({
         <label className="flex items-center gap-2 text-sm font-semibold">
           <input
             type="checkbox"
-            checked={materialized || selected}
-            disabled={materialized}
+            checked={selected}
             onChange={(event) => onSelectedChange(event.target.checked)}
             className="size-4 accent-[var(--gold)]"
           />
-          Candidate {candidate.ordinal}
+          تعليم مقترح {candidate.ordinal}
         </label>
-        {candidate.brainItemId ? (
-          <Link
-            href="/admin/brain?status=draft&page=1"
-            className="text-xs font-semibold text-[var(--gold-bright)] underline underline-offset-4"
-          >
-            تم إنشاء Brain draft
-          </Link>
-        ) : (
-          <span className="text-xs text-[var(--foreground-subtle)]">اختيار يدوي مطلوب</span>
-        )}
+        <span className="text-xs text-[var(--foreground-subtle)]">اختره إذا كان يستحق الحفظ</span>
       </div>
 
       <div className="mt-4 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
-        <p className="text-xs font-semibold text-[var(--gold-muted)]">Source locator</p>
+        <p className="text-xs font-semibold text-[var(--gold-muted)]">موضع المصدر</p>
         <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="auto">
           {candidate.sourceLocator}
         </p>
-        <p className="mt-3 text-xs font-semibold text-[var(--gold-muted)]">Exact source excerpt</p>
+        <p className="mt-3 text-xs font-semibold text-[var(--gold-muted)]">المقتطف الأصلي</p>
         <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-[var(--foreground-muted)]" dir="auto">
           {candidate.sourceExcerpt}
         </p>
       </div>
 
-      <fieldset disabled={materialized} className="mt-5 grid gap-4 lg:grid-cols-2">
+      <fieldset className="mt-5 grid gap-4 lg:grid-cols-2">
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Semantic layer
+          الطبقة
           <select
             className={inputClass}
             value={edit.semantic_layer}
@@ -124,7 +112,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Teaching type
+          نوع التعليم
           <select
             className={inputClass}
             value={edit.item_type}
@@ -137,7 +125,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Title
+          العنوان
           <input
             className={inputClass}
             value={edit.title}
@@ -147,7 +135,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Content
+          المحتوى
           <textarea
             className={`${inputClass} min-h-32 resize-y leading-7`}
             value={edit.content}
@@ -157,7 +145,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Priority — lower is stronger
+          الأولوية — الرقم الأقل أقوى
           <input
             className={inputClass}
             type="number"
@@ -170,7 +158,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)]">
-          Topics — one per line
+          Topics — موضوع واحد في كل سطر
           <textarea
             className={`${inputClass} min-h-20 resize-y`}
             value={edit.topics}
@@ -180,7 +168,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Summary — optional
+          الملخص — اختياري
           <textarea
             className={`${inputClass} min-h-20 resize-y`}
             value={edit.summary}
@@ -190,7 +178,7 @@ function CandidateEditor({
         </label>
 
         <label className="text-xs font-medium text-[var(--foreground-muted)] lg:col-span-2">
-          Change note — optional
+          ملاحظة النسخة — اختياري
           <input
             className={inputClass}
             value={edit.change_note}
@@ -213,13 +201,16 @@ function DocumentTeachingCard({ item }: { item: DocumentTeachingWorkbenchItem })
     Object.fromEntries(item.extraction.candidates.map((candidate) => [candidate.id, candidateEdit(candidate)])),
   );
 
-  const selectedCandidates = useMemo(
-    () =>
-      item.extraction.candidates.filter(
-        (candidate) => !candidate.brainItemId && selected.has(candidate.id),
-      ),
-    [item.extraction.candidates, selected],
+  const selectableCandidates = useMemo(
+    () => item.extraction.candidates.filter((candidate) => !candidate.brainItemId),
+    [item.extraction.candidates],
   );
+  const selectedCandidates = useMemo(
+    () => selectableCandidates.filter((candidate) => selected.has(candidate.id)),
+    [selectableCandidates, selected],
+  );
+  const allSelected =
+    selectableCandidates.length > 0 && selectedCandidates.length === selectableCandidates.length;
 
   const runExtraction = () => {
     setMessage("");
@@ -227,13 +218,13 @@ function DocumentTeachingCard({ item }: { item: DocumentTeachingWorkbenchItem })
       try {
         const result = await extractDocumentTeachingAction({ documentId: item.documentId });
         if (!result.ok) setMessage(extractionErrorMessage(result.error));
-        else if (result.state === "processing") setMessage("هناك محاولة استخراج جارية بالفعل.");
-        else setMessage("اكتمل استخراج Teachings للمراجعة.");
+        else if (result.state === "processing") setMessage("الاستخراج جارٍ بالفعل لهذا المستند.");
+        else setMessage("اكتمل استخراج التعليمات وأصبحت جاهزة للمراجعة.");
       } catch (error) {
         console.error("Document teaching extraction request rejected", {
           message: error instanceof Error ? error.message : "Unknown error",
         });
-        setMessage("انقطع الاتصال أثناء الاستخراج. الملف محفوظ ويمكن إعادة المحاولة.");
+        setMessage("انقطع الاتصال أثناء الاستخراج. المستند محفوظ ويمكن إعادة المحاولة.");
       }
       router.refresh();
     });
@@ -281,21 +272,16 @@ function DocumentTeachingCard({ item }: { item: DocumentTeachingWorkbenchItem })
           <div className="flex flex-wrap items-center gap-2">
             <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-xs font-medium text-[var(--foreground-muted)]">
               {extractionStatus === "completed"
-                ? "Candidates جاهزة"
+                ? "التعليمات جاهزة للمراجعة"
                 : extractionStatus === "processing"
-                  ? canExtract ? "Extraction انتهت مهلتها" : "Extraction جارية"
-                  : extractionStatus === "failed" ? "Extraction قابلة للإعادة" : "لم يبدأ extraction"}
+                  ? canExtract ? "انتهت مهلة الاستخراج — يمكن إعادته" : "جارٍ الاستخراج"
+                  : extractionStatus === "failed" ? "تعذر الاستخراج — يمكن إعادته" : "جاهز للاستخراج"}
             </span>
           </div>
           <h3 className="mt-3 text-base font-semibold">{item.title}</h3>
           <p className="mt-1 break-all text-xs text-[var(--foreground-subtle)]" dir="auto">
             {item.originalFilename}
           </p>
-          {item.extraction.model ? (
-            <p className="mt-1 text-xs text-[var(--foreground-subtle)]" dir="ltr">
-              {item.extraction.model} · attempt {item.extraction.attemptCount ?? 1}
-            </p>
-          ) : null}
         </div>
 
         {extractionStatus !== "completed" ? (
@@ -306,63 +292,70 @@ function DocumentTeachingCard({ item }: { item: DocumentTeachingWorkbenchItem })
             className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-sm font-semibold text-[var(--gold-bright)] disabled:cursor-not-allowed disabled:opacity-55"
           >
             {isExtracting
-              ? "جارٍ استخراج Teachings…"
+              ? "جارٍ استخراج التعليمات…"
               : extractionStatus === "failed" || (extractionStatus === "processing" && canExtract)
-                ? "إعادة استخراج Teachings"
-                : !canExtract ? "الاستخراج جارٍ…" : "استخراج Teachings"}
+                ? "إعادة استخراج التعليمات"
+                : !canExtract ? "الاستخراج جارٍ…" : "استخراج التعليمات"}
           </button>
         ) : null}
       </div>
 
-      {extractionStatus === "failed" && item.extraction.lastErrorCode ? (
-        <p className="mt-3 font-mono text-xs text-[var(--foreground-subtle)]" dir="ltr">
-          {item.extraction.lastErrorCode}
-        </p>
-      ) : null}
-
-      {extractionStatus === "completed" ? (
-        item.extraction.candidates.length === 0 ? (
-          <div className="mt-5 rounded-[var(--radius-sm)] border border-dashed border-[var(--border)] px-4 py-5 text-sm text-[var(--foreground-muted)]">
-            لم يجد الاستخراج معرفة durable تستحق التحويل إلى Teach Eslam draft في هذا الـDocument.
+      {extractionStatus === "completed" && selectableCandidates.length > 0 ? (
+        <div className="mt-6 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] px-4 py-3">
+            <p className="text-xs text-[var(--foreground-subtle)]">
+              {selectedCandidates.length} من {selectableCandidates.length} محددة
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                setSelected(
+                  allSelected
+                    ? new Set()
+                    : new Set(selectableCandidates.map((candidate) => candidate.id)),
+                )
+              }
+              className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--border-strong)] px-3 py-2 text-xs font-semibold text-[var(--foreground-muted)]"
+            >
+              {allSelected ? "إلغاء تحديد الكل" : `تحديد الكل (${selectableCandidates.length})`}
+            </button>
           </div>
-        ) : (
-          <div className="mt-6 space-y-4">
-            {item.extraction.candidates.map((candidate) => (
-              <CandidateEditor
-                key={candidate.id}
-                candidate={candidate}
-                selected={selected.has(candidate.id)}
-                edit={edits[candidate.id] ?? candidateEdit(candidate)}
-                onSelectedChange={(checked) => {
-                  setSelected((current) => {
-                    const next = new Set(current);
-                    if (checked) next.add(candidate.id);
-                    else next.delete(candidate.id);
-                    return next;
-                  });
-                }}
-                onEditChange={(next) => setEdits((current) => ({ ...current, [candidate.id]: next }))}
-              />
-            ))}
 
-            <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-semibold">{selectedCandidates.length} محددة</p>
-                <p className="mt-1 text-xs text-[var(--foreground-subtle)]">
-                  الإنشاء ينتج Drafts فقط. Approval وPublish يظلان في Brain Review.
-                </p>
-              </div>
-              <button
-                type="button"
-                disabled={selectedCandidates.length === 0 || isSaving}
-                onClick={createDrafts}
-                className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-sm font-semibold text-[var(--gold-bright)] disabled:cursor-not-allowed disabled:opacity-55"
-              >
-                {isSaving ? "جارٍ إنشاء Drafts…" : "إنشاء Brain drafts المحددة"}
-              </button>
+          {selectableCandidates.map((candidate) => (
+            <CandidateEditor
+              key={candidate.id}
+              candidate={candidate}
+              selected={selected.has(candidate.id)}
+              edit={edits[candidate.id] ?? candidateEdit(candidate)}
+              onSelectedChange={(checked) => {
+                setSelected((current) => {
+                  const next = new Set(current);
+                  if (checked) next.add(candidate.id);
+                  else next.delete(candidate.id);
+                  return next;
+                });
+              }}
+              onEditChange={(next) => setEdits((current) => ({ ...current, [candidate.id]: next }))}
+            />
+          ))}
+
+          <div className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold">{selectedCandidates.length} محددة</p>
+              <p className="mt-1 text-xs text-[var(--foreground-subtle)]">
+                بعد إنشاء Brain drafts ستختفي هذه التعليمات من قائمة العمل هنا وتنتقل إلى عقل إسلام.
+              </p>
             </div>
+            <button
+              type="button"
+              disabled={selectedCandidates.length === 0 || isSaving}
+              onClick={createDrafts}
+              className="min-h-11 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-sm font-semibold text-[var(--gold-bright)] disabled:cursor-not-allowed disabled:opacity-55"
+            >
+              {isSaving ? "جارٍ إنشاء المسودات…" : "إنشاء Brain drafts المحددة"}
+            </button>
           </div>
-        )
+        </div>
       ) : null}
 
       {message ? (
@@ -384,21 +377,27 @@ export function DocumentTeachingExtractionWorkbench({
 }: {
   items: DocumentTeachingWorkbenchItem[];
 }) {
-  if (items.length === 0) return null;
+  const actionableItems = items.filter(
+    (item) =>
+      item.extraction.status !== "completed" ||
+      item.extraction.candidates.some((candidate) => !candidate.brainItemId),
+  );
+
+  if (actionableItems.length === 0) return null;
 
   return (
     <section className="mt-8" aria-labelledby="document-teaching-extraction-title">
       <div>
         <p className="text-xs font-medium text-[var(--gold-muted)]">Document → Teaching</p>
         <h2 id="document-teaching-extraction-title" className="mt-2 text-xl font-semibold">
-          استخراج ومراجعة Teachings
+          استخراج ومراجعة التعليمات
         </h2>
         <p className="mt-2 max-w-3xl text-sm leading-7 text-[var(--foreground-muted)]">
-          الاستخراج ينتج candidates فقط. راجع الدليل والتصنيف والمحتوى، ثم اختر ما يتحول إلى Brain drafts.
+          تعرض هذه القائمة ما يزال يحتاج قراراً فقط. بعد تحويل التعليم إلى Brain draft يخرج من هنا تلقائياً.
         </p>
       </div>
       <div className="mt-5 space-y-5">
-        {items.map((item) => <DocumentTeachingCard key={item.documentId} item={item} />)}
+        {actionableItems.map((item) => <DocumentTeachingCard key={item.documentId} item={item} />)}
       </div>
     </section>
   );

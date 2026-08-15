@@ -12,14 +12,14 @@ const teachingMethods = [
     href: "/admin/teach/voice",
     eyebrow: "Voice",
     title: "تعليم بالصوت",
-    description: "سجّل بصوتك، حوّل التسجيل إلى Transcript، ثم راجع الـ candidates قبل إنشاء Brain drafts.",
+    description: "سجّل بصوتك، حوّل التسجيل إلى Transcript، ثم راجع التعليمات المقترحة قبل إنشاء Brain drafts.",
     flow: "Record → Transcribe → Extract",
   },
   {
     href: "/admin/teach/documents",
     eyebrow: "Documents",
     title: "تعليم بالمستندات",
-    description: "ارفع مستنداً خاصاً، استخرج Teachings مع مصدرها، ثم اختر ما يتحول إلى Brain drafts.",
+    description: "ارفع مستندات خاصة، استخرج التعليمات مع مصدرها، ثم اختر ما يتحول إلى Brain drafts.",
     flow: "Upload → Extract → Review",
   },
 ] as const;
@@ -28,7 +28,7 @@ export default function TeachEslamHubPage() {
   return (
     <div className="mx-auto w-full max-w-6xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
       <div className="max-w-3xl">
-        <p className="text-xs font-medium text-[var(--gold-muted)]">Admin · Training</p>
+        <p className="text-xs font-medium text-[var(--gold-muted)]">Training Hub</p>
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">تدريب إسلام</h1>
         <p className="mt-4 text-sm leading-7 text-[var(--foreground-muted)] sm:text-base">
           اختر طريقة إدخال التعليم. كل المسارات تنتهي في Brain drafts قابلة للمراجعة؛ لا يصبح أي تعليم فعالاً في المحادثات إلا بعد النشر الصريح.
@@ -40,7 +40,7 @@ export default function TeachEslamHubPage() {
           <Link
             key={method.href}
             href={method.href}
-            className="group flex min-h-64 flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 transition-colors hover:border-[var(--gold-muted)] hover:bg-[var(--surface-subtle)]"
+            className="interactive-surface group flex min-h-64 flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 hover:bg-[var(--surface-subtle)]"
           >
             <p lang="en" dir="ltr" className="text-xs font-semibold tracking-[0.16em] text-[var(--gold-muted)]">
               {method.eyebrow}
