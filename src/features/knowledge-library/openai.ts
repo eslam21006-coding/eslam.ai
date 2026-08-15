@@ -1,6 +1,7 @@
 import "server-only";
 
 import { KNOWLEDGE_LIBRARY_VECTOR_STORE_NAME } from "@/features/knowledge-library/core";
+import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const OPENAI_KNOWLEDGE_TIMEOUT_MS = 90_000;
@@ -119,13 +120,51 @@ export async function createKnowledgeOpenAIFile(file: File) {
   return id;
 }
 
-/** Attaches an uploaded OpenAI file to the global Knowledge Library vector store. */
+/**
+ * Records provider IDs under the active index claim before attaching the file, so a crashed worker can be recovered safely.
+ */
+async function persistClaimedProviderIds(
+  sourceId: string,
+  vectorStoreId: string,
+  fileId: string,
+) {
+  const admin = getKnowledgeAdminClient();
+  const { data, error } = await admin
+    .from("knowledge_sources")
+    .update({
+      openai_file_id: fileId,
+      vector_store_id: vectorStoreId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", sourceId)
+    .eq("status", "indexing")
+    .not("index_claim_token", "is", null)
+    .is("openai_file_id", null)
+    .is("vector_store_id", null)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    throw new KnowledgeProviderError("Knowledge provider IDs could not be persisted", {
+      code: "provider-id-persist-failed",
+    });
+  }
+  if (!data) {
+    throw new KnowledgeProviderError("Knowledge index claim is no longer active", {
+      code: "claim-lost",
+    });
+  }
+}
+
+/** Attaches an uploaded OpenAI file only after its provider IDs are durably tracked by the active claim. */
 export async function attachKnowledgeVectorStoreFile(
   vectorStoreId: string,
   fileId: string,
   sourceId: string,
   title: string,
 ) {
+  await persistClaimedProviderIds(sourceId, vectorStoreId, fileId);
+
   const payload = await openAIRequest<VectorStoreFileState>(
     `/vector_stores/${encodeURIComponent(vectorStoreId)}/files`,
     {
