@@ -217,16 +217,16 @@ test("blocking and streaming paths load and pass Brain context alongside later o
   assert.match(actions, /loadEslamBrainModelContext\(\)/);
   assert.match(
     actions,
-    /generateBasicEslamReply\([\s\S]*businessDnaContext,[\s\S]*eslamBrainContext/,
+    /generateBasicEslamReply\([\s\S]{0,650}?businessDnaContext,[\s\S]{0,650}?eslamBrainContext/,
   );
 
   assert.match(route, /Promise\.all\(\[/);
   assert.match(route, /loadBusinessDnaModelContext\(userId\)/);
   assert.match(route, /loadEslamBrainModelContext\(\)/);
-  assert.match(route, /streamBasicEslamReply\([\s\S]*businessDnaContext,[\s\S]*eslamBrainContext/);
+  assert.match(route, /streamBasicEslamReply\([\s\S]{0,650}?businessDnaContext,[\s\S]{0,650}?eslamBrainContext/);
 
-  assert.match(assistant, /buildBasicEslamResponseRequest[\s\S]*eslamBrainContext/);
-  assert.match(assistant, /buildBasicEslamStreamingResponseRequest[\s\S]*eslamBrainContext/);
+  assert.match(assistant, /buildBasicEslamResponseRequest[\s\S]{0,900}?eslamBrainContext/);
+  assert.match(assistant, /buildBasicEslamStreamingResponseRequest[\s\S]{0,900}?eslamBrainContext/);
 });
 
 test("client roles still have no direct Brain table privileges", () => {
