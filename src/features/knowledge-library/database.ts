@@ -91,6 +91,12 @@ type KnowledgeDatabase = {
         Args: Record<string, never>;
         Returns: KnowledgeRetrievalStateRow[];
       };
+      invalidate_missing_knowledge_vector_store: {
+        Args: {
+          p_vector_store_id: string;
+        };
+        Returns: boolean;
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
@@ -118,4 +124,14 @@ export function getKnowledgeAdminClient() {
   }
 
   return knowledgeAdminClient;
+}
+
+/** Clears a missing global provider store only if it is still the configured winner. */
+export async function invalidateMissingKnowledgeVectorStore(vectorStoreId: string) {
+  const admin = getKnowledgeAdminClient();
+  const { data, error } = await admin.rpc("invalidate_missing_knowledge_vector_store", {
+    p_vector_store_id: vectorStoreId,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
 }
