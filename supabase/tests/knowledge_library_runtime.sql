@@ -339,17 +339,11 @@ begin
     raise exception 'Knowledge source did not reach valid ready state';
   end if;
 
-  if exists (
-    select 1 from public.teaching_sources
-    where created_by = '33333333-3333-4333-8333-333333333333'
-  ) then
+  if exists (select 1 from public.teaching_sources) then
     raise exception 'Knowledge Library unexpectedly created a teaching source';
   end if;
 
-  if exists (
-    select 1 from public.eslam_brain_items
-    where created_by = '33333333-3333-4333-8333-333333333333'
-  ) then
+  if exists (select 1 from public.eslam_brain_items) then
     raise exception 'Knowledge Library unexpectedly created Brain content';
   end if;
 end;
