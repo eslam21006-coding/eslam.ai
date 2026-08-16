@@ -122,7 +122,8 @@ export async function createKnowledgeOpenAIFile(file: File) {
 }
 
 /**
- * Records provider IDs under the exact active index claim before attaching the file, so a stale worker cannot mutate a newer attempt.
+ * Records the replacement provider IDs under the exact active index claim before attaching the file.
+ * A reclaimed row may still carry the previous cleanup pointer; only the exact claimant may replace it after cleanup.
  */
 async function persistClaimedProviderIds(
   sourceId: string,
@@ -142,8 +143,6 @@ async function persistClaimedProviderIds(
     .eq("id", sourceId)
     .eq("status", "indexing")
     .eq("index_claim_token", claimToken)
-    .is("openai_file_id", null)
-    .is("vector_store_id", null)
     .select("id")
     .maybeSingle();
 
