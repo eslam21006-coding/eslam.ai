@@ -8,7 +8,11 @@ const readSource = (relativePath) =>
 test("Brain retrieval has one bounded deadline that aborts every outstanding layer query and fails open", () => {
   const data = readSource("src/features/eslam-brain/model-context-data.ts");
 
-  assert.match(data, /const ESLAM_BRAIN_RETRIEVAL_TIMEOUT_MS = 8_000/);
+  assert.match(
+    data,
+    /ESLAM_BRAIN_RETRIEVAL_TIMEOUT_MS\s*=\s*2_?500\b/,
+    "Brain retrieval must keep the bounded 2.5-second deadline",
+  );
   assert.match(data, /const abortController = new AbortController\(\)/);
   assert.match(
     data,
