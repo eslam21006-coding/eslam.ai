@@ -27,7 +27,7 @@ export type BasicEslamStreamingResponseRequest = BasicEslamResponseRequest & {
 const MAX_MODEL_TRANSCRIPT_MESSAGES = 64;
 const MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000;
 const ESTIMATED_MESSAGE_OVERHEAD_TOKENS = 8;
-const KNOWLEDGE_FILE_SEARCH_RESULTS = 8;
+export const KNOWLEDGE_FILE_SEARCH_RESULTS = 8;
 
 const BASIC_ESLAM_INSTRUCTIONS = [
   "You are Eslam.AI, an AI business and marketing mentor.",
