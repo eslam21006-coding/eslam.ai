@@ -7,7 +7,7 @@ import {
 import { retrieveKnowledgeVectorStore } from "@/features/knowledge-library/openai";
 
 const KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000;
-const KNOWLEDGE_CONFIG_RETRY_TIMEOUT_MS = 6_000;
+const KNOWLEDGE_CONFIG_RETRY_TIMEOUT_MS = 3_000;
 const KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS = 5_000;
 const KNOWLEDGE_PROVIDER_CHECK_TTL_MS = 60_000;
 

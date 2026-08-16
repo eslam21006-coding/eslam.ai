@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -13,17 +12,7 @@ import {
   KNOWLEDGE_FILE_SEARCH_RESULTS,
 } from "../src/features/conversations/assistant-request.ts";
 import { adminNavigation, futureAdminSections } from "../src/features/admin-shell/navigation.ts";
-
-const readSource = (relativePath) =>
-  readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
-
-function sliceBetween(source, startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
-  assert.ok(start >= 0, `missing source marker: ${startMarker}`);
-  assert.ok(end > start, `missing source marker: ${endMarker}`);
-  return source.slice(start, end);
-}
+import { readSource, sliceBetween } from "./helpers/source.mjs";
 
 function collectLikelyVisibleCopy(source) {
   const jsxText = [...source.matchAll(/>([^<{]*\S[^<{]*)</g)].map((match) => match[1]);
@@ -165,27 +154,32 @@ test("Knowledge retrieval safety is computed atomically by one bounded database 
   assert.match(
     loader,
     /KNOWLEDGE_CONFIG_TIMEOUT_MS\s*=\s*2_?000\b/,
-    "Knowledge retrieval must keep the bounded two-second deadline",
+    "Knowledge retrieval must keep the bounded two-second initial deadline",
+  );
+  assert.match(
+    loader,
+    /KNOWLEDGE_CONFIG_RETRY_TIMEOUT_MS\s*=\s*3_?000\b/,
+    "Knowledge retrieval retry must stay within the bounded three-second degraded-path budget",
   );
   assert.match(loader, /controller\.abort\(\)/, "the retrieval deadline must abort the outstanding request");
 
-  assert.match(
+  const retrievalFunction = sliceBetween(
     hardening,
-    /create or replace function public\.get_knowledge_retrieval_state/,
-    "the hardening migration must define the atomic retrieval-state RPC",
+    "create or replace function public.get_knowledge_retrieval_state",
+    "revoke execute on function public.get_knowledge_retrieval_state",
   );
   assert.match(
-    hardening,
-    /not exists \([\s\S]*status = 'indexing'/,
-    "the atomic retrieval gate must reject active indexing",
+    retrievalFunction,
+    /not exists \([\s\S]{0,700}?status = 'indexing'/,
+    "the atomic retrieval gate must reject relevant active indexing",
   );
   assert.match(
-    hardening,
+    retrievalFunction,
     /status in \('failed', 'deleting'\)/,
     "the atomic retrieval gate must account for unresolved cleanup states",
   );
   assert.match(
-    hardening,
+    retrievalFunction,
     /cleanup_source\.vector_store_id = config\.vector_store_id/,
     "cleanup gating must be scoped to the configured vector store",
   );
@@ -284,14 +278,20 @@ test("Knowledge migrations enforce private service-only lifecycle and forward ha
   assert.match(hardening, /for update/, "index claims must serialize through a row lock");
   assert.match(hardening, /'busy'::text/, "active claims must report a busy state");
   assert.match(hardening, /'provider_indexing'::text/, "provider-indexing recovery must remain distinct");
-  assert.match(
+
+  const indexClaimPrivileges = sliceBetween(
     hardening,
-    /revoke execute[\s\S]*from public, anon, authenticated/,
+    "revoke execute on function public.claim_knowledge_source_index",
+    "grant execute on function public.claim_knowledge_source_index",
+  );
+  assert.match(
+    indexClaimPrivileges,
+    /from public, anon, authenticated/,
     "client roles must not execute the index claim RPC",
   );
   assert.match(
     hardening,
-    /grant execute[\s\S]*to service_role/,
+    /grant execute on function public\.claim_knowledge_source_index[\s\S]{0,350}?to service_role/,
     "service_role must retain index claim execution",
   );
 

@@ -8,34 +8,57 @@ const autoRefreshClient = readSource("src/features/knowledge-library/indexing-au
 const knowledgeData = readSource("src/features/knowledge-library/data.ts");
 const knowledgePage = readSource("src/app/admin/knowledge/page.tsx");
 
-test("Knowledge Library automatically reconciles global provider-indexing sources", () => {
+test("Knowledge Library automatically reconciles provider-indexing sources with bounded concurrency", () => {
   assert.match(
     autoRefreshAction,
-    /\.eq\("status", "indexing"\)/,
-    "auto-refresh must query globally indexing Knowledge sources",
+    /MAX_PROVIDER_STATUS_REFRESH_SOURCES\s*=\s*10\b/,
+    "provider status reconciliation must keep a small per-poll row bound",
+  );
+  assert.match(
+    autoRefreshAction,
+    /AUTO_REFRESH_CONCURRENCY\s*=\s*5\b/,
+    "provider status reconciliation must keep bounded concurrency",
+  );
+  assert.match(
+    autoRefreshAction,
+    /\.eq\("status", "indexing"\)[\s\S]{0,220}?\.is\("index_claim_token", null\)[\s\S]{0,220}?\.not\("openai_file_id", "is", null\)[\s\S]{0,220}?\.not\("vector_store_id", "is", null\)/,
+    "the broad rotating batch must contain only cheap provider-status refreshes",
   );
   assert.match(
     autoRefreshAction,
     /refreshKnowledgeSourceAction\(\{ sourceId: row\.id \}\)/,
-    "auto-refresh must reuse the fenced per-source provider reconciliation path",
+    "auto-refresh must reuse the fenced per-source reconciliation path",
   );
   assert.match(
     autoRefreshAction,
     /Promise\.allSettled/,
     "provider reconciliation should tolerate an individual source refresh failure",
   );
+});
+
+test("expired indexing claims are reclaimed separately and only one expensive re-index starts per poll", () => {
   assert.match(
     autoRefreshAction,
-    /AUTO_REFRESH_CONCURRENCY = 5/,
-    "provider reconciliation should use bounded concurrency",
+    /MAX_EXPIRED_RECLAIMS\s*=\s*1\b/,
+    "expired claim recovery must permit only one expensive re-index per poll",
+  );
+  assert.match(
+    autoRefreshAction,
+    /\.not\("index_claim_token", "is", null\)[\s\S]{0,220}?\.lte\("index_lease_expires_at", new Date\(\)\.toISOString\(\)\)[\s\S]{0,260}?\.limit\(MAX_EXPIRED_RECLAIMS\)/,
+    "expired lease recovery must be queried independently from provider status work",
+  );
+  assert.match(
+    autoRefreshAction,
+    /Promise\.all\(\[[\s\S]{0,700}?refreshProviderRows\(providerRows\)[\s\S]{0,700}?reclaimRows\.map/,
+    "the bounded provider checks and single expensive reclaim should overlap rather than serialize their worst-case deadlines",
   );
 });
 
-test("bounded auto-refresh rotates across indexing batches instead of starving rows after the first 100", () => {
+test("bounded provider reconciliation rotates instead of starving rows beyond the current batch", () => {
   assert.match(
     autoRefreshAction,
-    /\.order\("id", \{ ascending: true \}\)[\s\S]{0,180}?\.limit\(MAX_AUTO_REFRESH_SOURCES\)/,
-    "indexing batches must have a stable keyset order and remain bounded",
+    /\.order\("id", \{ ascending: true \}\)[\s\S]{0,180}?\.limit\(MAX_PROVIDER_STATUS_REFRESH_SOURCES\)/,
+    "provider-indexing batches must have a stable keyset order and remain bounded",
   );
   assert.match(
     autoRefreshAction,
@@ -44,7 +67,7 @@ test("bounded auto-refresh rotates across indexing batches instead of starving r
   );
   assert.match(
     autoRefreshAction,
-    /if \(\(first\.data\?\.length \?\? 0\) > 0 \|\| !afterId\) return first;[\s\S]{0,180}?return query\(\);/,
+    /if \(\(first\.data\?\.length \?\? 0\) > 0 \|\| !afterId\) return first;[\s\S]{0,220}?return query\(\);/,
     "reconciliation must wrap to the beginning after reaching the end of the keyspace",
   );
   assert.match(
@@ -117,5 +140,10 @@ test("Knowledge Library page exposes global indexing state and polls only while 
     knowledgePage,
     /<KnowledgeIndexAutoRefresh active=\{sourcePage\.hasIndexing\} \/>/,
     "the Admin Knowledge page must enable polling from global indexing state",
+  );
+  assert.match(
+    knowledgePage,
+    /export const maxDuration = 300/,
+    "the page-level Server Action duration budget must remain explicit",
   );
 });

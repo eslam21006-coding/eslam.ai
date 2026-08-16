@@ -54,8 +54,8 @@ insert into public.knowledge_sources (
     'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
     '55555555-5555-4555-8555-555555555555',
     '55555555-5555-4555-8555-555555555555/cccccccc-cccc-4ccc-8ccc-cccccccccccc.txt',
-    'Indexing other-store source',
-    'indexing.txt',
+    'Other-store lifecycle source',
+    'other.txt',
     'text/plain',
     100
   );
@@ -97,7 +97,40 @@ end;
 $$;
 
 update public.knowledge_sources
-set vector_store_id = 'vs_current', updated_at = now()
+set status = 'failed',
+    size_bytes = 100,
+    openai_file_id = 'file_cleanup_other',
+    vector_store_id = 'vs_other',
+    indexed_at = null,
+    last_error_code = 'cleanup-required',
+    index_claim_token = null,
+    index_lease_expires_at = null,
+    updated_at = now()
+where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+do $$
+declare
+  v_retrieval text;
+begin
+  select vector_store_id into v_retrieval
+  from public.get_knowledge_retrieval_state();
+
+  if v_retrieval <> 'vs_current' then
+    raise exception 'cleanup on an unrelated vector store unexpectedly disabled Knowledge retrieval';
+  end if;
+end;
+$$;
+
+update public.knowledge_sources
+set status = 'indexing',
+    size_bytes = 100,
+    openai_file_id = 'file_indexing_current',
+    vector_store_id = 'vs_current',
+    indexed_at = null,
+    last_error_code = null,
+    index_claim_token = null,
+    index_lease_expires_at = null,
+    updated_at = now()
 where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
 do $$
