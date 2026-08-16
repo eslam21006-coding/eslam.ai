@@ -7,6 +7,7 @@ import { refreshKnowledgeIndexingSourcesAction } from "@/features/knowledge-libr
 
 const INITIAL_AUTO_REFRESH_DELAY_MS = 750;
 const AUTO_REFRESH_INTERVAL_MS = 5_000;
+const MAX_AUTO_REFRESH_FAILURES = 3;
 
 /** Keeps provider indexing state synchronized without requiring manual per-source refreshes. */
 export function KnowledgeIndexAutoRefresh({ active }: { active: boolean }) {
@@ -18,6 +19,7 @@ export function KnowledgeIndexAutoRefresh({ active }: { active: boolean }) {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let afterId: string | null = null;
+    let consecutiveFailures = 0;
 
     const poll = async () => {
       let shouldContinue = true;
@@ -25,14 +27,20 @@ export function KnowledgeIndexAutoRefresh({ active }: { active: boolean }) {
         const result = await refreshKnowledgeIndexingSourcesAction({ afterId });
         if (cancelled) return;
         if (result.ok) {
+          consecutiveFailures = 0;
           shouldContinue = result.hasMore;
           afterId = result.nextCursor;
           router.refresh();
+        } else {
+          consecutiveFailures += 1;
+          shouldContinue = result.hasMore && consecutiveFailures < MAX_AUTO_REFRESH_FAILURES;
         }
       } catch (error) {
         console.error("Knowledge Library automatic indexing refresh failed", {
           message: error instanceof Error ? error.message : "Unknown auto-refresh error",
         });
+        consecutiveFailures += 1;
+        shouldContinue = consecutiveFailures < MAX_AUTO_REFRESH_FAILURES;
       }
 
       if (!cancelled && shouldContinue) {
