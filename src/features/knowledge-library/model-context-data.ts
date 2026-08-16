@@ -9,6 +9,9 @@ import { retrieveKnowledgeVectorStore } from "@/features/knowledge-library/opena
 const KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000;
 const KNOWLEDGE_CONFIG_RETRY_TIMEOUT_MS = 6_000;
 const KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS = 5_000;
+const KNOWLEDGE_PROVIDER_CHECK_TTL_MS = 60_000;
+
+let verifiedStore: { id: string; checkedAt: number } | null = null;
 
 /** Resolves the global Knowledge vector store from one atomic database snapshot and verifies provider existence. */
 export async function loadKnowledgeVectorStoreId() {
@@ -63,11 +66,19 @@ export async function loadKnowledgeVectorStoreId() {
         : null;
     if (!vectorStoreId) return null;
 
+    if (
+      verifiedStore?.id === vectorStoreId &&
+      Date.now() - verifiedStore.checkedAt < KNOWLEDGE_PROVIDER_CHECK_TTL_MS
+    ) {
+      return vectorStoreId;
+    }
+
     const providerStoreId = await retrieveKnowledgeVectorStore(
       vectorStoreId,
       KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS,
     );
     if (!providerStoreId) {
+      verifiedStore = null;
       await invalidateMissingKnowledgeVectorStore(vectorStoreId);
       console.error("knowledge_library configured vector store is missing", {
         vectorStoreId,
@@ -75,6 +86,7 @@ export async function loadKnowledgeVectorStoreId() {
       return null;
     }
 
+    verifiedStore = { id: vectorStoreId, checkedAt: Date.now() };
     return vectorStoreId;
   } catch (error) {
     console.error("knowledge_library search config load failed", {
