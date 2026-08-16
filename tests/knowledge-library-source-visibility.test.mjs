@@ -36,10 +36,22 @@ test("Knowledge retrieval is silent for normal users and source attribution is a
     "vs_test",
     true,
   );
-  assert.match(admin.instructions, /Use retrieved Knowledge silently by default/);
+  assert.match(admin.instructions, /Use retrieved Knowledge invisibly by default/);
   assert.match(
     admin.instructions,
-    /Only when the Admin explicitly asks for citations, references, sources, or which Knowledge files support the answer/,
+    /Unless the Admin's current request explicitly asks for citations, references, sources, provenance, or which Knowledge files support the answer/,
+  );
+  assert.match(
+    admin.instructions,
+    /do not mention the Knowledge Library, files, filenames, file titles, sources, references, citations, provenance, provider metadata, or that file_search was used in any form/,
+  );
+  assert.match(
+    admin.instructions,
+    /Do not add phrases such as 'from the Knowledge Library', 'from a library file', 'according to a file'/,
+  );
+  assert.match(
+    admin.instructions,
+    /Only when the Admin explicitly asks for citations, references, sources, provenance, or which Knowledge files support the answer/,
   );
   assert.doesNotMatch(admin.instructions, /source identities even if the user asks for them/);
 });
