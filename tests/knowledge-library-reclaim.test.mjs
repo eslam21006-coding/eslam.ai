@@ -1,17 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const readSource = (relativePath) =>
-  readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
-
-function sliceBetween(source, startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
-  assert.ok(start >= 0, `missing source marker: ${startMarker}`);
-  assert.ok(end > start, `missing source marker: ${endMarker}`);
-  return source.slice(start, end);
-}
+import { readSource, sliceBetween } from "./helpers/source.mjs";
 
 test("Knowledge reclaim keeps the previous provider cleanup pointer durable until replacement persistence", () => {
   const migration = readSource(
@@ -79,6 +69,11 @@ test("Knowledge retry cleans the retained previous provider file before replacem
   const attachIndex = indexing.indexOf("attachKnowledgeVectorStoreFile(");
 
   assert.ok(cleanupIndex >= 0, "retry indexing must attempt cleanup of the retained previous provider file");
+  assert.match(
+    indexing,
+    /await deleteOpenAIFileBestEffort\(previousOpenAIFileId\)/,
+    "prior provider cleanup must be awaited so it completes before replacement provider work",
+  );
   assert.ok(createIndex > cleanupIndex, "replacement provider file creation must happen only after prior cleanup");
   assert.ok(attachIndex > createIndex, "replacement attachment must happen after the replacement file is created");
 });
