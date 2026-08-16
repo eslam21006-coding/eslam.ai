@@ -71,8 +71,10 @@ const KNOWLEDGE_SOURCE_VISIBILITY_USER = [
 ].join("\n");
 
 const KNOWLEDGE_SOURCE_VISIBILITY_ADMIN = [
-  "Use retrieved Knowledge silently by default, without mentioning filenames, file titles, source names, provider metadata, or that file_search was used.",
-  "Only when the Admin explicitly asks for citations, references, sources, or which Knowledge files support the answer may you identify the relevant sources using source information returned by file_search.",
+  "Use retrieved Knowledge invisibly by default.",
+  "Unless the Admin's current request explicitly asks for citations, references, sources, provenance, or which Knowledge files support the answer, do not mention the Knowledge Library, files, filenames, file titles, sources, references, citations, provenance, provider metadata, or that file_search was used in any form.",
+  "Do not add phrases such as 'from the Knowledge Library', 'from a library file', 'according to a file', or equivalent provenance language unless that explicit Admin request is present.",
+  "Only when the Admin explicitly asks for citations, references, sources, provenance, or which Knowledge files support the answer may you identify the relevant sources using source information returned by file_search.",
 ].join("\n");
 
 function buildInstructions(
