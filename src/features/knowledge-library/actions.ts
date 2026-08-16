@@ -343,7 +343,8 @@ async function indexStoredSource(
       ready,
     );
     if (!persisted) {
-      await deleteOpenAIFileBestEffort(openaiFileId);
+      const deleted = await deleteOpenAIFileBestEffort(openaiFileId);
+      if (deleted) openaiFileId = null;
       throw new Error("Knowledge index claim expired or was superseded");
     }
 
