@@ -101,6 +101,10 @@ $$;
 create index if not exists knowledge_sources_created_idx
   on public.knowledge_sources (created_at desc, id desc);
 
+create index if not exists knowledge_sources_indexing_idx
+  on public.knowledge_sources (id)
+  where status = 'indexing';
+
 create index if not exists knowledge_sources_provider_indexing_idx
   on public.knowledge_sources (id)
   where status = 'indexing'
