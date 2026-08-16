@@ -1,23 +1,12 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const autoRefreshAction = await readFile(
-  new URL("../src/features/knowledge-library/indexing-auto-refresh.ts", import.meta.url),
-  "utf8",
-);
-const autoRefreshClient = await readFile(
-  new URL("../src/features/knowledge-library/indexing-auto-refresh-client.tsx", import.meta.url),
-  "utf8",
-);
-const knowledgeData = await readFile(
-  new URL("../src/features/knowledge-library/data.ts", import.meta.url),
-  "utf8",
-);
-const knowledgePage = await readFile(
-  new URL("../src/app/admin/knowledge/page.tsx", import.meta.url),
-  "utf8",
-);
+import { readSource } from "./helpers/source.mjs";
+
+const autoRefreshAction = readSource("src/features/knowledge-library/indexing-auto-refresh.ts");
+const autoRefreshClient = readSource("src/features/knowledge-library/indexing-auto-refresh-client.tsx");
+const knowledgeData = readSource("src/features/knowledge-library/data.ts");
+const knowledgePage = readSource("src/app/admin/knowledge/page.tsx");
 
 test("Knowledge Library automatically reconciles global provider-indexing sources", () => {
   assert.match(
@@ -45,7 +34,7 @@ test("Knowledge Library automatically reconciles global provider-indexing source
 test("bounded auto-refresh rotates across indexing batches instead of starving rows after the first 100", () => {
   assert.match(
     autoRefreshAction,
-    /\.order\("id", \{ ascending: true \}\)[\s\S]*\.limit\(MAX_AUTO_REFRESH_SOURCES\)/,
+    /\.order\("id", \{ ascending: true \}\)[\s\S]{0,180}?\.limit\(MAX_AUTO_REFRESH_SOURCES\)/,
     "indexing batches must have a stable keyset order and remain bounded",
   );
   assert.match(
@@ -55,7 +44,7 @@ test("bounded auto-refresh rotates across indexing batches instead of starving r
   );
   assert.match(
     autoRefreshAction,
-    /if \(\(first\.data\?\.length \?\? 0\) > 0 \|\| !afterId\) return first;[\s\S]*return query\(\);/,
+    /if \(\(first\.data\?\.length \?\? 0\) > 0 \|\| !afterId\) return first;[\s\S]{0,180}?return query\(\);/,
     "reconciliation must wrap to the beginning after reaching the end of the keyspace",
   );
   assert.match(
@@ -75,6 +64,29 @@ test("bounded auto-refresh rotates across indexing batches instead of starving r
   );
 });
 
+test("automatic reconciliation stops after repeated failures and explicitly honors the server retry contract", () => {
+  assert.match(
+    autoRefreshClient,
+    /MAX_AUTO_REFRESH_FAILURES\s*=\s*3\b/,
+    "persistent refresh failures must have a small retry ceiling",
+  );
+  assert.match(
+    autoRefreshClient,
+    /if \(result\.ok\) \{[\s\S]{0,320}?consecutiveFailures = 0;[\s\S]{0,320}?\} else \{[\s\S]{0,320}?consecutiveFailures \+= 1;[\s\S]{0,320}?shouldContinue = result\.hasMore && consecutiveFailures < MAX_AUTO_REFRESH_FAILURES/,
+    "server failures must explicitly consume the retry budget and honor hasMore",
+  );
+  assert.match(
+    autoRefreshClient,
+    /catch \(error\) \{[\s\S]{0,320}?consecutiveFailures \+= 1;[\s\S]{0,220}?shouldContinue = consecutiveFailures < MAX_AUTO_REFRESH_FAILURES/,
+    "rejected refresh actions must also consume the retry budget",
+  );
+  assert.match(
+    autoRefreshAction,
+    /return \{ ok: false, checked: 0, hasMore: true, nextCursor: afterId \}/,
+    "a query failure must explicitly tell a bounded client retry loop that work may remain",
+  );
+});
+
 test("Knowledge Library page exposes global indexing state and polls only while needed", () => {
   assert.match(
     knowledgeData,
@@ -83,12 +95,12 @@ test("Knowledge Library page exposes global indexing state and polls only while 
   );
   assert.match(
     knowledgeData,
-    /select\("id", \{ count: "exact", head: true \}\)[\s\S]*\.eq\("status", "indexing"\)/,
+    /select\("id", \{ count: "exact", head: true \}\)[\s\S]{0,220}?\.eq\("status", "indexing"\)/,
     "global indexing state must be counted independently of the visible page",
   );
   assert.match(
     autoRefreshClient,
-    /useEffect\(\(\) => \{[\s\S]*if \(!active\) return;/,
+    /useEffect\(\(\) => \{[\s\S]{0,160}?if \(!active\) return;/,
     "client polling must stop when no global indexing work remains",
   );
   assert.match(
