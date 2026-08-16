@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { loadKnowledgeSourcePage } from "@/features/knowledge-library/data";
+import { KnowledgeIndexAutoRefresh } from "@/features/knowledge-library/indexing-auto-refresh-client";
 import { KnowledgeSourceList } from "@/features/knowledge-library/source-list";
 import { KnowledgeUploader } from "@/features/knowledge-library/uploader";
 import { requireAdmin } from "@/lib/auth/admin";
@@ -27,6 +28,7 @@ export default async function KnowledgeLibraryPage({
 
   return (
     <div className="mx-auto w-full max-w-5xl px-5 py-8 sm:px-8 lg:px-10 lg:py-10">
+      <KnowledgeIndexAutoRefresh active={sourcePage.hasIndexing} />
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-xs font-medium text-[var(--gold-muted)]">Admin · Knowledge Library</p>
