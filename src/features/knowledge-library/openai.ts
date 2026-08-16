@@ -1,7 +1,10 @@
 import "server-only";
 
 import { KNOWLEDGE_LIBRARY_VECTOR_STORE_NAME } from "@/features/knowledge-library/core";
-import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
+import {
+  getKnowledgeAdminClient,
+  invalidateMissingKnowledgeVectorStore,
+} from "@/features/knowledge-library/database";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const OPENAI_KNOWLEDGE_TIMEOUT_MS = 90_000;
@@ -44,10 +47,11 @@ function providerCode(payload: unknown) {
 async function openAIRequest<T>(
   path: string,
   init: RequestInit,
-  options: { beta?: boolean; allowNotFound?: boolean } = {},
+  options: { beta?: boolean; allowNotFound?: boolean; timeoutMs?: number } = {},
 ): Promise<T | null> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_KNOWLEDGE_TIMEOUT_MS);
+  const timeoutMs = options.timeoutMs ?? OPENAI_KNOWLEDGE_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const headers = new Headers(init.headers);
@@ -98,6 +102,26 @@ export async function createKnowledgeVectorStore() {
   );
   const id = payload && typeof payload.id === "string" ? payload.id : null;
   if (!id) throw new KnowledgeProviderError("OpenAI vector store response had no id", { code: "invalid-response" });
+  return id;
+}
+
+/** Confirms that a configured provider vector store still exists; provider 404 returns null. */
+export async function retrieveKnowledgeVectorStore(
+  vectorStoreId: string,
+  timeoutMs = OPENAI_KNOWLEDGE_TIMEOUT_MS,
+) {
+  const payload = await openAIRequest<{ id?: unknown }>(
+    `/vector_stores/${encodeURIComponent(vectorStoreId)}`,
+    { method: "GET" },
+    { beta: true, allowNotFound: true, timeoutMs },
+  );
+  if (!payload) return null;
+  const id = typeof payload.id === "string" ? payload.id : null;
+  if (!id) {
+    throw new KnowledgeProviderError("OpenAI vector store response had no id", {
+      code: "invalid-response",
+    });
+  }
   return id;
 }
 
@@ -158,6 +182,17 @@ async function persistClaimedProviderIds(
   }
 }
 
+async function invalidateMissingStoreBestEffort(vectorStoreId: string) {
+  try {
+    await invalidateMissingKnowledgeVectorStore(vectorStoreId);
+  } catch (error) {
+    console.error("Knowledge Library missing vector store invalidation failed", {
+      vectorStoreId,
+      message: error instanceof Error ? error.message : "Unknown vector store invalidation error",
+    });
+  }
+}
+
 /** Attaches an uploaded OpenAI file only after its provider IDs are durably tracked by the exact active claim. */
 export async function attachKnowledgeVectorStoreFile(
   vectorStoreId: string,
@@ -168,19 +203,30 @@ export async function attachKnowledgeVectorStoreFile(
 ) {
   await persistClaimedProviderIds(sourceId, claimToken, vectorStoreId, fileId);
 
-  const payload = await openAIRequest<VectorStoreFileState>(
-    `/vector_stores/${encodeURIComponent(vectorStoreId)}/files`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        file_id: fileId,
-        attributes: { source_id: sourceId, title },
-      }),
-    },
-    { beta: true },
-  );
-  if (!payload) throw new KnowledgeProviderError("Vector store file response was empty", { code: "invalid-response" });
-  return payload;
+  try {
+    const payload = await openAIRequest<VectorStoreFileState>(
+      `/vector_stores/${encodeURIComponent(vectorStoreId)}/files`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          file_id: fileId,
+          attributes: { source_id: sourceId, title },
+        }),
+      },
+      { beta: true },
+    );
+    if (!payload) throw new KnowledgeProviderError("Vector store file response was empty", { code: "invalid-response" });
+    return payload;
+  } catch (error) {
+    if (error instanceof KnowledgeProviderError && error.status === 404) {
+      await invalidateMissingStoreBestEffort(vectorStoreId);
+      throw new KnowledgeProviderError("Knowledge vector store is missing", {
+        status: 404,
+        code: "vector-store-not-found",
+      });
+    }
+    throw error;
+  }
 }
 
 /** Reads provider indexing state; a missing file is surfaced as a retryable failed state. */
