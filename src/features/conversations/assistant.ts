@@ -14,6 +14,7 @@ export async function generateBasicEslamReply(
   businessDnaContext: string | null = null,
   eslamBrainContext: string | null = null,
   knowledgeVectorStoreId: string | null = null,
+  knowledgeSourceAttributionAllowed = false,
 ) {
   const request = buildBasicEslamResponseRequest(
     messages,
@@ -21,6 +22,7 @@ export async function generateBasicEslamReply(
     businessDnaContext,
     eslamBrainContext,
     knowledgeVectorStoreId,
+    knowledgeSourceAttributionAllowed,
   );
   const response = await getOpenAIClient().responses.create(request);
 
@@ -41,6 +43,7 @@ export async function streamBasicEslamReply(
   businessDnaContext: string | null = null,
   eslamBrainContext: string | null = null,
   knowledgeVectorStoreId: string | null = null,
+  knowledgeSourceAttributionAllowed = false,
 ) {
   const request = buildBasicEslamStreamingResponseRequest(
     messages,
@@ -48,6 +51,7 @@ export async function streamBasicEslamReply(
     businessDnaContext,
     eslamBrainContext,
     knowledgeVectorStoreId,
+    knowledgeSourceAttributionAllowed,
   );
   const stream = await getOpenAIClient().responses.create(request, {
     signal: options.signal,
