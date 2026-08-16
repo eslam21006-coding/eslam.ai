@@ -15,32 +15,32 @@ test("missing configured Knowledge vector stores are atomically invalidated and 
   );
   assert.match(
     migration,
-    /select vector_store_id into v_current[\s\S]*for update/,
+    /select vector_store_id into v_current[\s\S]{0,350}?for update/,
     "missing-store invalidation must lock the global configuration row",
   );
   assert.match(
     migration,
-    /where library_key = 'global'[\s\S]*and vector_store_id = p_vector_store_id/,
+    /where library_key = 'global'[\s\S]{0,250}?and vector_store_id = p_vector_store_id/,
     "only the still-current configured provider store may be cleared",
   );
   assert.match(
     migration,
-    /set status = 'failed'[\s\S]*last_error_code = 'vector-store-not-found'/,
+    /set status = 'failed'[\s\S]{0,500}?last_error_code = 'vector-store-not-found'/,
     "ready sources from the missing store must become retryable failed sources",
   );
   assert.match(
     migration,
-    /where status = 'ready'[\s\S]*and vector_store_id = p_vector_store_id/,
+    /where status = 'ready'[\s\S]{0,350}?and vector_store_id = p_vector_store_id/,
     "only sources tied to the missing provider store may be invalidated",
   );
   assert.match(
     migration,
-    /revoke execute[\s\S]*from public, anon, authenticated/,
+    /revoke execute[\s\S]{0,350}?from public, anon, authenticated/,
     "client roles must not execute provider-store invalidation",
   );
   assert.match(
     migration,
-    /grant execute[\s\S]*to service_role/,
+    /grant execute[\s\S]{0,350}?to service_role/,
     "service_role must retain provider-store invalidation execution",
   );
 });
@@ -82,6 +82,23 @@ test("Knowledge provider boundary distinguishes a missing vector store from tran
     attach,
     /code: "vector-store-not-found"/,
     "attachment 404 must surface the normalized retryable recovery code",
+  );
+});
+
+test("Knowledge provider preserves request timeouts even when abort happens during response body parsing", () => {
+  const provider = readSource("src/features/knowledge-library/openai.ts");
+  const request = sliceBetween(provider, "async function openAIRequest", "/** Creates the single global vector store");
+
+  assert.match(request, /payload = await response\.json\(\)/);
+  assert.match(
+    request,
+    /catch \(bodyError\) \{[\s\S]{0,260}?controller\.signal\.aborted && isAbortError\(bodyError\)[\s\S]{0,160}?throw bodyError/,
+    "an abort raised while consuming the response body must escape the body parser",
+  );
+  assert.match(
+    request,
+    /controller\.signal\.aborted && isAbortError\(error\)[\s\S]{0,220}?code: "timeout"/,
+    "the outer provider boundary must normalize aborted body reads to the timeout code",
   );
 });
 
