@@ -246,13 +246,60 @@ export async function retrieveKnowledgeVectorStoreFile(vectorStoreId: string, fi
   );
 }
 
-/** Deletes the durable OpenAI File; OpenAI also removes it from every vector store. */
+/** Removes a file from File Search and confirms the vector-store attachment is actually gone. */
+async function deleteKnowledgeVectorStoreFile(vectorStoreId: string, fileId: string) {
+  await openAIRequest<{ deleted?: boolean }>(
+    `/vector_stores/${encodeURIComponent(vectorStoreId)}/files/${encodeURIComponent(fileId)}`,
+    { method: "DELETE" },
+    { beta: true, allowNotFound: true },
+  );
+
+  const remaining = await openAIRequest<VectorStoreFileState>(
+    `/vector_stores/${encodeURIComponent(vectorStoreId)}/files/${encodeURIComponent(fileId)}`,
+    { method: "GET" },
+    { beta: true, allowNotFound: true },
+  );
+  if (remaining) {
+    throw new KnowledgeProviderError("Knowledge vector-store file deletion was not confirmed", {
+      code: "vector-file-delete-not-confirmed",
+    });
+  }
+}
+
+/** Deletes the durable OpenAI File only after its tracked File Search attachment is confirmed absent. */
 export async function deleteKnowledgeOpenAIFile(fileId: string) {
+  const admin = getKnowledgeAdminClient();
+  const { data: source, error } = await admin
+    .from("knowledge_sources")
+    .select("vector_store_id")
+    .eq("openai_file_id", fileId)
+    .maybeSingle();
+  if (error) {
+    throw new KnowledgeProviderError("Knowledge provider cleanup pointer could not be loaded", {
+      code: "cleanup-pointer-load-failed",
+    });
+  }
+
+  if (source?.vector_store_id) {
+    await deleteKnowledgeVectorStoreFile(source.vector_store_id, fileId);
+  }
+
   await openAIRequest<{ deleted?: boolean }>(
     `/files/${encodeURIComponent(fileId)}`,
     { method: "DELETE" },
     { allowNotFound: true },
   );
+
+  const remainingFile = await openAIRequest<{ id?: unknown }>(
+    `/files/${encodeURIComponent(fileId)}`,
+    { method: "GET" },
+    { allowNotFound: true },
+  );
+  if (remainingFile) {
+    throw new KnowledgeProviderError("Knowledge OpenAI file deletion was not confirmed", {
+      code: "file-delete-not-confirmed",
+    });
+  }
 }
 
 export function knowledgeProviderErrorCode(error: unknown) {
