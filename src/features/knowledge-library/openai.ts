@@ -44,6 +44,12 @@ function providerCode(payload: unknown) {
   return typeof code === "string" && code.trim() ? code.slice(0, 100) : "provider-error";
 }
 
+function isAbortError(error: unknown) {
+  if (!(error instanceof Error)) return false;
+  const causeName = error.cause instanceof Error ? error.cause.name : null;
+  return error.name === "AbortError" || causeName === "AbortError";
+}
+
 async function openAIRequest<T>(
   path: string,
   init: RequestInit,
@@ -69,7 +75,16 @@ async function openAIRequest<T>(
     });
 
     if (options.allowNotFound && response.status === 404) return null;
-    const payload = (await response.json().catch(() => null)) as unknown;
+
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch (bodyError) {
+      // An abort can arrive while the body is being consumed after fetch() has resolved.
+      // Preserve that rejection so the outer boundary can classify the request as timed out.
+      if (controller.signal.aborted && isAbortError(bodyError)) throw bodyError;
+    }
+
     if (!response.ok) {
       throw new KnowledgeProviderError(`OpenAI request failed with status ${response.status}`, {
         status: response.status,
@@ -79,7 +94,7 @@ async function openAIRequest<T>(
     return payload as T;
   } catch (error) {
     if (error instanceof KnowledgeProviderError) throw error;
-    if (error instanceof DOMException && error.name === "AbortError") {
+    if (controller.signal.aborted && isAbortError(error)) {
       throw new KnowledgeProviderError("OpenAI Knowledge request timed out", { code: "timeout" });
     }
     throw new KnowledgeProviderError(
@@ -266,22 +281,41 @@ async function deleteKnowledgeVectorStoreFile(vectorStoreId: string, fileId: str
   }
 }
 
-/** Deletes the durable OpenAI File only after its tracked File Search attachment is confirmed absent. */
-export async function deleteKnowledgeOpenAIFile(fileId: string) {
+/** Resolves the best known vector-store cleanup pointer for a tracked OpenAI file. */
+async function resolveKnowledgeCleanupVectorStoreId(fileId: string) {
   const admin = getKnowledgeAdminClient();
-  const { data: source, error } = await admin
+  const { data: source, error: sourceError } = await admin
     .from("knowledge_sources")
     .select("vector_store_id")
     .eq("openai_file_id", fileId)
     .maybeSingle();
-  if (error) {
+  if (sourceError) {
     throw new KnowledgeProviderError("Knowledge provider cleanup pointer could not be loaded", {
       code: "cleanup-pointer-load-failed",
     });
   }
+  if (source?.vector_store_id) return source.vector_store_id as string;
 
-  if (source?.vector_store_id) {
-    await deleteKnowledgeVectorStoreFile(source.vector_store_id, fileId);
+  const { data: config, error: configError } = await admin
+    .from("knowledge_library_config")
+    .select("vector_store_id")
+    .eq("library_key", "global")
+    .maybeSingle();
+  if (configError) {
+    throw new KnowledgeProviderError("Knowledge global cleanup pointer could not be loaded", {
+      code: "cleanup-pointer-load-failed",
+    });
+  }
+  return config?.vector_store_id && typeof config.vector_store_id === "string"
+    ? config.vector_store_id
+    : null;
+}
+
+/** Deletes the durable OpenAI File only after its best-known File Search attachment is confirmed absent. */
+export async function deleteKnowledgeOpenAIFile(fileId: string) {
+  const vectorStoreId = await resolveKnowledgeCleanupVectorStoreId(fileId);
+  if (vectorStoreId) {
+    await deleteKnowledgeVectorStoreFile(vectorStoreId, fileId);
   }
 
   await openAIRequest<{ deleted?: boolean }>(
