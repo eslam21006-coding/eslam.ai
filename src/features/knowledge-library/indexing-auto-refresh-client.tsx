@@ -17,14 +17,16 @@ export function KnowledgeIndexAutoRefresh({ active }: { active: boolean }) {
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let afterId: string | null = null;
 
     const poll = async () => {
       let shouldContinue = true;
       try {
-        const result = await refreshKnowledgeIndexingSourcesAction();
+        const result = await refreshKnowledgeIndexingSourcesAction({ afterId });
         if (cancelled) return;
         if (result.ok) {
           shouldContinue = result.hasMore;
+          afterId = result.nextCursor;
           router.refresh();
         }
       } catch (error) {
