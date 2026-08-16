@@ -1,17 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const readSource = (relativePath) =>
-  readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
-
-function sliceBetween(source, startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
-  assert.ok(start >= 0, `missing source marker: ${startMarker}`);
-  assert.ok(end > start, `missing source marker: ${endMarker}`);
-  return source.slice(start, end);
-}
+import { readSource, sliceBetween } from "./helpers/source.mjs";
 
 test("missing configured Knowledge vector stores are atomically invalidated and ready sources become retryable", () => {
   const migration = readSource(
@@ -95,7 +85,7 @@ test("Knowledge provider boundary distinguishes a missing vector store from tran
   );
 });
 
-test("chat fails closed before enabling file_search when the configured Knowledge vector store is missing", () => {
+test("chat caches successful provider verification but still fails closed for a missing configured store", () => {
   const loader = readSource("src/features/knowledge-library/model-context-data.ts");
   const retrievalStateCalls = loader.match(/\.rpc\(\s*"get_knowledge_retrieval_state"/g) ?? [];
 
@@ -106,13 +96,28 @@ test("chat fails closed before enabling file_search when the configured Knowledg
   );
   assert.match(
     loader,
-    /retrieveKnowledgeVectorStore\([\s\S]*vectorStoreId[\s\S]*KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS/,
-    "chat must verify provider existence before returning the configured vector store",
+    /KNOWLEDGE_PROVIDER_CHECK_TTL_MS\s*=\s*60_?000\b/,
+    "successful vector-store verification must have a short one-minute cache TTL",
   );
   assert.match(
     loader,
-    /if \(!providerStoreId\)[\s\S]*invalidateMissingKnowledgeVectorStore\(vectorStoreId\)[\s\S]*return null/,
-    "a missing provider store must be invalidated and file_search must stay disabled",
+    /verifiedStore\?\.id === vectorStoreId[\s\S]{0,250}?Date\.now\(\) - verifiedStore\.checkedAt < KNOWLEDGE_PROVIDER_CHECK_TTL_MS/,
+    "a fresh verification for the same store must bypass another provider round trip",
+  );
+  assert.match(
+    loader,
+    /retrieveKnowledgeVectorStore\([\s\S]{0,160}?vectorStoreId,[\s\S]{0,160}?KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS/,
+    "expired or missing cache entries must verify provider existence before returning the configured vector store",
+  );
+  assert.match(
+    loader,
+    /if \(!providerStoreId\) \{[\s\S]{0,350}?verifiedStore = null;[\s\S]{0,350}?invalidateMissingKnowledgeVectorStore\(vectorStoreId\)[\s\S]{0,350}?return null/,
+    "a missing provider store must clear the cache, invalidate configuration, and keep file_search disabled",
+  );
+  assert.match(
+    loader,
+    /verifiedStore = \{ id: vectorStoreId, checkedAt: Date\.now\(\) \}/,
+    "only a successful provider check may refresh the verification cache",
   );
   assert.match(
     loader,
