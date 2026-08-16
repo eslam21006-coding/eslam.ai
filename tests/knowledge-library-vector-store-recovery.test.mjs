@@ -116,7 +116,7 @@ test("chat fails closed before enabling file_search when the configured Knowledg
   );
   assert.match(
     loader,
-    /KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS\s*=\s*1_?500\b/,
-    "provider existence verification must use a bounded short timeout",
+    /KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS\s*=\s*5_?000\b/,
+    "provider existence verification must remain bounded while tolerating normal remote latency",
   );
 });
