@@ -16,6 +16,7 @@ import { createResponsePreparationDependencies } from "@/features/conversations/
 import { executePreparedStreamingResponse } from "@/features/conversations/streaming-response-flow";
 import { loadEslamBrainModelContext } from "@/features/eslam-brain/model-context-data";
 import { loadKnowledgeVectorStoreId } from "@/features/knowledge-library/model-context-data";
+import { isAdmin } from "@/lib/auth/admin";
 import { getAuthenticatedUserId } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -86,10 +87,11 @@ export async function POST(request: Request) {
     return errorResponse(400, "invalid_input");
   }
 
-  const [businessDnaContext, eslamBrainContext, knowledgeVectorStoreId] = await Promise.all([
+  const [businessDnaContext, eslamBrainContext, knowledgeVectorStoreId, knowledgeSourceAttributionAllowed] = await Promise.all([
     loadBusinessDnaModelContext(userId),
     loadEslamBrainModelContext(),
     loadKnowledgeVectorStoreId(),
+    isAdmin(),
   ]);
   const preparationDependencies = await createResponsePreparationDependencies();
   const prepared = await prepareMessageResponseFlow(
@@ -158,6 +160,7 @@ export async function POST(request: Request) {
               businessDnaContext,
               eslamBrainContext,
               knowledgeVectorStoreId,
+              knowledgeSourceAttributionAllowed,
             ),
           persistAssistant: persistAssistantMessage,
           releaseGeneration: preparationDependencies.releaseGeneration,
