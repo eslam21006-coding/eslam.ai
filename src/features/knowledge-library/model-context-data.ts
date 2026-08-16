@@ -6,8 +6,8 @@ import {
 } from "@/features/knowledge-library/database";
 import { retrieveKnowledgeVectorStore } from "@/features/knowledge-library/openai";
 
-const KNOWLEDGE_CONFIG_TIMEOUT_MS = 2_000;
-const KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS = 1_500;
+const KNOWLEDGE_CONFIG_TIMEOUT_MS = 8_000;
+const KNOWLEDGE_PROVIDER_CHECK_TIMEOUT_MS = 5_000;
 
 /** Resolves the global Knowledge vector store from one atomic database snapshot and verifies provider existence. */
 export async function loadKnowledgeVectorStoreId() {
