@@ -19,6 +19,7 @@ export type KnowledgeSourcePage = {
   pageSize: number;
   total: number;
   totalPages: number;
+  hasIndexing: boolean;
 };
 
 type KnowledgeSourceRow = {
@@ -36,14 +37,23 @@ export async function loadKnowledgeSourcePage(page: number): Promise<KnowledgeSo
   const admin = getKnowledgeAdminClient();
   const from = (page - 1) * KNOWLEDGE_LIBRARY_PAGE_SIZE;
   const to = from + KNOWLEDGE_LIBRARY_PAGE_SIZE - 1;
-  const { data, count, error } = await admin
-    .from("knowledge_sources")
-    .select("id,title,original_filename,size_bytes,status,created_at,indexed_at", { count: "exact" })
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .range(from, to);
+  const [{ data, count, error }, { count: indexingCount, error: indexingError }] = await Promise.all([
+    admin
+      .from("knowledge_sources")
+      .select("id,title,original_filename,size_bytes,status,created_at,indexed_at", { count: "exact" })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, to),
+    admin
+      .from("knowledge_sources")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "indexing"),
+  ]);
 
   if (error) throw new Error(`Unable to load Knowledge Library sources: ${error.message}`);
+  if (indexingError) {
+    throw new Error(`Unable to load Knowledge Library indexing state: ${indexingError.message}`);
+  }
   const total = count ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / KNOWLEDGE_LIBRARY_PAGE_SIZE));
 
@@ -65,5 +75,6 @@ export async function loadKnowledgeSourcePage(page: number): Promise<KnowledgeSo
     pageSize: KNOWLEDGE_LIBRARY_PAGE_SIZE,
     total,
     totalPages,
+    hasIndexing: (indexingCount ?? 0) > 0,
   };
 }
