@@ -9,7 +9,7 @@ import {
 } from "@/features/eslam-brain/model-context-core";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
-const ESLAM_BRAIN_RETRIEVAL_TIMEOUT_MS = 8_000;
+const ESLAM_BRAIN_RETRIEVAL_TIMEOUT_MS = 2_500;
 
 const ESLAM_BRAIN_SELECT: string = `
   id,
