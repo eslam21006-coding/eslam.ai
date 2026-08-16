@@ -42,6 +42,39 @@ test("Knowledge Library automatically reconciles global provider-indexing source
   );
 });
 
+test("bounded auto-refresh rotates across indexing batches instead of starving rows after the first 100", () => {
+  assert.match(
+    autoRefreshAction,
+    /\.order\("id", \{ ascending: true \}\)[\s\S]*\.limit\(MAX_AUTO_REFRESH_SOURCES\)/,
+    "indexing batches must have a stable keyset order and remain bounded",
+  );
+  assert.match(
+    autoRefreshAction,
+    /afterId \? await query\(\)\.gt\("id", afterId\) : await query\(\)/,
+    "successive reconciliation calls must advance beyond the previous batch cursor",
+  );
+  assert.match(
+    autoRefreshAction,
+    /if \(\(first\.data\?\.length \?\? 0\) > 0 \|\| !afterId\) return first;[\s\S]*return query\(\);/,
+    "reconciliation must wrap to the beginning after reaching the end of the keyspace",
+  );
+  assert.match(
+    autoRefreshAction,
+    /nextCursor: \(count \?\? 0\) > 0 \? nextCursor : null/,
+    "the server must return a cursor only while indexing work remains",
+  );
+  assert.match(
+    autoRefreshClient,
+    /refreshKnowledgeIndexingSourcesAction\(\{ afterId \}\)/,
+    "the client poller must pass its current reconciliation cursor",
+  );
+  assert.match(
+    autoRefreshClient,
+    /afterId = result\.nextCursor/,
+    "the client poller must advance to the next bounded reconciliation batch",
+  );
+});
+
 test("Knowledge Library page exposes global indexing state and polls only while needed", () => {
   assert.match(
     knowledgeData,
@@ -60,7 +93,7 @@ test("Knowledge Library page exposes global indexing state and polls only while 
   );
   assert.match(
     autoRefreshClient,
-    /refreshKnowledgeIndexingSourcesAction\(\)/,
+    /refreshKnowledgeIndexingSourcesAction\(\{ afterId \}\)/,
     "client polling must invoke the global reconciliation action",
   );
   assert.match(
