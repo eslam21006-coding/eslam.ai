@@ -3,11 +3,16 @@ import test from "node:test";
 
 import { readSource, sliceBetween } from "./helpers/source.mjs";
 
-test("Knowledge deletion explicitly removes and confirms the vector-store attachment before deleting the OpenAI File", () => {
+test("Knowledge deletion resolves a source or global vector-store pointer before deleting the OpenAI File", () => {
   const provider = readSource("src/features/knowledge-library/openai.ts");
   const detach = sliceBetween(
     provider,
     "async function deleteKnowledgeVectorStoreFile",
+    "/** Resolves the best known vector-store cleanup pointer",
+  );
+  const resolver = sliceBetween(
+    provider,
+    "async function resolveKnowledgeCleanupVectorStoreId",
     "/** Deletes the durable OpenAI File",
   );
   const deleteFile = sliceBetween(
@@ -23,10 +28,20 @@ test("Knowledge deletion explicitly removes and confirms the vector-store attach
   assert.match(detach, /if \(remaining\)/);
   assert.match(detach, /vector-file-delete-not-confirmed/);
 
-  assert.match(deleteFile, /from\("knowledge_sources"\)/);
-  assert.match(deleteFile, /select\("vector_store_id"\)/);
-  assert.match(deleteFile, /\.eq\("openai_file_id", fileId\)/);
-  assert.match(deleteFile, /deleteKnowledgeVectorStoreFile\(source\.vector_store_id, fileId\)/);
+  assert.match(resolver, /from\("knowledge_sources"\)/);
+  assert.match(resolver, /select\("vector_store_id"\)/);
+  assert.match(resolver, /\.eq\("openai_file_id", fileId\)/);
+  assert.match(resolver, /if \(source\?\.vector_store_id\) return source\.vector_store_id/);
+  assert.match(resolver, /from\("knowledge_library_config"\)/);
+  assert.match(resolver, /\.eq\("library_key", "global"\)/);
+  assert.match(
+    resolver,
+    /return config\?\.vector_store_id && typeof config\.vector_store_id === "string"/,
+    "cleanup must fall back to the configured global store when a failed row lost its pointer",
+  );
+
+  assert.match(deleteFile, /resolveKnowledgeCleanupVectorStoreId\(fileId\)/);
+  assert.match(deleteFile, /deleteKnowledgeVectorStoreFile\(vectorStoreId, fileId\)/);
   assert.ok(
     deleteFile.indexOf("deleteKnowledgeVectorStoreFile") < deleteFile.indexOf("`/files/${encodeURIComponent(fileId)}`"),
     "File Search attachment cleanup must happen before deleting the durable OpenAI File",
