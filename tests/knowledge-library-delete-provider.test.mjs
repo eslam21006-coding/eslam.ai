@@ -1,17 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const readSource = (relativePath) =>
-  readFileSync(new URL(`../${relativePath}`, import.meta.url), "utf8");
-
-function sliceBetween(source, startMarker, endMarker) {
-  const start = source.indexOf(startMarker);
-  const end = source.indexOf(endMarker, start + startMarker.length);
-  assert.ok(start >= 0, `missing source marker: ${startMarker}`);
-  assert.ok(end > start, `missing source marker: ${endMarker}`);
-  return source.slice(start, end);
-}
+import { readSource, sliceBetween } from "./helpers/source.mjs";
 
 test("Knowledge deletion explicitly removes and confirms the vector-store attachment before deleting the OpenAI File", () => {
   const provider = readSource("src/features/knowledge-library/openai.ts");
