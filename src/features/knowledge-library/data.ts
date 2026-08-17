@@ -2,6 +2,11 @@ import "server-only";
 
 import { KNOWLEDGE_LIBRARY_PAGE_SIZE, type KnowledgeSourceStatus } from "@/features/knowledge-library/core";
 import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
+import {
+  combineYouTubeImportRows,
+  YOUTUBE_ACTIVE_IMPORT_LIMIT,
+  YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT,
+} from "@/features/youtube-sources/core";
 
 export type KnowledgeSourceKind = "document" | "youtube_transcript";
 export type KnowledgeSourceView = {
@@ -133,14 +138,14 @@ export async function loadYouTubeTranscriptImports(): Promise<YouTubeTranscriptI
       .eq("status", "processing")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(1000),
+      .limit(YOUTUBE_ACTIVE_IMPORT_LIMIT),
     admin
       .from("youtube_transcript_imports")
       .select(select)
       .eq("status", "failed")
       .order("created_at", { ascending: false })
       .order("id", { ascending: false })
-      .limit(12),
+      .limit(YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT),
   ]);
   if (processingResult.error) {
     throw new Error(`Unable to load active YouTube transcript imports: ${processingResult.error.message}`);
@@ -149,10 +154,10 @@ export async function loadYouTubeTranscriptImports(): Promise<YouTubeTranscriptI
     throw new Error(`Unable to load failed YouTube transcript imports: ${failedResult.error.message}`);
   }
 
-  return [
-    ...((processingResult.data ?? []) as YouTubeTranscriptImportRow[]),
-    ...((failedResult.data ?? []) as YouTubeTranscriptImportRow[]),
-  ].flatMap((row) => {
+  return combineYouTubeImportRows(
+    (processingResult.data ?? []) as YouTubeTranscriptImportRow[],
+    (failedResult.data ?? []) as YouTubeTranscriptImportRow[],
+  ).flatMap((row) => {
     const view = youtubeImportView(row);
     return view ? [view] : [];
   });
