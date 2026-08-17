@@ -35,26 +35,38 @@ type KnowledgeSourceRow = {
   vector_store_id: string | null;
 };
 
-/** Reads one provider search result as untrusted candidate metadata plus exact retrieved text. */
+/** Reads one provider search result as untrusted candidate metadata plus bounded exact retrieved text. */
 function parseKnowledgeSearchCandidate(result: KnowledgeVectorSearchResult): KnowledgeSearchCandidate | null {
   const fileId = typeof result.file_id === "string" ? result.file_id.trim() : "";
   const score = typeof result.score === "number" && Number.isFinite(result.score) ? result.score : -1;
   const attributes = result.attributes;
-  if (!fileId || score < KNOWLEDGE_VECTOR_SEARCH_SCORE_THRESHOLD || !attributes || typeof attributes !== "object" || Array.isArray(attributes)) {
+  if (
+    !fileId ||
+    fileId.length > 200 ||
+    score < KNOWLEDGE_VECTOR_SEARCH_SCORE_THRESHOLD ||
+    score > 1 ||
+    !attributes ||
+    typeof attributes !== "object" ||
+    Array.isArray(attributes)
+  ) {
     return null;
   }
   const sourceId = (attributes as { source_id?: unknown }).source_id;
-  if (!isInterviewUuid(sourceId)) return null;
-  if (!Array.isArray(result.content)) return null;
+  if (!isInterviewUuid(sourceId) || !Array.isArray(result.content)) return null;
 
-  const pieces = result.content.flatMap((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return [];
+  let text = "";
+  for (const item of result.content.slice(0, 8)) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const candidate = item as { type?: unknown; text?: unknown };
-    if (candidate.type !== "text" || typeof candidate.text !== "string") return [];
-    const text = candidate.text.trim();
-    return text ? [text] : [];
-  });
-  const text = pieces.join("\n\n").trim().slice(0, INTERVIEW_KNOWLEDGE_MAX_SOURCE_CHARS);
+    if (candidate.type !== "text" || typeof candidate.text !== "string") continue;
+    const piece = candidate.text.trim();
+    if (!piece) continue;
+    const separator = text ? "\n\n" : "";
+    const remaining = INTERVIEW_KNOWLEDGE_MAX_SOURCE_CHARS - text.length - separator.length;
+    if (remaining <= 0) break;
+    text += `${separator}${piece.slice(0, remaining)}`;
+    if (text.length >= INTERVIEW_KNOWLEDGE_MAX_SOURCE_CHARS) break;
+  }
   return text ? { sourceId, fileId, score, text } : null;
 }
 
@@ -64,6 +76,7 @@ async function validateKnowledgeSearchCandidates(
   rawResults: KnowledgeVectorSearchResult[],
 ): Promise<InterviewGroundingSource[]> {
   const candidates = rawResults
+    .slice(0, 12)
     .map(parseKnowledgeSearchCandidate)
     .filter((candidate): candidate is KnowledgeSearchCandidate => candidate !== null);
   if (!candidates.length) return [];
