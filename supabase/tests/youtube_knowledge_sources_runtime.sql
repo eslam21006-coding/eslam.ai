@@ -209,6 +209,25 @@ begin
   end if;
 
   begin
+    insert into public.youtube_transcript_imports (
+      created_by,
+      video_id,
+      canonical_url,
+      video_title,
+      provider_job_id
+    ) values (
+      '66666666-6666-4666-8666-666666666666',
+      'abcdefghijk',
+      'https://www.youtube.com/watch?v=abcdefghijk',
+      'Orphaned YouTube import',
+      'job_orphan'
+    );
+    raise exception 'YouTube staging unexpectedly accepted an unknown creator';
+  exception
+    when foreign_key_violation then null;
+  end;
+
+  begin
     update public.youtube_transcript_imports
     set status = 'failed', last_error_code = null
     where id = '55555555-5555-4555-8555-555555555558';
