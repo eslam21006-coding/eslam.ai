@@ -14,6 +14,7 @@ export const INTERVIEW_EXTRACTION_PROMPT_VERSION = 1;
 export const INTERVIEW_EXTRACTION_LEASE_SECONDS = 150;
 export const INTERVIEW_MAX_ANSWER_CHARS = 16_000;
 export const INTERVIEW_MAX_CONTEXT_SOURCES = 80;
+export const INTERVIEW_MAX_CONTEXT_SOURCE_CHARS = 160_000;
 export const INTERVIEW_MAX_PREVIOUS_QUESTIONS = 120;
 export const INTERVIEW_MAX_TEACHING_CANDIDATES = 8;
 const MAX_SOURCE_CONTENT = 4_000;
@@ -101,15 +102,20 @@ export const normalizeInterviewTopicKey = (value: string) => normalize(value).sl
 export const fingerprintInterviewQuestion = (question: string) =>
   createHash("sha256").update(normalize(question)).digest("hex");
 
+/** Tokenizes normalized interview text for lightweight semantic overlap checks. */
 function tokens(value: string) {
   return new Set(normalize(value).split(" ").filter((token) => token.length >= 2));
 }
+
+/** Computes Jaccard similarity between two normalized token sets. */
 function jaccard(left: Set<string>, right: Set<string>) {
   if (!left.size || !right.size) return 0;
   let intersection = 0;
   for (const token of left) if (right.has(token)) intersection += 1;
   return intersection / (left.size + right.size - intersection);
 }
+
+/** Detects exact, contained, or strongly overlapping interview-question duplicates. */
 export function areInterviewQuestionsLikelyDuplicate(candidate: string, previous: string) {
   const left = normalize(candidate);
   const right = normalize(previous);
@@ -120,6 +126,8 @@ export function areInterviewQuestionsLikelyDuplicate(candidate: string, previous
   if (shorter.length >= 48 && longer.includes(shorter)) return true;
   return jaccard(tokens(candidate), tokens(previous)) >= 0.72;
 }
+
+/** Detects suppressed topics including direct parent/child label extensions. */
 export function areInterviewTopicsLikelySimilar(candidate: string, blocked: string) {
   const left = normalizeInterviewTopicKey(candidate);
   const right = normalizeInterviewTopicKey(blocked);
@@ -127,15 +135,31 @@ export function areInterviewTopicsLikelySimilar(candidate: string, blocked: stri
   if (left === right || left.includes(right) || right.includes(left)) return true;
   return jaccard(tokens(left), tokens(right)) >= 0.75;
 }
+
+/** Bounds ordered grounding sources by count, per-source size, and aggregate source characters. */
 export function boundInterviewSources(sources: InterviewGroundingSource[]) {
-  return sources.filter((source) => source.id.trim() && source.label.trim() && source.content.trim())
-    .slice(0, INTERVIEW_MAX_CONTEXT_SOURCES)
-    .map((source) => ({
-      ...source,
-      content: source.content.trim().length <= MAX_SOURCE_CONTENT
-        ? source.content.trim()
-        : `${source.content.trim().slice(0, MAX_SOURCE_CONTENT - 1).trimEnd()}…`,
-    }));
+  const bounded: InterviewGroundingSource[] = [];
+  let remainingChars = INTERVIEW_MAX_CONTEXT_SOURCE_CHARS;
+
+  for (const source of sources) {
+    if (bounded.length >= INTERVIEW_MAX_CONTEXT_SOURCES || remainingChars <= 1) break;
+    const id = source.id.trim();
+    const label = source.label.trim();
+    const content = source.content.trim();
+    if (!id || !label || !content) continue;
+
+    const allowedChars = Math.min(MAX_SOURCE_CONTENT, remainingChars);
+    if (allowedChars <= 1) break;
+    const boundedContent = content.length <= allowedChars
+      ? content
+      : `${content.slice(0, allowedChars - 1).trimEnd()}…`;
+    if (!boundedContent.trim()) continue;
+
+    bounded.push({ ...source, id, label, content: boundedContent });
+    remainingChars -= boundedContent.length;
+  }
+
+  return bounded;
 }
 
 export const INTERVIEW_QUESTION_RESPONSE_SCHEMA = {
@@ -144,17 +168,17 @@ export const INTERVIEW_QUESTION_RESPONSE_SCHEMA = {
   required: ["decision", "question", "topic", "why_this_question", "gap_type", "groundings", "relevant_known_facts", "follow_up_recommended"],
   properties: {
     decision: { type: "string", enum: ["ask", "needs_context"] },
-    question: { anyOf: [{ type: "string", minLength: 1, maxLength: MAX_QUESTION }, { type: "null" }] },
-    topic: { anyOf: [{ type: "string", minLength: 1, maxLength: MAX_TOPIC }, { type: "null" }] },
-    why_this_question: { type: "string", minLength: 1, maxLength: MAX_WHY },
+    question: { anyOf: [{ type: "string" }, { type: "null" }] },
+    topic: { anyOf: [{ type: "string" }, { type: "null" }] },
+    why_this_question: { type: "string" },
     gap_type: { anyOf: [{ type: "string", enum: INTERVIEW_GAP_TYPES }, { type: "null" }] },
     groundings: {
       type: "array", minItems: 0, maxItems: MAX_GROUNDINGS,
       items: {
         type: "object", additionalProperties: false, required: ["source_id", "exact_excerpt"],
         properties: {
-          source_id: { type: "string", minLength: 1, maxLength: 240 },
-          exact_excerpt: { type: "string", minLength: 1, maxLength: MAX_EXCERPT },
+          source_id: { type: "string" },
+          exact_excerpt: { type: "string" },
         },
       },
     },
@@ -163,8 +187,8 @@ export const INTERVIEW_QUESTION_RESPONSE_SCHEMA = {
       items: {
         type: "object", additionalProperties: false, required: ["source_id", "fact"],
         properties: {
-          source_id: { type: "string", minLength: 1, maxLength: 240 },
-          fact: { type: "string", minLength: 1, maxLength: MAX_FACT },
+          source_id: { type: "string" },
+          fact: { type: "string" },
         },
       },
     },
@@ -186,6 +210,7 @@ export const INTERVIEW_QUESTION_INSTRUCTIONS = [
   "If the available sources cannot support a specific useful question, return decision=needs_context. Never fall back to a generic question.",
 ].join(" ");
 
+/** Serializes bounded evidence plus history and suppressions for question generation. */
 function serializeContext(context: InterviewQuestionContext) {
   return JSON.stringify({
     sources: boundInterviewSources(context.sources).map((source) => ({
@@ -199,6 +224,8 @@ function serializeContext(context: InterviewQuestionContext) {
     suppressed_topics: context.suppressedTopics.map((item) => ({ topic_key: item.topicKey, topic_label: item.topicLabel })),
   });
 }
+
+/** Builds one strict Structured Outputs request for the next grounded question. */
 export function buildInterviewQuestionRequest(model: string, context: InterviewQuestionContext, rejectionReason?: string) {
   const retry = rejectionReason
     ? `A previous candidate failed deterministic backend validation for ${rejectionReason}. Produce a materially different valid grounded result, or needs_context.`
@@ -212,12 +239,16 @@ export function buildInterviewQuestionRequest(model: string, context: InterviewQ
     text: { format: { type: "json_schema" as const, name: "interview_eslam_question", strict: true, schema: INTERVIEW_QUESTION_RESPONSE_SCHEMA as unknown as Record<string, unknown> } },
   };
 }
+
+/** Reads a required non-empty string and enforces its backend character limit. */
 function text(value: Record<string, unknown>, key: string, max: number) {
   const raw = value[key];
   if (typeof raw !== "string") return null;
   const trimmed = raw.trim();
   return trimmed && trimmed.length <= max ? trimmed : null;
 }
+
+/** Parses and independently validates grounded question output from the model. */
 export function parseInterviewQuestionOutput(outputText: string, context: InterviewQuestionContext): InterviewQuestionParseResult {
   let parsed: unknown;
   try { parsed = JSON.parse(outputText); } catch { return { ok: false, reason: "invalid-json" }; }
@@ -288,11 +319,11 @@ export const INTERVIEW_TEACHING_RESPONSE_SCHEMA = {
         semantic_layer: { type: "string", enum: TEACH_ESLAM_SEMANTIC_LAYERS.map((option) => option.value) },
         item_type: { type: "string", enum: TEACH_ESLAM_ITEM_TYPES.map((option) => option.value) },
         priority: { type: "integer", minimum: TEACH_ESLAM_LIMITS.priorityMin, maximum: TEACH_ESLAM_LIMITS.priorityMax },
-        title: { type: "string", minLength: 1, maxLength: TEACH_ESLAM_LIMITS.title },
-        content: { type: "string", minLength: 1, maxLength: TEACH_ESLAM_LIMITS.content },
-        summary: { anyOf: [{ type: "string", minLength: 1, maxLength: TEACH_ESLAM_LIMITS.summary }, { type: "null" }] },
-        topics: { type: "array", minItems: 0, maxItems: TEACH_ESLAM_LIMITS.topics, items: { type: "string", minLength: 1, maxLength: TEACH_ESLAM_LIMITS.topic } },
-        source_excerpt: { type: "string", minLength: 1, maxLength: MAX_TEACHING_EXCERPT },
+        title: { type: "string" },
+        content: { type: "string" },
+        summary: { anyOf: [{ type: "string" }, { type: "null" }] },
+        topics: { type: "array", minItems: 0, maxItems: TEACH_ESLAM_LIMITS.topics, items: { type: "string" } },
+        source_excerpt: { type: "string" },
       },
     },
   } },
@@ -308,6 +339,8 @@ export const INTERVIEW_TEACHING_INSTRUCTIONS = [
   "source_excerpt must be one exact contiguous excerpt copied only from the answer and directly support the candidate.",
   "Every result becomes a Brain draft only and requires normal Admin review. Never imply approval or publication.",
 ].join(" ");
+
+/** Builds the strict Structured Outputs request for answer-to-teaching extraction. */
 export function buildInterviewTeachingRequest(model: string, question: string, answer: string) {
   return {
     model, instructions: INTERVIEW_TEACHING_INSTRUCTIONS,
@@ -316,6 +349,8 @@ export function buildInterviewTeachingRequest(model: string, question: string, a
     text: { format: { type: "json_schema" as const, name: "interview_eslam_teachings", strict: true, schema: INTERVIEW_TEACHING_RESPONSE_SCHEMA as unknown as Record<string, unknown> } },
   };
 }
+
+/** Normalizes, deduplicates, and bounds candidate teaching topics. */
 function normalizeTopics(topics: unknown) {
   if (!Array.isArray(topics) || topics.length > TEACH_ESLAM_LIMITS.topics) return null;
   const result: string[] = [];
@@ -329,6 +364,8 @@ function normalizeTopics(topics: unknown) {
   }
   return result;
 }
+
+/** Parses extracted teachings and verifies every candidate against the raw answer. */
 export function parseInterviewTeachingCandidates(outputText: string, answer: string):
   | { ok: true; candidates: InterviewTeachingCandidate[] }
   | { ok: false; reason: string } {
@@ -358,11 +395,15 @@ export function parseInterviewTeachingCandidates(outputText: string, answer: str
   }
   return { ok: true, candidates };
 }
+
+/** Validates and trims one written Interview Eslam answer. */
 export function validateInterviewAnswer(value: unknown) {
   if (typeof value !== "string") return null;
   const answer = value.trim();
   return answer && answer.length <= INTERVIEW_MAX_ANSWER_CHARS ? answer : null;
 }
+
+/** Checks UUID-shaped identifiers before owner-scoped RPC calls. */
 export function isInterviewUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
