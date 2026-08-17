@@ -25,9 +25,29 @@ type KnowledgeSourceRow = {
   last_error_code: string | null;
   index_claim_token: string | null;
   index_lease_expires_at: string | null;
+  source_kind: string;
+  source_url: string | null;
+  external_source_id: string | null;
+  source_language: string | null;
   created_at: string;
   updated_at: string;
   indexed_at: string | null;
+};
+
+type YouTubeTranscriptImportRow = {
+  id: string;
+  created_by: string;
+  video_id: string;
+  canonical_url: string;
+  requested_language: string | null;
+  resolved_language: string | null;
+  video_title: string;
+  channel_name: string | null;
+  provider_job_id: string;
+  status: string;
+  last_error_code: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 type KnowledgeIndexClaimRow = {
@@ -67,6 +87,18 @@ type KnowledgeDatabase = {
           declared_size_bytes: number;
         };
         Update: Partial<KnowledgeSourceRow>;
+        Relationships: [];
+      };
+      youtube_transcript_imports: {
+        Row: YouTubeTranscriptImportRow;
+        Insert: Partial<YouTubeTranscriptImportRow> & {
+          created_by: string;
+          video_id: string;
+          canonical_url: string;
+          video_title: string;
+          provider_job_id: string;
+        };
+        Update: Partial<YouTubeTranscriptImportRow>;
         Relationships: [];
       };
     };
