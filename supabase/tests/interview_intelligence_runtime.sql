@@ -78,11 +78,65 @@ begin
 end; $$;
 
 do $$
+declare
+  v_session_id uuid;
+  v_question_id uuid;
+  v_answer_id uuid;
+  v_source_id uuid;
+  v_completed boolean;
+  v_claim_token uuid;
+  v_second_question_id uuid;
+begin
+  select session_id, question_id into v_session_id, v_question_id from intelligence_ids;
+  select answer_id, source_id into v_answer_id, v_source_id
+  from public.submit_interview_answer(
+    v_question_id,
+    '33333333-3333-4333-8333-333333333333',
+    'I validate the offer after repeatable manual sales before I scale paid acquisition.'
+  );
+  if v_answer_id is null or v_source_id is null then raise exception 'intelligence answer did not persist'; end if;
+
+  select public.complete_interview_session(v_session_id,'33333333-3333-4333-8333-333333333333') into v_completed;
+  if v_completed is distinct from false then raise exception 'session completion hid an unresolved interview extraction'; end if;
+  if not exists (select 1 from public.interview_sessions where id=v_session_id and status='active') then raise exception 'blocked session completion did not preserve active session'; end if;
+
+  select claim_token into v_claim_token
+  from public.claim_interview_answer_extraction(
+    v_answer_id,
+    '33333333-3333-4333-8333-333333333333',
+    'gpt-5-mini',
+    1,
+    150
+  )
+  where claim_state='claimed';
+  if v_claim_token is null then raise exception 'intelligence extraction could not be claimed'; end if;
+
+  perform * from public.complete_interview_answer_extraction(
+    v_answer_id,
+    '33333333-3333-4333-8333-333333333333',
+    v_claim_token,
+    '[]'::jsonb
+  );
+  if not exists (select 1 from public.interview_answers where id=v_answer_id and extraction_status='completed') then raise exception 'intelligence extraction did not become completed'; end if;
+
+  select public.record_interview_question(v_session_id,'33333333-3333-4333-8333-333333333333',jsonb_build_object(
+    'question','What example best shows a validated offer still failing when acquisition begins?',
+    'topic','Offer validation example','topic_key','offer validation example',
+    'why_this_question','The rule is captured but the current material has no concrete exception example.',
+    'gap_type','missing_example',
+    'grounding_sources',jsonb_build_array(jsonb_build_object('source_id','interview:intelligence:answer','source_type','interview_answer','source_label','Interview answer','exact_excerpt','repeatable manual sales')),
+    'relevant_known_facts','[]'::jsonb,'follow_up_recommended',false,'question_fingerprint',repeat('e',64),'model','gpt-5-mini','prompt_version',2
+  )) into v_second_question_id;
+  if v_second_question_id is null then raise exception 'second intelligence question was not created'; end if;
+  update intelligence_ids set question_id=v_second_question_id;
+end; $$;
+
+do $$
 declare v_session_id uuid; v_completed boolean; v_new_session_id uuid;
 begin
   select session_id into v_session_id from intelligence_ids;
   select public.complete_interview_session(v_session_id,'33333333-3333-4333-8333-333333333333') into v_completed;
-  if v_completed is distinct from true then raise exception 'owner could not complete interview session'; end if;
+  if v_completed is distinct from true then raise exception 'owner could not complete interview session after extraction resolved'; end if;
   if not exists (
     select 1 from public.interview_sessions where id=v_session_id and status='completed' and completed_at is not null
   ) then raise exception 'completed interview session did not persist completion timestamp'; end if;
@@ -101,6 +155,7 @@ begin
   select public.get_interview_intelligence_stats('33333333-3333-4333-8333-333333333333') into v_stats;
   if (v_stats->>'session_count')::integer <> 2 then raise exception 'stats did not include both interview sessions'; end if;
   if (v_stats->>'completed_session_count')::integer <> 1 then raise exception 'stats completed-session count was incorrect'; end if;
+  if (v_stats->>'answered_count')::integer <> 1 then raise exception 'stats answered count was incorrect after saved answer'; end if;
   if (v_stats->>'skipped_count')::integer <> 1 then raise exception 'session completion did not flow into skipped analytics'; end if;
 end; $$;
 
