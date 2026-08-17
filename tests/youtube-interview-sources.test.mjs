@@ -29,7 +29,7 @@ test("YouTube language hints and transcript artifacts are bounded", async () => 
   assert.equal(buildYouTubeTranscriptArtifact({ title: "Too big", channelName: null, canonicalUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", language: "en", transcript: "x".repeat(YOUTUBE_TRANSCRIPT_MAX_CHARS + 1) }), null);
 });
 
-test("YouTube provider boundary is server-only, key-protected, bounded, and native-transcript only", () => {
+test("YouTube provider boundary is server-only, key-protected, byte-bounded, and native-transcript only", () => {
   const provider = readSource("src/features/youtube-sources/provider.ts");
   assert.match(provider, /^import "server-only";/m);
   assert.match(provider, /process\.env\.SUPADATA_API_KEY/);
@@ -38,6 +38,12 @@ test("YouTube provider boundary is server-only, key-protected, bounded, and nati
   assert.match(provider, /mode: "native"/);
   assert.match(provider, /response\.status === 206/);
   assert.match(provider, /\/transcript\/\$\{encodeURIComponent\(jobId\.trim\(\)\)\}/);
+  assert.match(provider, /PROVIDER_MAX_RESPONSE_BYTES = YOUTUBE_TRANSCRIPT_MAX_BYTES \* 2/);
+  assert.match(provider, /response\.headers\.get\("content-length"\)/);
+  assert.match(provider, /response\.body\.getReader\(\)/);
+  assert.match(provider, /receivedBytes > PROVIDER_MAX_RESPONSE_BYTES/);
+  assert.match(provider, /JSON\.parse\(body\)/);
+  assert.doesNotMatch(provider, /response\.json\(\)/);
   assert.match(provider, /raw\.content\.length > PROVIDER_MAX_SEGMENTS/);
   assert.match(provider, /normalized\.length > remaining/);
   assert.match(provider, /transcript-too-large/);
@@ -89,19 +95,51 @@ test("Active YouTube jobs are loaded independently from bounded failed history",
   assert.match(loader, /processingResult\.data[\s\S]*failedResult\.data/);
 });
 
+test("Knowledge page degrades only the optional YouTube staging cards when that read fails", () => {
+  const page = readSource("src/app/admin/knowledge/page.tsx");
+  assert.match(page, /async function loadYouTubeTranscriptImportsSafely\(\)/);
+  assert.match(page, /loadYouTubeTranscriptImports\(\)/);
+  assert.match(page, /YouTube transcript imports unavailable; continuing without staging cards/);
+  assert.match(page, /return \[\];/);
+  assert.match(page, /loadKnowledgeSourcePage\(pageNumber\)[\s\S]*loadYouTubeTranscriptImportsSafely\(\)/);
+});
+
+test("Provider errors are isolated from Knowledge persistence failures and duplicate lookup failures are observable", () => {
+  const actions = readSource("src/features/youtube-sources/actions.ts");
+  assert.match(actions, /YouTube Knowledge duplicate lookup failed/);
+  const importAction = actions.slice(actions.indexOf("export async function importYouTubeSourceAction"), actions.indexOf("export async function refreshYouTubeTranscriptImportAction"));
+  assert.match(importAction, /try \{[\s\S]*fetchYouTubeProviderMetadata[\s\S]*startYouTubeProviderTranscript[\s\S]*\} catch \(error\) \{[\s\S]*return providerFailure\(error\);[\s\S]*\}/);
+  assert.ok(importAction.indexOf("materializeYouTubeTranscript") > importAction.indexOf("return providerFailure(error)"));
+  const refreshAction = actions.slice(actions.indexOf("export async function refreshYouTubeTranscriptImportAction"));
+  assert.match(refreshAction, /try \{[\s\S]*pollYouTubeProviderTranscript[\s\S]*\} catch \(providerError\)/);
+  assert.ok(refreshAction.indexOf("materializeYouTubeTranscript") > refreshAction.indexOf("catch (providerError)"));
+});
+
+test("YouTube importer exhaustively types action result errors", () => {
+  const importer = readSource("src/features/youtube-sources/importer.tsx");
+  assert.match(importer, /type YouTubeActionResult = YouTubeImportResult \| YouTubeImportRefreshResult/);
+  assert.match(importer, /type YouTubeActionError = Extract<YouTubeActionResult, \{ ok: false \}>\["error"\]/);
+  assert.match(importer, /Record<YouTubeActionError, string>/);
+  assert.match(importer, /function messageForResult\(result: YouTubeActionResult\)/);
+});
+
 test("Task 27 migrations keep YouTube staging and provenance service-only and cover its creator FK", () => {
   const migration = readSource("supabase/migrations/20260817183000_add_youtube_knowledge_sources.sql");
   const indexMigration = readSource("supabase/migrations/20260817184500_index_youtube_import_created_by.sql");
+  const runtime = readSource("supabase/tests/youtube_knowledge_sources_runtime.sql");
   assert.match(migration, /add column source_kind text not null default 'document'/);
   assert.match(migration, /source_kind in \('document', 'youtube_transcript'\)/);
   assert.match(migration, /knowledge_sources_youtube_video_unique_idx/);
   assert.match(migration, /create table public\.youtube_transcript_imports/);
+  assert.match(migration, /created_by uuid not null references auth\.users\(id\) on delete restrict/);
   assert.match(migration, /alter table public\.youtube_transcript_imports enable row level security/);
   assert.match(migration, /revoke all on table public\.youtube_transcript_imports from public, anon, authenticated, service_role/);
   assert.match(migration, /grant select, insert, update, delete on table public\.youtube_transcript_imports to service_role/);
   assert.doesNotMatch(migration, /security definer/i);
   assert.match(indexMigration, /youtube_transcript_imports_created_by_idx/);
   assert.match(indexMigration, /\(created_by\)/);
+  assert.match(runtime, /foreign_key_violation/);
+  assert.match(runtime, /YouTube staging unexpectedly accepted an unknown creator/);
 });
 
 test("Admin Knowledge UI exposes YouTube import without implying external material is Eslam teaching", () => {
