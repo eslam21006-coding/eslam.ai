@@ -13,6 +13,11 @@ import {
   type InterviewQuestionHistoryItem,
   type InterviewQuestionStatus,
 } from "@/features/interview-eslam/core";
+import {
+  buildInterviewCoverage,
+  type InterviewCoverage,
+  type InterviewCoverageAggregate,
+} from "@/features/interview-eslam/intelligence-core";
 import { getInterviewAdminClient } from "@/features/interview-eslam/database";
 import { requireAdmin } from "@/lib/auth/admin";
 import type { Json } from "@/types/database";
@@ -33,10 +38,42 @@ export type InterviewExtractionIssue = {
   errorCode: string | null;
   createdAt: string;
 };
+export type InterviewHistoryEntry = {
+  id: string;
+  sessionId: string;
+  ordinal: number;
+  question: string;
+  topic: string;
+  gapType: string;
+  status: InterviewQuestionStatus;
+  createdAt: string;
+};
+export type InterviewSessionSummary = {
+  id: string;
+  status: string;
+  focusTopic: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
 export type InterviewPageState = {
   sessionId: string | null;
+  activeSession: InterviewSessionSummary | null;
   currentQuestion: InterviewCurrentQuestion | null;
   counts: { answered: number; skipped: number; notRelevant: number };
+  analytics: {
+    answered: number;
+    skipped: number;
+    notRelevant: number;
+    distinctAnsweredTopics: number;
+    sessions: number;
+    completedSessions: number;
+    exploredDomains: number;
+    totalDomains: number;
+  };
+  coverage: InterviewCoverage;
+  recentHistory: InterviewHistoryEntry[];
+  recentSessions: InterviewSessionSummary[];
   extractionIssue: InterviewExtractionIssue | null;
 };
 type BrainItemRow = {
@@ -56,6 +93,15 @@ type BrainVersionRow = {
   summary: string | null;
   topics: string[];
 };
+type ParsedInterviewStats = {
+  answered: number;
+  skipped: number;
+  notRelevant: number;
+  distinctAnsweredTopics: number;
+  sessions: number;
+  completedSessions: number;
+  aggregates: InterviewCoverageAggregate[];
+};
 
 /** Logs bounded diagnostic metadata for Interview Eslam data-load failures. */
 function logInterviewLoadError(stage: string, error: { code?: string; message?: string } | null) {
@@ -71,68 +117,165 @@ function isQuestionStatus(value: string): value is InterviewQuestionStatus {
   return ["asked", "answered", "skipped", "not_relevant"].includes(value);
 }
 
-/** Loads the current persisted Interview Eslam workbench for the authenticated Admin. */
+/** Parses the service-only aggregate RPC without trusting malformed database JSON. */
+function parseInterviewStats(value: Json | null): ParsedInterviewStats {
+  const empty: ParsedInterviewStats = {
+    answered: 0,
+    skipped: 0,
+    notRelevant: 0,
+    distinctAnsweredTopics: 0,
+    sessions: 0,
+    completedSessions: 0,
+    aggregates: [],
+  };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return empty;
+  const record = value as Record<string, Json | undefined>;
+  const integer = (key: string) => {
+    const candidate = record[key];
+    return typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0 ? candidate : 0;
+  };
+  const rawAggregates = record.gap_status_counts;
+  const aggregates: InterviewCoverageAggregate[] = [];
+  if (Array.isArray(rawAggregates)) {
+    for (const raw of rawAggregates) {
+      if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+      const item = raw as Record<string, Json | undefined>;
+      if (typeof item.gap_type !== "string" || typeof item.status !== "string" || typeof item.count !== "number") continue;
+      if (!Number.isSafeInteger(item.count) || item.count <= 0) continue;
+      aggregates.push({ gapType: item.gap_type, status: item.status, count: item.count });
+    }
+  }
+  return {
+    answered: integer("answered_count"),
+    skipped: integer("skipped_count"),
+    notRelevant: integer("not_relevant_count"),
+    distinctAnsweredTopics: integer("distinct_answered_topics"),
+    sessions: integer("session_count"),
+    completedSessions: integer("completed_session_count"),
+    aggregates,
+  };
+}
+
+/** Maps a persisted session row into stable Admin UI data. */
+function sessionSummary(row: {
+  id: string; status: string; focus_topic: string | null; created_at: string; updated_at: string; completed_at: string | null;
+}): InterviewSessionSummary {
+  return {
+    id: row.id,
+    status: row.status,
+    focusTopic: row.focus_topic,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at,
+  };
+}
+
+/** Loads the current workbench plus exact aggregate progress and recent Interview history. */
 export async function loadInterviewPageState(): Promise<InterviewPageState> {
   const authorization = await requireAdmin();
+  const userId = authorization.userId;
   const admin = getInterviewAdminClient();
-  const empty = (): InterviewPageState => ({
-    sessionId: null,
-    currentQuestion: null,
-    counts: { answered: 0, skipped: 0, notRelevant: 0 },
-    extractionIssue: null,
-  });
-  const { data: session, error: sessionError } = await admin
-    .from("interview_sessions")
-    .select("id")
-    .eq("created_by", authorization.userId)
-    .eq("status", "active")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (sessionError) {
-    logInterviewLoadError("session", sessionError);
-    return empty();
-  }
-  if (!session) return empty();
-
-  const [questionResult, historyResult, extractionResult] = await Promise.all([
+  const [sessionResult, statsResult, sessionsResult, recentQuestionsResult] = await Promise.all([
+    admin.from("interview_sessions")
+      .select("id,status,focus_topic,created_at,updated_at,completed_at")
+      .eq("created_by", userId).eq("status", "active")
+      .order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    admin.rpc("get_interview_intelligence_stats", { p_created_by: userId }),
+    admin.from("interview_sessions")
+      .select("id,status,focus_topic,created_at,updated_at,completed_at")
+      .eq("created_by", userId).order("created_at", { ascending: false }).limit(8),
     admin.from("interview_questions")
-      .select("id,ordinal,question,topic,why_this_question,gap_type,follow_up_recommended,created_at")
-      .eq("session_id", session.id).eq("created_by", authorization.userId).eq("status", "asked")
-      .limit(1).maybeSingle(),
-    admin.from("interview_questions").select("status")
-      .eq("session_id", session.id).eq("created_by", authorization.userId).limit(1000),
-    admin.from("interview_answers").select("id,extraction_status,extraction_last_error_code,created_at")
-      .eq("session_id", session.id).eq("created_by", authorization.userId)
-      .in("extraction_status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      .select("id,session_id,ordinal,question,topic,gap_type,status,created_at")
+      .eq("created_by", userId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(24),
   ]);
-  if (questionResult.error) logInterviewLoadError("current-question", questionResult.error);
-  if (historyResult.error) logInterviewLoadError("history-counts", historyResult.error);
-  if (extractionResult.error) logInterviewLoadError("extraction-issue", extractionResult.error);
+  if (sessionResult.error) logInterviewLoadError("session", sessionResult.error);
+  if (statsResult.error) logInterviewLoadError("intelligence-stats", statsResult.error);
+  if (sessionsResult.error) logInterviewLoadError("session-history", sessionsResult.error);
+  if (recentQuestionsResult.error) logInterviewLoadError("question-history-ui", recentQuestionsResult.error);
+
+  const stats = parseInterviewStats(statsResult.error ? null : statsResult.data);
+  const coverage = buildInterviewCoverage(stats.aggregates);
+  const activeSession = sessionResult.error || !sessionResult.data ? null : sessionSummary(sessionResult.data);
+  const recentSessions = sessionsResult.error ? [] : (sessionsResult.data ?? []).map(sessionSummary);
+  const recentHistory: InterviewHistoryEntry[] = (recentQuestionsResult.error ? [] : recentQuestionsResult.data ?? [])
+    .filter((row) => isQuestionStatus(row.status))
+    .map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      ordinal: row.ordinal,
+      question: row.question,
+      topic: row.topic,
+      gapType: row.gap_type,
+      status: row.status as InterviewQuestionStatus,
+      createdAt: row.created_at,
+    }));
+
+  let currentQuestion: InterviewCurrentQuestion | null = null;
+  let extractionIssue: InterviewExtractionIssue | null = null;
   const counts = { answered: 0, skipped: 0, notRelevant: 0 };
-  if (!historyResult.error) for (const row of historyResult.data ?? []) {
-    if (row.status === "answered") counts.answered += 1;
-    if (row.status === "skipped") counts.skipped += 1;
-    if (row.status === "not_relevant") counts.notRelevant += 1;
+  if (activeSession) {
+    const [questionResult, historyResult, extractionResult] = await Promise.all([
+      admin.from("interview_questions")
+        .select("id,ordinal,question,topic,why_this_question,gap_type,follow_up_recommended,created_at")
+        .eq("session_id", activeSession.id).eq("created_by", userId).eq("status", "asked")
+        .limit(1).maybeSingle(),
+      admin.from("interview_questions").select("status")
+        .eq("session_id", activeSession.id).eq("created_by", userId).limit(1000),
+      admin.from("interview_answers").select("id,extraction_status,extraction_last_error_code,created_at")
+        .eq("session_id", activeSession.id).eq("created_by", userId)
+        .in("extraction_status", ["pending", "failed"]).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    ]);
+    if (questionResult.error) logInterviewLoadError("current-question", questionResult.error);
+    if (historyResult.error) logInterviewLoadError("history-counts", historyResult.error);
+    if (extractionResult.error) logInterviewLoadError("extraction-issue", extractionResult.error);
+    if (!historyResult.error) for (const row of historyResult.data ?? []) {
+      if (row.status === "answered") counts.answered += 1;
+      if (row.status === "skipped") counts.skipped += 1;
+      if (row.status === "not_relevant") counts.notRelevant += 1;
+    }
+    const question = questionResult.error ? null : questionResult.data;
+    if (question) {
+      currentQuestion = {
+        id: question.id,
+        ordinal: question.ordinal,
+        question: question.question,
+        topic: question.topic,
+        whyThisQuestion: question.why_this_question,
+        gapType: question.gap_type,
+        followUpRecommended: question.follow_up_recommended,
+        createdAt: question.created_at,
+      };
+    }
+    const extraction = extractionResult.error ? null : extractionResult.data;
+    if (extraction && (extraction.extraction_status === "pending" || extraction.extraction_status === "failed")) {
+      extractionIssue = {
+        answerId: extraction.id,
+        status: extraction.extraction_status,
+        errorCode: extraction.extraction_last_error_code,
+        createdAt: extraction.created_at,
+      };
+    }
   }
-  const question = questionResult.error ? null : questionResult.data;
-  const extraction = extractionResult.error ? null : extractionResult.data;
+
   return {
-    sessionId: session.id,
-    currentQuestion: question ? {
-      id: question.id,
-      ordinal: question.ordinal,
-      question: question.question,
-      topic: question.topic,
-      whyThisQuestion: question.why_this_question,
-      gapType: question.gap_type,
-      followUpRecommended: question.follow_up_recommended,
-      createdAt: question.created_at,
-    } : null,
+    sessionId: activeSession?.id ?? null,
+    activeSession,
+    currentQuestion,
     counts,
-    extractionIssue: extraction && (extraction.extraction_status === "pending" || extraction.extraction_status === "failed")
-      ? { answerId: extraction.id, status: extraction.extraction_status, errorCode: extraction.extraction_last_error_code, createdAt: extraction.created_at }
-      : null,
+    analytics: {
+      answered: stats.answered,
+      skipped: stats.skipped,
+      notRelevant: stats.notRelevant,
+      distinctAnsweredTopics: stats.distinctAnsweredTopics,
+      sessions: stats.sessions,
+      completedSessions: stats.completedSessions,
+      exploredDomains: coverage.exploredCount,
+      totalDomains: coverage.totalCount,
+    },
+    coverage,
+    recentHistory,
+    recentSessions,
+    extractionIssue,
   };
 }
 
@@ -239,10 +382,25 @@ export async function loadInterviewQuestionContext(userId: string): Promise<Inte
     loadBusinessDnaSources(userId), loadBrainSources(userId), loadInterviewHistory(userId),
   ]);
   return {
-    // Previous answers come first so the global prompt cap cannot erase the evidence needed for grounded follow-ups.
     sources: [...interviewHistory.answerSources, ...businessDnaSources, ...brainSources],
     previousQuestions: interviewHistory.history,
     suppressedTopics: interviewHistory.suppressedTopics,
+  };
+}
+
+/** Loads session focus and exact coverage aggregates used only to prioritize grounded candidate generation. */
+export async function loadInterviewGenerationIntelligence(userId: string, sessionId: string) {
+  const admin = getInterviewAdminClient();
+  const [sessionResult, statsResult] = await Promise.all([
+    admin.from("interview_sessions").select("focus_topic").eq("id", sessionId).eq("created_by", userId).eq("status", "active").maybeSingle(),
+    admin.rpc("get_interview_intelligence_stats", { p_created_by: userId }),
+  ]);
+  if (sessionResult.error) logInterviewLoadError("generation-focus", sessionResult.error);
+  if (statsResult.error) logInterviewLoadError("generation-stats", statsResult.error);
+  const stats = parseInterviewStats(statsResult.error ? null : statsResult.data);
+  return {
+    focusTopic: sessionResult.error ? null : sessionResult.data?.focus_topic ?? null,
+    coverage: buildInterviewCoverage(stats.aggregates),
   };
 }
 
