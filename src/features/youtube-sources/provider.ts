@@ -88,10 +88,16 @@ function normalizeTranscript(payload: unknown): YouTubeProviderTranscript | null
   let transcript = "";
   if (typeof raw.content === "string") {
     transcript = raw.content.trim();
+    if (transcript.length > YOUTUBE_TRANSCRIPT_MAX_CHARS) {
+      throw new YouTubeTranscriptProviderError("transcript-too-large", "Transcript exceeds the local safety limit");
+    }
   } else if (Array.isArray(raw.content)) {
+    if (raw.content.length > PROVIDER_MAX_SEGMENTS) {
+      throw new YouTubeTranscriptProviderError("transcript-too-large", "Transcript contains too many segments");
+    }
     const parts: string[] = [];
     let usedChars = 0;
-    for (const item of raw.content.slice(0, PROVIDER_MAX_SEGMENTS)) {
+    for (const item of raw.content) {
       if (!item || typeof item !== "object" || Array.isArray(item)) continue;
       const text = (item as { text?: unknown }).text;
       if (typeof text !== "string") continue;
@@ -99,14 +105,15 @@ function normalizeTranscript(payload: unknown): YouTubeProviderTranscript | null
       if (!normalized) continue;
       const separatorChars = parts.length ? 1 : 0;
       const remaining = YOUTUBE_TRANSCRIPT_MAX_CHARS - usedChars - separatorChars;
-      if (remaining <= 0) break;
-      const bounded = normalized.slice(0, remaining);
-      parts.push(bounded);
-      usedChars += bounded.length + separatorChars;
+      if (remaining <= 0 || normalized.length > remaining) {
+        throw new YouTubeTranscriptProviderError("transcript-too-large", "Transcript exceeds the local safety limit");
+      }
+      parts.push(normalized);
+      usedChars += normalized.length + separatorChars;
     }
     transcript = parts.join("\n").trim();
   }
-  if (!transcript || transcript.length > YOUTUBE_TRANSCRIPT_MAX_CHARS) return null;
+  if (!transcript) return null;
   const language = typeof raw.lang === "string" && raw.lang.trim().length >= 2 && raw.lang.trim().length <= 35
     ? raw.lang.trim()
     : null;
