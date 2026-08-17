@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { finalizeKnowledgeUploadAction } from "@/features/knowledge-library/actions";
-import { KNOWLEDGE_LIBRARY_BUCKET } from "@/features/knowledge-library/core";
+import { KNOWLEDGE_LIBRARY_BUCKET, type KnowledgeSourceStatus } from "@/features/knowledge-library/core";
 import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 import {
   buildYouTubeTranscriptArtifact,
@@ -25,6 +25,11 @@ import { requireAdmin } from "@/lib/auth/admin";
 const KNOWLEDGE_PATH = "/admin/knowledge";
 const INTERVIEW_PATH = "/admin/teach/interview";
 
+type ExistingYouTubeSource = {
+  sourceId: string;
+  status: KnowledgeSourceStatus;
+};
+
 function refreshYouTubeSourcePages() {
   revalidatePath(KNOWLEDGE_PATH);
   revalidatePath(INTERVIEW_PATH);
@@ -34,11 +39,12 @@ function providerFailure(error: unknown): YouTubeImportResult {
   const code = youtubeProviderErrorCode(error);
   if (code === "provider-not-configured") return { ok: false, error: "provider-not-configured" };
   if (code === "video-unavailable" || code === "transcript-unavailable") return { ok: false, error: "transcript-unavailable" };
+  if (code === "transcript-too-large") return { ok: false, error: "transcript-too-large" };
   console.error("YouTube source provider request failed", { code });
   return { ok: false, error: "provider-failed" };
 }
 
-async function existingYouTubeSource(videoId: string) {
+async function existingYouTubeSource(videoId: string): Promise<ExistingYouTubeSource | null> {
   const admin = getKnowledgeAdminClient();
   const { data, error } = await admin
     .from("knowledge_sources")
@@ -49,10 +55,18 @@ async function existingYouTubeSource(videoId: string) {
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  return {
-    sourceId: data.id,
-    state: data.status === "ready" ? "ready" as const : "indexing" as const,
-  };
+  if (!["pending", "indexing", "ready", "failed", "deleting"].includes(data.status)) {
+    throw new Error("YouTube Knowledge source returned an invalid state");
+  }
+  return { sourceId: data.id, status: data.status as KnowledgeSourceStatus };
+}
+
+function existingImportResult(source: ExistingYouTubeSource): YouTubeImportResult {
+  if (source.status === "ready") return { ok: true, state: "ready", sourceId: source.sourceId };
+  if (source.status === "pending" || source.status === "indexing") {
+    return { ok: true, state: "indexing", sourceId: source.sourceId };
+  }
+  return { ok: false, error: "source-exists" };
 }
 
 async function deleteStagingImport(importId: string) {
@@ -71,7 +85,10 @@ async function materializeYouTubeTranscript(input: {
   transcript: YouTubeProviderTranscript;
 }): Promise<YouTubeImportResult> {
   const existing = await existingYouTubeSource(input.videoId);
-  if (existing) return { ok: true, ...existing };
+  if (existing) {
+    const result = existingImportResult(existing);
+    return result.ok ? result : { ok: false, error: "index-failed" };
+  }
 
   const artifact = buildYouTubeTranscriptArtifact({
     title: input.metadata.title,
@@ -106,7 +123,10 @@ async function materializeYouTubeTranscript(input: {
   if (insertError) {
     if (insertError.code === "23505") {
       const raced = await existingYouTubeSource(input.videoId);
-      if (raced) return { ok: true, ...raced };
+      if (raced) {
+        const result = existingImportResult(raced);
+        return result.ok ? result : { ok: false, error: "index-failed" };
+      }
     }
     console.error("YouTube Knowledge metadata persistence failed", { code: insertError.code });
     return { ok: false, error: "storage-failed" };
@@ -139,7 +159,7 @@ async function saveProviderJob(input: {
   const admin = getKnowledgeAdminClient();
   const { data, error } = await admin
     .from("youtube_transcript_imports")
-    .upsert({
+    .insert({
       created_by: input.actorId,
       video_id: input.videoId,
       canonical_url: input.canonicalUrl,
@@ -150,12 +170,20 @@ async function saveProviderJob(input: {
       provider_job_id: input.jobId,
       status: "processing",
       last_error_code: null,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "video_id" })
+    })
     .select("id")
     .single();
-  if (error || !data?.id) throw new Error(error?.message ?? "YouTube transcript job was not persisted");
-  return data.id;
+  if (!error && data?.id) return data.id;
+
+  if (error?.code === "23505") {
+    const { data: existing, error: existingError } = await admin
+      .from("youtube_transcript_imports")
+      .select("id,status")
+      .eq("video_id", input.videoId)
+      .maybeSingle();
+    if (!existingError && existing?.id && existing.status === "processing") return existing.id;
+  }
+  throw new Error(error?.message ?? "YouTube transcript job was not persisted");
 }
 
 /** Starts a bounded native-caption import and materializes synchronous transcripts into the normal Knowledge lifecycle. */
@@ -172,7 +200,7 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
   }
 
   const existing = await existingYouTubeSource(validated.videoId).catch(() => null);
-  if (existing) return { ok: true, ...existing };
+  if (existing) return existingImportResult(existing);
 
   const admin = getKnowledgeAdminClient();
   const { data: staged, error: stagedError } = await admin
@@ -187,9 +215,8 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
   if (staged?.status === "processing") return { ok: true, state: "processing", importId: staged.id };
   if (staged?.id) await deleteStagingImport(staged.id);
 
-  let metadata: YouTubeProviderMetadata;
   try {
-    metadata = await fetchYouTubeProviderMetadata(validated.videoId);
+    const metadata = await fetchYouTubeProviderMetadata(validated.videoId);
     const transcript = await startYouTubeProviderTranscript(validated.canonicalUrl, validated.requestedLanguage);
     if (transcript.state === "unavailable") return { ok: false, error: "transcript-unavailable" };
     if (transcript.state === "processing") {
@@ -216,9 +243,9 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
   }
 }
 
-/** Polls a persisted async provider job and converts a completed transcript into a normal Knowledge source. */
+/** Polls a global Admin-visible async provider job and preserves the original import actor as durable provenance. */
 export async function refreshYouTubeTranscriptImportAction(input: unknown): Promise<YouTubeImportRefreshResult> {
-  const authorization = await requireAdmin();
+  await requireAdmin();
   const importId = validateYouTubeImportId(input);
   if (!importId) return { ok: false, error: "invalid-request" };
   const admin = getKnowledgeAdminClient();
@@ -226,7 +253,6 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
     .from("youtube_transcript_imports")
     .select("id,created_by,video_id,canonical_url,video_title,channel_name,provider_job_id,status")
     .eq("id", importId)
-    .eq("created_by", authorization.userId)
     .maybeSingle();
   if (error || !staged) return { ok: false, error: "not-found" };
   if (staged.status === "failed") return { ok: false, error: "provider-failed" };
@@ -240,13 +266,13 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
         status: "failed",
         last_error_code: code,
         updated_at: new Date().toISOString(),
-      }).eq("id", importId).eq("created_by", authorization.userId).eq("status", "processing");
+      }).eq("id", importId).eq("status", "processing");
       refreshYouTubeSourcePages();
       return { ok: false, error: result.state === "unavailable" ? "transcript-unavailable" : "provider-failed" };
     }
 
     const materialized = await materializeYouTubeTranscript({
-      actorId: authorization.userId,
+      actorId: staged.created_by,
       videoId: staged.video_id,
       canonicalUrl: staged.canonical_url,
       metadata: { title: staged.video_title, channelName: staged.channel_name },
@@ -264,6 +290,7 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
   } catch (providerError) {
     const code = youtubeProviderErrorCode(providerError);
     if (code === "provider-not-configured") return { ok: false, error: "provider-not-configured" };
+    if (code === "transcript-too-large") return { ok: false, error: "transcript-too-large" };
     console.error("YouTube transcript job refresh failed", { importId, code });
     return { ok: false, error: "provider-failed" };
   }
