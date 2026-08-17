@@ -6,7 +6,7 @@ import {
   type InterviewQuestionHistoryItem,
 } from "./core.ts";
 
-export const INTERVIEW_INTELLIGENCE_PROMPT_VERSION = 2;
+export const INTERVIEW_INTELLIGENCE_PROMPT_VERSION = 3;
 export const INTERVIEW_SEMANTIC_DUPLICATE_THRESHOLD = 0.88;
 export const INTERVIEW_SEMANTIC_HISTORY_LIMIT = 80;
 export const INTERVIEW_MAX_FOCUS_CHARS = 120;
