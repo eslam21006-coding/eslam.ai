@@ -48,7 +48,16 @@ type BrainItemRow = {
   approved_version_number: number | null;
   published_version_number: number | null;
 };
+type BrainVersionRow = {
+  item_id: string;
+  version_number: number;
+  title: string;
+  content: string;
+  summary: string | null;
+  topics: string[];
+};
 
+/** Logs bounded diagnostic metadata for Interview Eslam data-load failures. */
 function logInterviewLoadError(stage: string, error: { code?: string; message?: string } | null) {
   console.error("Interview Eslam load failed", {
     stage,
@@ -56,6 +65,8 @@ function logInterviewLoadError(stage: string, error: { code?: string; message?: 
     message: error?.message ?? "Unknown Interview Eslam load error",
   });
 }
+
+/** Narrows persisted strings to supported interview-question lifecycle states. */
 function isQuestionStatus(value: string): value is InterviewQuestionStatus {
   return ["asked", "answered", "skipped", "not_relevant"].includes(value);
 }
@@ -125,6 +136,7 @@ export async function loadInterviewPageState(): Promise<InterviewPageState> {
   };
 }
 
+/** Loads non-empty Business DNA fields as exact grounding sources. */
 async function loadBusinessDnaSources(userId: string): Promise<InterviewGroundingSource[]> {
   const admin = getInterviewAdminClient();
   const { data, error } = await admin.from("business_dna").select(BUSINESS_DNA_SELECT).eq("user_id", userId).maybeSingle();
@@ -136,6 +148,7 @@ async function loadBusinessDnaSources(userId: string): Promise<InterviewGroundin
   });
 }
 
+/** Loads prioritized Brain items and resolves all required versions in one batched query. */
 async function loadBrainSources(userId: string): Promise<InterviewGroundingSource[]> {
   const admin = getInterviewAdminClient();
   const { data, error } = await admin.from("eslam_brain_items")
@@ -146,38 +159,50 @@ async function loadBrainSources(userId: string): Promise<InterviewGroundingSourc
   const rank: Record<string, number> = { published: 0, approved: 1, draft: 2 };
   const items = ((data ?? []) as BrainItemRow[]).sort((a, b) =>
     (rank[a.status] ?? 9) - (rank[b.status] ?? 9) || a.priority - b.priority || a.id.localeCompare(b.id));
-  const results = await Promise.all(items.map(async (item) => {
-    const bound = item.status === "published" ? item.published_version_number : item.status === "approved" ? item.approved_version_number : null;
-    if (bound !== null) {
-      const result = await admin.from("eslam_brain_versions").select("version_number,title,content,summary,topics")
-        .eq("item_id", item.id).eq("version_number", bound).maybeSingle();
-      return { item, ...result };
-    }
-    const result = await admin.from("eslam_brain_versions").select("version_number,title,content,summary,topics")
-      .eq("item_id", item.id).order("version_number", { ascending: false }).limit(1).maybeSingle();
-    return { item, ...result };
-  }));
+  if (!items.length) return [];
+
+  const { data: versionsData, error: versionsError } = await admin.from("eslam_brain_versions")
+    .select("item_id,version_number,title,content,summary,topics")
+    .in("item_id", items.map((item) => item.id))
+    .order("version_number", { ascending: false });
+  if (versionsError) { logInterviewLoadError("brain-versions", versionsError); return []; }
+
+  const versionsByItem = new Map<string, BrainVersionRow[]>();
+  for (const version of (versionsData ?? []) as BrainVersionRow[]) {
+    const versions = versionsByItem.get(version.item_id);
+    if (versions) versions.push(version);
+    else versionsByItem.set(version.item_id, [version]);
+  }
+
   const sources: InterviewGroundingSource[] = [];
-  for (const result of results) {
-    if (result.error) { logInterviewLoadError(`brain-version:${result.item.id}`, result.error); continue; }
-    const version = result.data;
-    if (!version || !["draft", "approved", "published"].includes(result.item.status) || !version.title?.trim() || !version.content?.trim()) continue;
+  for (const item of items) {
+    const bound = item.status === "published"
+      ? item.published_version_number
+      : item.status === "approved"
+        ? item.approved_version_number
+        : null;
+    const versions = versionsByItem.get(item.id) ?? [];
+    const version = bound !== null
+      ? versions.find((candidate) => candidate.version_number === bound) ?? null
+      : versions[0] ?? null;
+    if (!version || !version.title?.trim() || !version.content?.trim()) continue;
     sources.push({
-      id: `brain:${result.item.id}:v${version.version_number}`,
+      id: `brain:${item.id}:v${version.version_number}`,
       type: "brain",
-      label: `${result.item.status} Brain · ${version.title.trim()}`,
+      label: `${item.status} Brain · ${version.title.trim()}`,
       content: [
         `Title: ${version.title.trim()}`,
         `Teaching: ${version.content.trim()}`,
         version.summary?.trim() ? `Summary: ${version.summary.trim()}` : "",
         Array.isArray(version.topics) && version.topics.length ? `Topics: ${version.topics.join(", ")}` : "",
       ].filter(Boolean).join("\n"),
-      lifecycleStatus: result.item.status as "draft" | "approved" | "published",
+      lifecycleStatus: item.status as "draft" | "approved" | "published",
     });
   }
   return sources;
 }
 
+/** Loads prior interview questions, answer evidence, and durable topic suppressions. */
 async function loadInterviewHistory(userId: string) {
   const admin = getInterviewAdminClient();
   const { data: questions, error: questionsError } = await admin.from("interview_questions")
@@ -208,7 +233,7 @@ async function loadInterviewHistory(userId: string) {
   };
 }
 
-/** Loads bounded sources and exclusions for the Grounded Question Contract. */
+/** Loads ordered sources and exclusions for the Grounded Question Contract. */
 export async function loadInterviewQuestionContext(userId: string): Promise<InterviewQuestionContext> {
   const [businessDnaSources, brainSources, interviewHistory] = await Promise.all([
     loadBusinessDnaSources(userId), loadBrainSources(userId), loadInterviewHistory(userId),
@@ -222,6 +247,7 @@ export async function loadInterviewQuestionContext(userId: string): Promise<Inte
 }
 
 export type InterviewAnswerForExtraction = { id: string; questionId: string; question: string; answer: string; extractionStatus: string };
+
 /** Loads one owner-scoped raw answer and its immutable question for extraction/retry. */
 export async function loadInterviewAnswerForExtraction(answerId: string, userId: string): Promise<InterviewAnswerForExtraction | null> {
   const admin = getInterviewAdminClient();
