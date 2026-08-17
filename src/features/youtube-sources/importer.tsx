@@ -1,7 +1,8 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { FormEvent, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
+import type { FormEvent } from "react";
 
 import type { YouTubeTranscriptImportView } from "@/features/knowledge-library/data";
 import {
