@@ -124,7 +124,8 @@ export function areInterviewTopicsLikelySimilar(candidate: string, blocked: stri
   const left = normalizeInterviewTopicKey(candidate);
   const right = normalizeInterviewTopicKey(blocked);
   if (!left || !right) return false;
-  return left === right || jaccard(tokens(left), tokens(right)) >= 0.75;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+  return jaccard(tokens(left), tokens(right)) >= 0.75;
 }
 export function boundInterviewSources(sources: InterviewGroundingSource[]) {
   return sources.filter((source) => source.id.trim() && source.label.trim() && source.content.trim())
