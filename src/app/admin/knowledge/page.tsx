@@ -16,6 +16,18 @@ function parsePage(value: string | string[] | undefined) {
   return Number.isSafeInteger(page) && page > 0 ? page : 1;
 }
 
+/** Keeps the existing Knowledge Library available if the optional YouTube staging read is temporarily unavailable. */
+async function loadYouTubeTranscriptImportsSafely() {
+  try {
+    return await loadYouTubeTranscriptImports();
+  } catch (error) {
+    console.error("YouTube transcript imports unavailable; continuing without staging cards", {
+      message: error instanceof Error ? error.message : "Unknown YouTube import load error",
+    });
+    return [];
+  }
+}
+
 /** Admin Knowledge Library: durable references searched on demand rather than converted into Brain teachings. */
 export default async function KnowledgeLibraryPage({
   searchParams,
@@ -27,7 +39,7 @@ export default async function KnowledgeLibraryPage({
   const pageNumber = parsePage(params.page);
   const [sourcePage, youtubeImports] = await Promise.all([
     loadKnowledgeSourcePage(pageNumber),
-    loadYouTubeTranscriptImports(),
+    loadYouTubeTranscriptImportsSafely(),
   ]);
 
   return (
