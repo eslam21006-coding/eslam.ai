@@ -98,6 +98,12 @@ begin
 end;
 $$;
 
+-- The applied retrieval function intentionally fails closed while an indexing row still points
+-- at the configured vector store. Reclaiming an expired Knowledge claim retains its provider
+-- IDs until cleanup completes, so retrieval remains disabled during that reconciliation window.
+comment on function public.get_knowledge_retrieval_state() is
+  'Returns the configured Knowledge vector store only when its ready sources are safe to search. Reclaimed or expired indexing claims that retain a pointer to the configured store keep retrieval fail-closed until reconciliation completes.';
+
 create index if not exists knowledge_sources_created_idx
   on public.knowledge_sources (created_at desc, id desc);
 
