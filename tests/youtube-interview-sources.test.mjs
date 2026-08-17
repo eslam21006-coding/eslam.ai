@@ -38,6 +38,10 @@ test("YouTube provider boundary is server-only, key-protected, bounded, and nati
   assert.match(provider, /mode: "native"/);
   assert.match(provider, /response\.status === 206/);
   assert.match(provider, /\/transcript\/\$\{encodeURIComponent\(jobId\.trim\(\)\)\}/);
+  assert.match(provider, /raw\.content\.length > PROVIDER_MAX_SEGMENTS/);
+  assert.match(provider, /normalized\.length > remaining/);
+  assert.match(provider, /transcript-too-large/);
+  assert.doesNotMatch(provider, /normalized\.slice\(0, remaining\)/);
   assert.doesNotMatch(provider, /mode: "auto"|mode: "generate"/);
 });
 
@@ -51,11 +55,26 @@ test("YouTube import materializes into the existing private Knowledge lifecycle 
   assert.match(actions, /\.upload\(storagePath, transcriptBlob/);
   assert.match(actions, /finalizeKnowledgeUploadAction\(\{ sourceId \}\)/);
   assert.match(actions, /youtube_transcript_imports/);
+  assert.match(actions, /code === "transcript-too-large"/);
   assert.doesNotMatch(actions, /eslam_brain_items|eslam_brain_versions|create_teach_eslam|publish/i);
 });
 
-test("Task 27 migration keeps YouTube staging and provenance service-only", () => {
+test("Async YouTube job races preserve the first audit actor and remain globally operable by Admin", () => {
+  const actions = readSource("src/features/youtube-sources/actions.ts");
+  const saveJob = actions.slice(actions.indexOf("async function saveProviderJob"), actions.indexOf("export async function importYouTubeSourceAction"));
+  const refreshJob = actions.slice(actions.indexOf("export async function refreshYouTubeTranscriptImportAction"));
+  assert.match(saveJob, /\.insert\(\{/);
+  assert.doesNotMatch(saveJob, /\.upsert\(/);
+  assert.match(saveJob, /error\?\.code === "23505"/);
+  assert.match(saveJob, /\.eq\("video_id", input\.videoId\)/);
+  assert.match(refreshJob, /await requireAdmin\(\)/);
+  assert.doesNotMatch(refreshJob, /\.eq\("created_by",/);
+  assert.match(refreshJob, /actorId: staged\.created_by/);
+});
+
+test("Task 27 migrations keep YouTube staging and provenance service-only and cover its creator FK", () => {
   const migration = readSource("supabase/migrations/20260817183000_add_youtube_knowledge_sources.sql");
+  const indexMigration = readSource("supabase/migrations/20260817184500_index_youtube_import_created_by.sql");
   assert.match(migration, /add column source_kind text not null default 'document'/);
   assert.match(migration, /source_kind in \('document', 'youtube_transcript'\)/);
   assert.match(migration, /knowledge_sources_youtube_video_unique_idx/);
@@ -64,6 +83,8 @@ test("Task 27 migration keeps YouTube staging and provenance service-only", () =
   assert.match(migration, /revoke all on table public\.youtube_transcript_imports from public, anon, authenticated, service_role/);
   assert.match(migration, /grant select, insert, update, delete on table public\.youtube_transcript_imports to service_role/);
   assert.doesNotMatch(migration, /security definer/i);
+  assert.match(indexMigration, /youtube_transcript_imports_created_by_idx/);
+  assert.match(indexMigration, /\(created_by\)/);
 });
 
 test("Admin Knowledge UI exposes YouTube import without implying external material is Eslam teaching", () => {
@@ -72,6 +93,7 @@ test("Admin Knowledge UI exposes YouTube import without implying external materi
   assert.match(page, /YouTubeSourceImporter/);
   assert.match(importer, /لا يصبح رأي إسلام أو تعليماً في Brain تلقائياً/);
   assert.match(importer, /لا يتم إنشاء Transcript بالذكاء الاصطناعي تلقائياً/);
+  assert.match(importer, /هذا الفيديو موجود بالفعل في مكتبة المعرفة/);
   assert.doesNotMatch(importer, /SUPADATA_API_KEY|x-api-key|api\.supadata\.ai/);
 });
 
