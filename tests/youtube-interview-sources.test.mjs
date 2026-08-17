@@ -65,13 +65,14 @@ test("YouTube import materializes into the existing private Knowledge lifecycle 
   assert.doesNotMatch(actions, /eslam_brain_items|eslam_brain_versions|create_teach_eslam|publish/i);
 });
 
-test("Existing pending or failed YouTube sources never masquerade as active indexing", () => {
-  const actions = readSource("src/features/youtube-sources/actions.ts");
-  const existingResult = actions.slice(actions.indexOf("function existingImportResult"), actions.indexOf("async function deleteStagingImport"));
-  assert.match(existingResult, /source\.status === "ready"/);
-  assert.match(existingResult, /source\.status === "indexing"/);
-  assert.doesNotMatch(existingResult, /source\.status === "pending"/);
-  assert.match(existingResult, /error: "source-exists"/);
+test("Persisted YouTube source states classify exactly for Admin import behavior", async () => {
+  const { classifyExistingYouTubeSource } = await importSource("src/features/youtube-sources/core.ts");
+  const sourceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  assert.deepEqual(classifyExistingYouTubeSource(sourceId, "ready"), { ok: true, state: "ready", sourceId });
+  assert.deepEqual(classifyExistingYouTubeSource(sourceId, "indexing"), { ok: true, state: "indexing", sourceId });
+  assert.deepEqual(classifyExistingYouTubeSource(sourceId, "pending"), { ok: false, error: "source-exists" });
+  assert.deepEqual(classifyExistingYouTubeSource(sourceId, "failed"), { ok: false, error: "source-exists" });
+  assert.deepEqual(classifyExistingYouTubeSource(sourceId, "deleting"), { ok: false, error: "source-exists" });
 });
 
 test("Async YouTube job races preserve the first audit actor and remain globally operable by Admin", () => {
@@ -87,12 +88,30 @@ test("Async YouTube job races preserve the first audit actor and remain globally
   assert.match(refreshJob, /actorId: staged\.created_by/);
 });
 
-test("Active YouTube jobs are loaded independently from bounded failed history", () => {
+test("Active YouTube jobs and failed history are combined with exact production bounds", async () => {
+  const {
+    combineYouTubeImportRows,
+    YOUTUBE_ACTIVE_IMPORT_LIMIT,
+    YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT,
+  } = await importSource("src/features/youtube-sources/core.ts");
+  assert.equal(YOUTUBE_ACTIVE_IMPORT_LIMIT, 1000);
+  assert.equal(YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT, 12);
+
+  const processing = Array.from({ length: 1005 }, (_, index) => `processing-${index}`);
+  const failed = Array.from({ length: 20 }, (_, index) => `failed-${index}`);
+  const combined = combineYouTubeImportRows(processing, failed);
+  assert.equal(combined.length, 1012);
+  assert.equal(combined[0], "processing-0");
+  assert.equal(combined[999], "processing-999");
+  assert.equal(combined[1000], "failed-0");
+  assert.equal(combined.at(-1), "failed-11");
+
   const data = readSource("src/features/knowledge-library/data.ts");
-  const loader = data.slice(data.indexOf("export async function loadYouTubeTranscriptImports"));
-  assert.match(loader, /processingResult[\s\S]*\.eq\("status", "processing"\)[\s\S]*\.limit\(1000\)/);
-  assert.match(loader, /failedResult[\s\S]*\.eq\("status", "failed"\)[\s\S]*\.limit\(12\)/);
-  assert.match(loader, /processingResult\.data[\s\S]*failedResult\.data/);
+  const start = data.indexOf("export async function loadYouTubeTranscriptImports");
+  const loader = data.slice(start);
+  assert.match(loader, /\.eq\("status", "processing"\)[\s\S]*\.limit\(YOUTUBE_ACTIVE_IMPORT_LIMIT\)/);
+  assert.match(loader, /\.eq\("status", "failed"\)[\s\S]*\.limit\(YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT\)/);
+  assert.match(loader, /return combineYouTubeImportRows\(/);
 });
 
 test("Knowledge page degrades only the optional YouTube staging cards when that read fails", () => {
