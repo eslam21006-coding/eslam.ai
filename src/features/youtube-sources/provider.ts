@@ -5,6 +5,7 @@ import { YOUTUBE_TRANSCRIPT_MAX_CHARS } from "@/features/youtube-sources/core";
 const SUPADATA_BASE_URL = "https://api.supadata.ai/v1";
 const SUPADATA_TIMEOUT_MS = 20_000;
 const PROVIDER_ID_MAX = 200;
+const PROVIDER_MAX_SEGMENTS = 20_000;
 
 export type YouTubeProviderMetadata = {
   title: string;
@@ -72,13 +73,13 @@ async function request(path: string) {
   }
 
   if (response.status === 206 || response.status === 404) {
-    return { response, payload, unavailable: true as const };
+    return { payload, unavailable: true as const };
   }
   if (!response.ok) {
     const code = safeProviderErrorCode(payload) ?? `provider-http-${response.status}`;
     throw new YouTubeTranscriptProviderError(code, `Transcript provider request failed with HTTP ${response.status}`);
   }
-  return { response, payload, unavailable: false as const };
+  return { payload, unavailable: false as const };
 }
 
 function normalizeTranscript(payload: unknown): YouTubeProviderTranscript | null {
@@ -89,15 +90,19 @@ function normalizeTranscript(payload: unknown): YouTubeProviderTranscript | null
     transcript = raw.content.trim();
   } else if (Array.isArray(raw.content)) {
     const parts: string[] = [];
-    for (const item of raw.content.slice(0, 20_000)) {
+    let usedChars = 0;
+    for (const item of raw.content.slice(0, PROVIDER_MAX_SEGMENTS)) {
       if (!item || typeof item !== "object" || Array.isArray(item)) continue;
       const text = (item as { text?: unknown }).text;
       if (typeof text !== "string") continue;
       const normalized = text.trim();
       if (!normalized) continue;
-      const remaining = YOUTUBE_TRANSCRIPT_MAX_CHARS - parts.reduce((sum, part) => sum + part.length + 1, 0);
+      const separatorChars = parts.length ? 1 : 0;
+      const remaining = YOUTUBE_TRANSCRIPT_MAX_CHARS - usedChars - separatorChars;
       if (remaining <= 0) break;
-      parts.push(normalized.slice(0, remaining));
+      const bounded = normalized.slice(0, remaining);
+      parts.push(bounded);
+      usedChars += bounded.length + separatorChars;
     }
     transcript = parts.join("\n").trim();
   }
