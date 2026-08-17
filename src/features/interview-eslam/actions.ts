@@ -4,19 +4,28 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import {
-  buildInterviewQuestionRequest,
   buildInterviewTeachingRequest,
   INTERVIEW_EXTRACTION_LEASE_SECONDS,
   INTERVIEW_EXTRACTION_PROMPT_VERSION,
-  INTERVIEW_PROMPT_VERSION,
   isInterviewUuid,
+  normalizeInterviewTopicKey,
   parseInterviewQuestionOutput,
   parseInterviewTeachingCandidates,
   validateInterviewAnswer,
 } from "@/features/interview-eslam/core";
 import {
+  INTERVIEW_INTELLIGENCE_PROMPT_VERSION,
+  shouldRejectInterviewTopicSequence,
+  validateInterviewFocus,
+} from "@/features/interview-eslam/intelligence-core";
+import {
+  buildIntelligentInterviewQuestionRequest,
+  findSemanticInterviewDuplicate,
+} from "@/features/interview-eslam/intelligence-server";
+import {
   interviewQuestionPayloadToJson,
   loadInterviewAnswerForExtraction,
+  loadInterviewGenerationIntelligence,
   loadInterviewQuestionContext,
 } from "@/features/interview-eslam/data";
 import { getInterviewAdminClient } from "@/features/interview-eslam/database";
@@ -65,7 +74,7 @@ async function failInterviewExtraction(answerId: string, userId: string, claimTo
   }
 }
 
-/** Creates one validated grounded question if the session has no open question. */
+/** Creates one grounded, coverage-aware, semantically non-duplicate question when none is open. */
 async function ensureNextInterviewQuestion(sessionId: string, userId: string): Promise<NextQuestionResult> {
   const admin = getInterviewAdminClient();
   const { data: existing, error: existingError } = await admin.from("interview_questions").select("id")
@@ -75,18 +84,32 @@ async function ensureNextInterviewQuestion(sessionId: string, userId: string): P
     return "failed";
   }
   if (existing) return "ready";
-  const context = await loadInterviewQuestionContext(userId);
+  const [context, intelligence] = await Promise.all([
+    loadInterviewQuestionContext(userId),
+    loadInterviewGenerationIntelligence(userId, sessionId),
+  ]);
   if (!context.sources.length) return "needs-context";
   const model = getOpenAIModel();
   let rejectionReason: string | undefined;
   for (let attempt = 0; attempt < MAX_QUESTION_GENERATION_ATTEMPTS; attempt += 1) {
     try {
-      const response = await getOpenAIClient().responses.create(buildInterviewQuestionRequest(model, context, rejectionReason));
+      const response = await getOpenAIClient().responses.create(
+        buildIntelligentInterviewQuestionRequest(model, context, intelligence, rejectionReason),
+      );
       if (response.status === "incomplete") { rejectionReason = "model output was incomplete"; continue; }
       const parsed = parseInterviewQuestionOutput(response.output_text, context);
       if (!parsed.ok) { rejectionReason = parsed.reason; continue; }
       if (parsed.decision === "needs_context") return "needs-context";
       const question = parsed.question;
+      if (shouldRejectInterviewTopicSequence(question.topic, context.previousQuestions, intelligence.focusTopic)) {
+        rejectionReason = "candidate repeats a recently deferred topic or drills the same topic too many times";
+        continue;
+      }
+      const semanticDuplicate = await findSemanticInterviewDuplicate(question.question, context);
+      if (semanticDuplicate) {
+        rejectionReason = `candidate is semantically too similar to prior question ${semanticDuplicate.priorQuestionId ?? "unknown"} (${semanticDuplicate.score.toFixed(3)})`;
+        continue;
+      }
       const { data: questionId, error: insertError } = await admin.rpc("record_interview_question", {
         p_session_id: sessionId,
         p_created_by: userId,
@@ -101,7 +124,7 @@ async function ensureNextInterviewQuestion(sessionId: string, userId: string): P
           followUpRecommended: question.followUpRecommended,
           questionFingerprint: question.questionFingerprint,
           model,
-          promptVersion: INTERVIEW_PROMPT_VERSION,
+          promptVersion: INTERVIEW_INTELLIGENCE_PROMPT_VERSION,
         }),
       });
       if (insertError || !isInterviewUuid(questionId)) {
@@ -188,7 +211,7 @@ async function extractInterviewAnswer(answerId: string, userId: string): Promise
   }
 }
 
-/** Starts or resumes the single MVP interview and asks its next grounded question. */
+/** Starts or resumes the active interview and asks its next intelligent grounded question. */
 export async function startInterviewAction() {
   const authorization = await requireAdmin();
   const admin = getInterviewAdminClient();
@@ -270,6 +293,47 @@ export async function notRelevantInterviewQuestionAction(formData: FormData) {
   const next = await ensureNextInterviewQuestion(sessionId, authorization.userId);
   revalidatePath(INTERVIEW_PATH);
   redirectToInterview(next === "ready" ? (suppressTopic ? "topic-suppressed" : "not-relevant") : next);
+}
+
+/** Saves or clears the optional active-session focus used only for question prioritization. */
+export async function setInterviewFocusAction(formData: FormData) {
+  const authorization = await requireAdmin();
+  const sessionId = formData.get("session_id");
+  const focus = validateInterviewFocus(formData.get("focus_topic"));
+  if (!isInterviewUuid(sessionId) || focus === null) redirectToInterview("focus-invalid");
+  const topicKey = focus ? normalizeInterviewTopicKey(focus) : null;
+  if (focus && !topicKey) redirectToInterview("focus-invalid");
+  const admin = getInterviewAdminClient();
+  const { data, error } = await admin.rpc("set_interview_session_focus", {
+    p_session_id: sessionId,
+    p_created_by: authorization.userId,
+    p_focus_topic: focus || null,
+    p_focus_topic_key: topicKey,
+  });
+  if (error || data !== true) {
+    console.error("Interview focus update failed", { sessionId, ...errorSummary(error) });
+    redirectToInterview("focus-failed");
+  }
+  revalidatePath(INTERVIEW_PATH);
+  redirectToInterview(focus ? "focus-updated" : "focus-cleared");
+}
+
+/** Completes the active session, preserving any open question as a skipped historical question. */
+export async function completeInterviewSessionAction(formData: FormData) {
+  const authorization = await requireAdmin();
+  const sessionId = formData.get("session_id");
+  if (!isInterviewUuid(sessionId)) redirectToInterview("session-invalid");
+  const admin = getInterviewAdminClient();
+  const { data, error } = await admin.rpc("complete_interview_session", {
+    p_session_id: sessionId,
+    p_created_by: authorization.userId,
+  });
+  if (error || data !== true) {
+    console.error("Interview session completion failed", { sessionId, ...errorSummary(error) });
+    redirectToInterview("session-failed");
+  }
+  revalidatePath(INTERVIEW_PATH);
+  redirectToInterview("session-completed");
 }
 
 /** Retries question generation after a recoverable model/context failure. */
