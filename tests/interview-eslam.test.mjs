@@ -61,6 +61,59 @@ test("question generation explicitly stops when grounded context is insufficient
   });
 });
 
+test("strict interview schemas use supported constraints while backend parsers retain string limits", async () => {
+  const {
+    INTERVIEW_QUESTION_RESPONSE_SCHEMA,
+    INTERVIEW_TEACHING_RESPONSE_SCHEMA,
+    parseInterviewQuestionOutput,
+    parseInterviewTeachingCandidates,
+  } = await importSource("src/features/interview-eslam/core.ts");
+  const schemas = JSON.stringify({ INTERVIEW_QUESTION_RESPONSE_SCHEMA, INTERVIEW_TEACHING_RESPONSE_SCHEMA });
+  assert.doesNotMatch(schemas, /minLength|maxLength/);
+
+  const overlongQuestion = parseInterviewQuestionOutput(JSON.stringify({
+    decision: "ask",
+    question: "q".repeat(2001),
+    topic: "Ad readiness",
+    why_this_question: "The current material leaves this decision rule incomplete.",
+    gap_type: "missing_decision_rule",
+    groundings: [{ source_id: "brain:one:v1", exact_excerpt: "evidence of manual sales" }],
+    relevant_known_facts: [],
+    follow_up_recommended: false,
+  }), context);
+  assert.deepEqual(overlongQuestion, { ok: false, reason: "invalid-question-fields" });
+
+  const answer = "I require three manual sales before cold ads.";
+  const overlongTeaching = parseInterviewTeachingCandidates(JSON.stringify({ candidates: [{
+    semantic_layer: "brain",
+    item_type: "principle",
+    priority: 50,
+    title: "t".repeat(201),
+    content: "Require manual validation before cold ads.",
+    summary: null,
+    topics: [],
+    source_excerpt: answer,
+  }] }), answer);
+  assert.equal(overlongTeaching.ok, false);
+});
+
+test("grounding source bounds preserve order and enforce an aggregate prompt budget", async () => {
+  const {
+    boundInterviewSources,
+    INTERVIEW_MAX_CONTEXT_SOURCE_CHARS,
+  } = await importSource("src/features/interview-eslam/core.ts");
+  const sources = Array.from({ length: 50 }, (_, index) => ({
+    id: `source:${index}`,
+    type: index === 0 ? "interview_answer" : "brain",
+    label: `Source ${index}`,
+    content: `${String(index).padStart(2, "0")}${"x".repeat(3998)}`,
+  }));
+  const bounded = boundInterviewSources(sources);
+  assert.equal(bounded[0].id, "source:0");
+  assert.ok(bounded.length < sources.length);
+  assert.ok(bounded.reduce((total, source) => total + source.content.length, 0) <= INTERVIEW_MAX_CONTEXT_SOURCE_CHARS);
+});
+
 test("Interview answer extraction is answer-grounded, bounded, and never publishes", async () => {
   const { buildInterviewTeachingRequest, parseInterviewTeachingCandidates } = await importSource("src/features/interview-eslam/core.ts");
   const answer = "I require three manual sales before cold ads. Otherwise I am testing the offer, message, traffic, and sales process at the same time.";
@@ -79,6 +132,23 @@ test("Interview answer extraction is answer-grounded, bounded, and never publish
   const request = buildInterviewTeachingRequest("gpt-5-mini", "Question?", answer);
   assert.equal(request.store, false);
   assert.equal(request.text.format.strict, true);
+});
+
+test("Interview question retries distinguish insufficient context from rejected model candidates", () => {
+  const actions = readSource("src/features/interview-eslam/actions.ts");
+  const page = readSource("src/app/admin/teach/interview/page.tsx");
+  assert.match(actions, /type NextQuestionResult = "ready" \| "needs-context" \| "exhausted" \| "failed"/);
+  assert.match(actions, /return "exhausted";/);
+  assert.match(actions, /answer-saved-exhausted/);
+  assert.match(page, /case "exhausted"/);
+  assert.match(page, /case "answer-saved-exhausted"/);
+});
+
+test("Interview Brain context batches version loading instead of issuing one query per item", () => {
+  const data = readSource("src/features/interview-eslam/data.ts");
+  assert.match(data, /\.in\("item_id", items\.map\(\(item\) => item\.id\)\)/);
+  assert.match(data, /const versionsByItem = new Map/);
+  assert.doesNotMatch(data, /Promise\.all\(items\.map\(async/);
 });
 
 test("Interview server/UI route stays Admin-only and routes extracted answers to Brain drafts only", () => {
