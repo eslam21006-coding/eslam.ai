@@ -9,8 +9,15 @@ import {
   importYouTubeSourceAction,
   refreshYouTubeTranscriptImportAction,
 } from "@/features/youtube-sources/actions";
+import type {
+  YouTubeImportRefreshResult,
+  YouTubeImportResult,
+} from "@/features/youtube-sources/core";
 
-const ERROR_MESSAGES: Record<string, string> = {
+type YouTubeActionResult = YouTubeImportResult | YouTubeImportRefreshResult;
+type YouTubeActionError = Extract<YouTubeActionResult, { ok: false }>["error"];
+
+const ERROR_MESSAGES: Record<YouTubeActionError, string> = {
   "invalid-url": "اكتب رابط فيديو YouTube صحيحاً، وليس رابط قناة أو Playlist.",
   "invalid-language": "كود اللغة اختياري. استخدم صيغة مثل ar أو en أو en-US.",
   "provider-not-configured": "خدمة جلب Transcript من YouTube غير مفعلة على السيرفر حالياً.",
@@ -24,8 +31,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   "not-found": "لم تعد محاولة الاستيراد موجودة.",
 };
 
-function messageForResult(result: { ok: boolean; error?: string; state?: string }) {
-  if (!result.ok) return ERROR_MESSAGES[result.error ?? ""] ?? "تعذر إكمال استيراد YouTube.";
+function messageForResult(result: YouTubeActionResult) {
+  if (!result.ok) return ERROR_MESSAGES[result.error];
   if (result.state === "processing") return "الفيديو كبير ويجري تجهيز Transcript في الخلفية عند مزود الخدمة. يمكنك تحديث حالته من البطاقة أدناه.";
   if (result.state === "ready") return "تم حفظ Transcript وأصبح جاهزاً للبحث والمقابلات المبنية على Grounding.";
   return "تم حفظ Transcript ويجري تجهيز البحث داخله.";
