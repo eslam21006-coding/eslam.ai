@@ -1,6 +1,8 @@
 export const YOUTUBE_TRANSCRIPT_MAX_CHARS = 4_000_000;
 export const YOUTUBE_TRANSCRIPT_MAX_BYTES = 8 * 1024 * 1024;
 export const YOUTUBE_SOURCE_MAX_LANGUAGE = 35;
+export const YOUTUBE_ACTIVE_IMPORT_LIMIT = 1_000;
+export const YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT = 12;
 
 const VIDEO_ID_PATTERN = /^[A-Za-z0-9_-]{11}$/u;
 const LANGUAGE_PATTERN = /^[A-Za-z]{2,3}(?:-[A-Za-z0-9]{2,8})?$/u;
@@ -38,6 +40,23 @@ export type YouTubeImportRefreshResult =
   | { ok: true; state: "ready" | "indexing"; sourceId: string }
   | { ok: true; state: "processing"; importId: string }
   | { ok: false; error: "invalid-request" | "not-found" | "provider-not-configured" | "provider-failed" | "transcript-unavailable" | "storage-failed" | "index-failed" | "transcript-too-large" };
+
+export type YouTubeExistingSourceStatus = "pending" | "indexing" | "ready" | "failed" | "deleting";
+
+/** Converts a persisted YouTube Knowledge state to the exact Admin import result without masking recovery states. */
+export function classifyExistingYouTubeSource(sourceId: string, status: YouTubeExistingSourceStatus): YouTubeImportResult {
+  if (status === "ready") return { ok: true, state: "ready", sourceId };
+  if (status === "indexing") return { ok: true, state: "indexing", sourceId };
+  return { ok: false, error: "source-exists" };
+}
+
+/** Combines active jobs and failed history under the same bounds used by the production loader. */
+export function combineYouTubeImportRows<T>(processingRows: T[], failedRows: T[]) {
+  return [
+    ...processingRows.slice(0, YOUTUBE_ACTIVE_IMPORT_LIMIT),
+    ...failedRows.slice(0, YOUTUBE_FAILED_IMPORT_HISTORY_LIMIT),
+  ];
+}
 
 function videoIdFromUrl(url: URL) {
   const host = url.hostname.toLowerCase();
