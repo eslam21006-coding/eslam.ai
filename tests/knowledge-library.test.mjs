@@ -204,7 +204,11 @@ test("Knowledge admin lifecycle is protected, global, private, and separate from
   assert.match(actions, /requireAdmin\(\)/, "all Knowledge lifecycle mutations must require Admin authorization");
   assert.match(actions, /createSignedUploadUrl/, "Knowledge uploads must use signed private Storage URLs");
   assert.match(actions, /\.info\(source\.storage_path\)/, "finalization must verify the uploaded Storage object");
-  assert.match(actions, /\.download\(source\.storage_path\)/, "indexing must read the durable private Storage source");
+  assert.match(
+    actions,
+    /\.download\(\s*source\.storage_path,[\s\S]{0,220}?AbortSignal\.timeout\(KNOWLEDGE_STORAGE_DOWNLOAD_TIMEOUT_MS\)/,
+    "indexing must read the durable private Storage source with the bounded claim-safe timeout",
+  );
   assert.match(actions, /claimKnowledgeSourceIndex/, "indexing must pass through the claim-fenced lifecycle helper");
   assert.match(actions, /claim_knowledge_source_index/, "indexing must call the database claim RPC");
   assert.match(actions, /claim_knowledge_source_delete/, "deletion must call the database delete-claim RPC");
