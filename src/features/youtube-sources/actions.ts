@@ -18,6 +18,7 @@ import {
   startYouTubeProviderTranscript,
   youtubeProviderErrorCode,
   type YouTubeProviderMetadata,
+  type YouTubeProviderStartResult,
   type YouTubeProviderTranscript,
 } from "@/features/youtube-sources/provider";
 import { requireAdmin } from "@/lib/auth/admin";
@@ -181,6 +182,10 @@ async function saveProviderJob(input: {
       .maybeSingle();
     if (!existingError && existing?.id && existing.status === "processing") return existing.id;
   }
+  console.error("YouTube transcript staging persistence failed", {
+    videoId: input.videoId,
+    code: error?.code ?? "unknown",
+  });
   throw new Error(error?.message ?? "YouTube transcript job was not persisted");
 }
 
@@ -197,7 +202,12 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
       : { ok: false, error: "invalid-url" };
   }
 
-  const existing = await existingYouTubeSource(validated.videoId).catch(() => null);
+  const existing = await existingYouTubeSource(validated.videoId).catch((error: unknown) => {
+    console.error("YouTube Knowledge duplicate lookup failed", {
+      message: error instanceof Error ? error.message : "Unknown lookup error",
+    });
+    return null;
+  });
   if (existing) return existingImportResult(existing);
 
   const admin = getKnowledgeAdminClient();
@@ -213,32 +223,36 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
   if (staged?.status === "processing") return { ok: true, state: "processing", importId: staged.id };
   if (staged?.id) await deleteStagingImport(staged.id);
 
+  let metadata: YouTubeProviderMetadata;
+  let transcript: YouTubeProviderStartResult;
   try {
-    const metadata = await fetchYouTubeProviderMetadata(validated.videoId);
-    const transcript = await startYouTubeProviderTranscript(validated.canonicalUrl, validated.requestedLanguage);
-    if (transcript.state === "unavailable") return { ok: false, error: "transcript-unavailable" };
-    if (transcript.state === "processing") {
-      const importId = await saveProviderJob({
-        actorId: authorization.userId,
-        videoId: validated.videoId,
-        canonicalUrl: validated.canonicalUrl,
-        requestedLanguage: validated.requestedLanguage,
-        metadata,
-        jobId: transcript.jobId,
-      });
-      refreshYouTubeSourcePages();
-      return { ok: true, state: "processing", importId };
-    }
-    return await materializeYouTubeTranscript({
-      actorId: authorization.userId,
-      videoId: validated.videoId,
-      canonicalUrl: validated.canonicalUrl,
-      metadata,
-      transcript: transcript.value,
-    });
+    metadata = await fetchYouTubeProviderMetadata(validated.videoId);
+    transcript = await startYouTubeProviderTranscript(validated.canonicalUrl, validated.requestedLanguage);
   } catch (error) {
     return providerFailure(error);
   }
+
+  if (transcript.state === "unavailable") return { ok: false, error: "transcript-unavailable" };
+  if (transcript.state === "processing") {
+    const importId = await saveProviderJob({
+      actorId: authorization.userId,
+      videoId: validated.videoId,
+      canonicalUrl: validated.canonicalUrl,
+      requestedLanguage: validated.requestedLanguage,
+      metadata,
+      jobId: transcript.jobId,
+    });
+    refreshYouTubeSourcePages();
+    return { ok: true, state: "processing", importId };
+  }
+
+  return materializeYouTubeTranscript({
+    actorId: authorization.userId,
+    videoId: validated.videoId,
+    canonicalUrl: validated.canonicalUrl,
+    metadata,
+    transcript: transcript.value,
+  });
 }
 
 /** Polls a global Admin-visible async provider job and preserves the original import actor as durable provenance. */
@@ -255,36 +269,9 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
   if (error || !staged) return { ok: false, error: "not-found" };
   if (staged.status === "failed") return { ok: false, error: "provider-failed" };
 
+  let result;
   try {
-    const result = await pollYouTubeProviderTranscript(staged.provider_job_id);
-    if (result.state === "processing") return { ok: true, state: "processing", importId };
-    if (result.state === "unavailable" || result.state === "failed") {
-      const code = result.state === "unavailable" ? "transcript-unavailable" : "provider-job-failed";
-      await admin.from("youtube_transcript_imports").update({
-        status: "failed",
-        last_error_code: code,
-        updated_at: new Date().toISOString(),
-      }).eq("id", importId).eq("status", "processing");
-      refreshYouTubeSourcePages();
-      return { ok: false, error: result.state === "unavailable" ? "transcript-unavailable" : "provider-failed" };
-    }
-
-    const materialized = await materializeYouTubeTranscript({
-      actorId: staged.created_by,
-      videoId: staged.video_id,
-      canonicalUrl: staged.canonical_url,
-      metadata: { title: staged.video_title, channelName: staged.channel_name },
-      transcript: result.value,
-    });
-    if (materialized.ok) {
-      await deleteStagingImport(importId);
-      return materialized;
-    }
-    return materialized.error === "transcript-too-large"
-      ? { ok: false, error: "transcript-too-large" }
-      : materialized.error === "storage-failed"
-        ? { ok: false, error: "storage-failed" }
-        : { ok: false, error: "index-failed" };
+    result = await pollYouTubeProviderTranscript(staged.provider_job_id);
   } catch (providerError) {
     const code = youtubeProviderErrorCode(providerError);
     if (code === "provider-not-configured") return { ok: false, error: "provider-not-configured" };
@@ -292,4 +279,40 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
     console.error("YouTube transcript job refresh failed", { importId, code });
     return { ok: false, error: "provider-failed" };
   }
+
+  if (result.state === "processing") return { ok: true, state: "processing", importId };
+  if (result.state === "unavailable" || result.state === "failed") {
+    const code = result.state === "unavailable" ? "transcript-unavailable" : "provider-job-failed";
+    const { error: updateError } = await admin.from("youtube_transcript_imports").update({
+      status: "failed",
+      last_error_code: code,
+      updated_at: new Date().toISOString(),
+    }).eq("id", importId).eq("status", "processing");
+    if (updateError) {
+      console.error("YouTube transcript failed-state persistence failed", {
+        importId,
+        code: updateError.code,
+      });
+      throw new Error("YouTube transcript failed state could not be persisted");
+    }
+    refreshYouTubeSourcePages();
+    return { ok: false, error: result.state === "unavailable" ? "transcript-unavailable" : "provider-failed" };
+  }
+
+  const materialized = await materializeYouTubeTranscript({
+    actorId: staged.created_by,
+    videoId: staged.video_id,
+    canonicalUrl: staged.canonical_url,
+    metadata: { title: staged.video_title, channelName: staged.channel_name },
+    transcript: result.value,
+  });
+  if (materialized.ok) {
+    await deleteStagingImport(importId);
+    return materialized;
+  }
+  return materialized.error === "transcript-too-large"
+    ? { ok: false, error: "transcript-too-large" }
+    : materialized.error === "storage-failed"
+      ? { ok: false, error: "storage-failed" }
+      : { ok: false, error: "index-failed" };
 }
