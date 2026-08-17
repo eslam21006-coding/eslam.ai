@@ -61,24 +61,28 @@ test("Interview focus is optional, bounded, and separate from grounding", async 
   assert.match(directive, /needs_context/);
 });
 
-test("Interview generation uses embeddings after deterministic grounding validation", () => {
+test("Interview generation uses semantic embeddings after grounding and degrades to lexical guards on embedding failure", () => {
   const actions = readSource("src/features/interview-eslam/actions.ts");
   const server = readSource("src/features/interview-eslam/intelligence-server.ts");
   const client = readSource("src/lib/openai/client.ts");
   assert.match(actions, /parseInterviewQuestionOutput[\s\S]*shouldRejectInterviewTopicSequence[\s\S]*findSemanticInterviewDuplicate[\s\S]*record_interview_question/);
   assert.match(server, /embeddings\.create/);
   assert.match(server, /encoding_format: "float"/);
+  assert.match(server, /embedding-request-failed[\s\S]*return null/);
+  assert.match(server, /missing-candidate-embedding[\s\S]*return null/);
+  assert.match(server, /incomplete-history-embeddings[\s\S]*return null/);
   assert.match(client, /OPENAI_EMBEDDING_MODEL/);
   assert.match(client, /text-embedding-3-small/);
 });
 
-test("Interview Admin workbench exposes focus, coverage, history, and safe session completion", () => {
+test("Interview Admin workbench exposes focus, coverage, history, stable Cairo time, and safe session completion", () => {
   const page = readSource("src/app/admin/teach/interview/page.tsx");
   const actions = readSource("src/features/interview-eslam/actions.ts");
   const data = readSource("src/features/interview-eslam/data.ts");
   assert.match(page, /خريطة التغطية/);
   assert.match(page, /Focus اختياري/);
   assert.match(page, /تاريخ المقابلات/);
+  assert.match(page, /timeZone: "Africa\/Cairo"/);
   assert.match(page, /completeInterviewSessionAction/);
   assert.match(page, /setInterviewFocusAction/);
   assert.match(actions, /set_interview_session_focus/);
