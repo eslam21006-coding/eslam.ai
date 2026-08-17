@@ -28,17 +28,33 @@ export function buildIntelligentInterviewQuestionRequest(
   };
 }
 
-/** Compares a validated candidate question with recent question history using one bounded embedding request. */
+/** Logs semantic-check degradation without recording question text or other source content. */
+function logSemanticDuplicateDegradation(reason: string, historyCount: number, error?: unknown) {
+  console.error("Interview semantic duplicate check degraded to deterministic lexical protection", {
+    reason,
+    historyCount,
+    message: error instanceof Error ? error.message : undefined,
+  });
+}
+
+/** Compares a validated candidate with recent history, degrading to existing lexical guards if embeddings are unavailable. */
 export async function findSemanticInterviewDuplicate(candidate: string, context: InterviewQuestionContext) {
   const history = context.previousQuestions.slice(-INTERVIEW_SEMANTIC_HISTORY_LIMIT);
   if (!history.length) return null;
 
   const inputs = [candidate, ...history.map((item) => item.question)];
-  const response = await getOpenAIClient().embeddings.create({
-    model: getOpenAIEmbeddingModel(),
-    input: inputs,
-    encoding_format: "float",
-  });
+  let response;
+  try {
+    response = await getOpenAIClient().embeddings.create({
+      model: getOpenAIEmbeddingModel(),
+      input: inputs,
+      encoding_format: "float",
+    });
+  } catch (error) {
+    logSemanticDuplicateDegradation("embedding-request-failed", history.length, error);
+    return null;
+  }
+
   const vectors = new Map<number, number[]>();
   for (const row of response.data) {
     if (Number.isInteger(row.index) && Array.isArray(row.embedding) && row.embedding.length) {
@@ -46,11 +62,17 @@ export async function findSemanticInterviewDuplicate(candidate: string, context:
     }
   }
   const candidateVector = vectors.get(0);
-  if (!candidateVector) throw new Error("Interview semantic duplicate check returned no candidate embedding.");
+  if (!candidateVector) {
+    logSemanticDuplicateDegradation("missing-candidate-embedding", history.length);
+    return null;
+  }
   const previousVectors: number[][] = [];
   for (let index = 1; index < inputs.length; index += 1) {
     const vector = vectors.get(index);
-    if (!vector) throw new Error("Interview semantic duplicate check returned incomplete embeddings.");
+    if (!vector) {
+      logSemanticDuplicateDegradation("incomplete-history-embeddings", history.length);
+      return null;
+    }
     previousVectors.push(vector);
   }
   const duplicate = findSemanticDuplicateIndex(candidateVector, previousVectors);
