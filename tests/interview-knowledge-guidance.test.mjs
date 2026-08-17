@@ -93,6 +93,15 @@ test("Grounded Question Contract accepts exact Knowledge excerpts but never trea
   assert.deepEqual(invalid, { ok: false, reason: "invalid-known-fact-source" });
 });
 
+test("Knowledge-shaped generation explicitly requires Knowledge itself in groundings", async () => {
+  const { buildIntelligentInterviewQuestionRequest } = await importSource("src/features/interview-eslam/intelligence-server.ts");
+  const context = { sources: [knowledgeSource], previousQuestions: [], suppressedTopics: [] };
+  const request = buildIntelligentInterviewQuestionRequest("gpt-5-mini", context, { focusTopic: null, coverage: emptyCoverage });
+  assert.match(request.instructions, /knowledge_library material materially shapes the question/);
+  assert.match(request.instructions, /must itself appear in groundings/);
+  assert.match(request.instructions, /Never use external Knowledge implicitly without grounding it/);
+});
+
 test("Persisted grounding detects Knowledge-guided questions without relying on labels", async () => {
   const { hasInterviewKnowledgeGrounding } = await importSource("src/features/interview-eslam/knowledge-guidance-core.ts");
   assert.equal(hasInterviewKnowledgeGrounding([{ source_type: "knowledge_library", source_label: "anything" }]), true);
@@ -118,6 +127,15 @@ test("Interview Knowledge validation reconciles provider metadata against durabl
   assert.match(source, /row\.vector_store_id !== vectorStoreId/);
   assert.match(source, /label: `Knowledge · \$\{row\.title\.trim\(\)\}`/);
   assert.doesNotMatch(source, /filename[^\n]*label/);
+});
+
+test("Provider results are locally bounded even if the external API response is malformed or oversized", () => {
+  const source = readSource("src/features/interview-eslam/knowledge-guidance.ts");
+  assert.match(source, /fileId\.length > 200/);
+  assert.match(source, /score > 1/);
+  assert.match(source, /result\.content\.slice\(0, 8\)/);
+  assert.match(source, /rawResults[\s\S]*\.slice\(0, 12\)/);
+  assert.match(source, /INTERVIEW_KNOWLEDGE_MAX_SOURCE_CHARS - text\.length/);
 });
 
 test("Question generation retrieves Knowledge before deciding that context is insufficient and degrades safely", () => {
