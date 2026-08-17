@@ -15,6 +15,12 @@ alter table public.interview_sessions
 alter table public.interview_sessions
   validate constraint interview_sessions_focus_pair_check;
 
+-- Backfill any pre-Task-25 completed sessions before enforcing the new timestamp invariant.
+update public.interview_sessions
+set completed_at = coalesce(updated_at, created_at)
+where status = 'completed'
+  and completed_at is null;
+
 alter table public.interview_sessions
   add constraint interview_sessions_completion_state_check
   check (
@@ -112,48 +118,49 @@ stable
 security invoker
 set search_path = ''
 as $$
+  with question_totals as (
+    select
+      count(*) filter (where q.status = 'answered') as answered_count,
+      count(*) filter (where q.status = 'skipped') as skipped_count,
+      count(*) filter (where q.status = 'not_relevant') as not_relevant_count,
+      count(distinct q.topic_key) filter (where q.status = 'answered') as distinct_answered_topics
+    from public.interview_questions q
+    where q.created_by = p_created_by
+  ),
+  session_totals as (
+    select
+      count(*) as session_count,
+      count(*) filter (where s.status = 'completed') as completed_session_count
+    from public.interview_sessions s
+    where s.created_by = p_created_by
+  ),
+  gap_totals as (
+    select q.gap_type, q.status, count(*)::integer as row_count
+    from public.interview_questions q
+    where q.created_by = p_created_by
+    group by q.gap_type, q.status
+  )
   select jsonb_build_object(
-    'answered_count', (
-      select count(*) from public.interview_questions q
-      where q.created_by = p_created_by and q.status = 'answered'
-    ),
-    'skipped_count', (
-      select count(*) from public.interview_questions q
-      where q.created_by = p_created_by and q.status = 'skipped'
-    ),
-    'not_relevant_count', (
-      select count(*) from public.interview_questions q
-      where q.created_by = p_created_by and q.status = 'not_relevant'
-    ),
-    'distinct_answered_topics', (
-      select count(distinct q.topic_key) from public.interview_questions q
-      where q.created_by = p_created_by and q.status = 'answered'
-    ),
-    'session_count', (
-      select count(*) from public.interview_sessions s
-      where s.created_by = p_created_by
-    ),
-    'completed_session_count', (
-      select count(*) from public.interview_sessions s
-      where s.created_by = p_created_by and s.status = 'completed'
-    ),
+    'answered_count', question_totals.answered_count,
+    'skipped_count', question_totals.skipped_count,
+    'not_relevant_count', question_totals.not_relevant_count,
+    'distinct_answered_topics', question_totals.distinct_answered_topics,
+    'session_count', session_totals.session_count,
+    'completed_session_count', session_totals.completed_session_count,
     'gap_status_counts', coalesce((
       select jsonb_agg(
         jsonb_build_object(
-          'gap_type', grouped.gap_type,
-          'status', grouped.status,
-          'count', grouped.row_count
+          'gap_type', gap_totals.gap_type,
+          'status', gap_totals.status,
+          'count', gap_totals.row_count
         )
-        order by grouped.gap_type, grouped.status
+        order by gap_totals.gap_type, gap_totals.status
       )
-      from (
-        select q.gap_type, q.status, count(*)::integer as row_count
-        from public.interview_questions q
-        where q.created_by = p_created_by
-        group by q.gap_type, q.status
-      ) grouped
+      from gap_totals
     ), '[]'::jsonb)
-  );
+  )
+  from question_totals
+  cross join session_totals;
 $$;
 
 revoke all on function public.set_interview_session_focus(uuid, uuid, text, text)
