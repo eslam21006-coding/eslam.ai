@@ -22,6 +22,13 @@ const teachingMethods = [
     description: "ارفع مستندات خاصة، استخرج التعليمات مع مصدرها، ثم اختر ما يتحول إلى Brain drafts.",
     flow: "Upload → Extract → Review",
   },
+  {
+    href: "/admin/teach/interview",
+    eyebrow: "Interview",
+    title: "مقابلة إسلام",
+    description: "خلّي Eslam.AI يحدد فجوة حقيقية في معرفته عنك، يسألك سؤالاً واحداً، ثم يحوّل إجابتك إلى Brain drafts للمراجعة.",
+    flow: "Ground → Ask → Answer",
+  },
 ] as const;
 
 export default function TeachEslamHubPage() {
@@ -35,24 +42,16 @@ export default function TeachEslamHubPage() {
         </p>
       </div>
 
-      <section className="mt-9 grid gap-4 lg:grid-cols-3" aria-label="طرق تدريب إسلام">
+      <section className="mt-9 grid gap-4 md:grid-cols-2" aria-label="طرق تدريب إسلام">
         {teachingMethods.map((method) => (
-          <Link
-            key={method.href}
-            href={method.href}
-            className="interactive-surface group flex min-h-64 flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 hover:bg-[var(--surface-subtle)]"
-          >
-            <p lang="en" dir="ltr" className="text-xs font-semibold tracking-[0.16em] text-[var(--gold-muted)]">
-              {method.eyebrow}
-            </p>
+          <Link key={method.href} href={method.href} className="interactive-surface group flex min-h-64 flex-col rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 hover:bg-[var(--surface-subtle)]">
+            <p lang="en" dir="ltr" className="text-xs font-semibold tracking-[0.16em] text-[var(--gold-muted)]">{method.eyebrow}</p>
             <div className="mt-4 flex items-start justify-between gap-4">
               <h2 className="text-xl font-semibold group-hover:text-[var(--gold-bright)]">{method.title}</h2>
               <span aria-hidden="true" className="text-[var(--gold-muted)]">←</span>
             </div>
             <p className="mt-4 flex-1 text-sm leading-7 text-[var(--foreground-muted)]">{method.description}</p>
-            <p lang="en" dir="ltr" className="mt-6 border-t border-[var(--border)] pt-4 text-xs text-[var(--foreground-subtle)]">
-              {method.flow}
-            </p>
+            <p lang="en" dir="ltr" className="mt-6 border-t border-[var(--border)] pt-4 text-xs text-[var(--foreground-subtle)]">{method.flow}</p>
           </Link>
         ))}
       </section>
@@ -60,16 +59,9 @@ export default function TeachEslamHubPage() {
       <aside className="mt-6 flex flex-col gap-4 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface-subtle)] p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-sm font-semibold">بعد إنشاء المسودات</h2>
-          <p className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">
-            راجع المحتوى وعدّله واعتمد النسخة الصحيحة من مركز عقل إسلام.
-          </p>
+          <p className="mt-1 text-sm leading-6 text-[var(--foreground-muted)]">راجع المحتوى وعدّله واعتمد النسخة الصحيحة من مركز عقل إسلام.</p>
         </div>
-        <Link
-          href="/admin/brain?status=draft&page=1"
-          className="min-h-11 shrink-0 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-center text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]"
-        >
-          فتح عقل إسلام
-        </Link>
+        <Link href="/admin/brain?status=draft&page=1" className="min-h-11 shrink-0 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-4 py-3 text-center text-sm font-semibold text-[var(--gold-bright)] transition hover:border-[var(--gold)]">فتح عقل إسلام</Link>
       </aside>
     </div>
   );

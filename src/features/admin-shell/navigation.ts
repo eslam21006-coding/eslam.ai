@@ -7,11 +7,12 @@ export const adminNavigation = [
   {
     href: "/admin/teach",
     label: "تدريب إسلام",
-    description: "أدخل تعليمات جديدة بالنص أو الصوت أو المستندات ثم حوّلها إلى Brain drafts للمراجعة.",
+    description: "أدخل تعليمات جديدة بالنص أو الصوت أو المستندات أو المقابلة ثم حوّلها إلى Brain drafts للمراجعة.",
     children: [
       { href: "/admin/teach/text", label: "تعليم بالنص" },
       { href: "/admin/teach/voice", label: "تعليم بالصوت" },
       { href: "/admin/teach/documents", label: "مستندات تعليمية" },
+      { href: "/admin/teach/interview", label: "مقابلة إسلام" },
     ],
   },
   {
@@ -28,35 +29,14 @@ export const adminNavigation = [
 
 /** Admin destinations that stay hidden until their product workflows exist. */
 export const futureAdminSections = [
-  {
-    slug: "users",
-    label: "المستخدمون",
-    description: "إدارة حسابات المتدربين وصلاحياتهم.",
-  },
-  {
-    slug: "conversations",
-    label: "المحادثات",
-    description: "مراجعة محادثات المتدربين.",
-  },
-  {
-    slug: "memory",
-    label: "ذاكرة إسلام",
-    description: "إدارة طبقات الذاكرة العامة.",
-  },
-  {
-    slug: "cases",
-    label: "الحالات والأمثلة",
-    description: "إدارة الحالات العملية والأمثلة المعتمدة.",
-  },
-  {
-    slug: "settings",
-    label: "الإعدادات",
-    description: "إعدادات الإدارة العامة.",
-  },
+  { slug: "users", label: "المستخدمون", description: "إدارة حسابات المتدربين وصلاحياتهم." },
+  { slug: "conversations", label: "المحادثات", description: "مراجعة محادثات المتدربين." },
+  { slug: "memory", label: "ذاكرة إسلام", description: "إدارة طبقات الذاكرة العامة." },
+  { slug: "cases", label: "الحالات والأمثلة", description: "إدارة الحالات العملية والأمثلة المعتمدة." },
+  { slug: "settings", label: "الإعدادات", description: "إعدادات الإدارة العامة." },
 ] as const;
 
 export type FutureAdminSectionSlug = (typeof futureAdminSections)[number]["slug"];
-
 /** Resolves an unfinished direct admin section by its stable slug. */
 export function getAdminSection(slug: string) {
   return futureAdminSections.find((item) => item.slug === slug);
