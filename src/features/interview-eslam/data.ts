@@ -18,6 +18,7 @@ import {
   type InterviewCoverage,
   type InterviewCoverageAggregate,
 } from "@/features/interview-eslam/intelligence-core";
+import { hasInterviewKnowledgeGrounding } from "@/features/interview-eslam/knowledge-guidance-core";
 import { getInterviewAdminClient } from "@/features/interview-eslam/database";
 import { requireAdmin } from "@/lib/auth/admin";
 import type { Json } from "@/types/database";
@@ -30,6 +31,7 @@ export type InterviewCurrentQuestion = {
   whyThisQuestion: string;
   gapType: string;
   followUpRecommended: boolean;
+  knowledgeGuided: boolean;
   createdAt: string;
 };
 export type InterviewExtractionIssue = {
@@ -46,6 +48,7 @@ export type InterviewHistoryEntry = {
   topic: string;
   gapType: string;
   status: InterviewQuestionStatus;
+  knowledgeGuided: boolean;
   createdAt: string;
 };
 export type InterviewSessionSummary = {
@@ -185,7 +188,7 @@ export async function loadInterviewPageState(): Promise<InterviewPageState> {
       .select("id,status,focus_topic,created_at,updated_at,completed_at")
       .eq("created_by", userId).order("created_at", { ascending: false }).limit(8),
     admin.from("interview_questions")
-      .select("id,session_id,ordinal,question,topic,gap_type,status,created_at")
+      .select("id,session_id,ordinal,question,topic,gap_type,status,grounding_sources,created_at")
       .eq("created_by", userId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(24),
   ]);
   if (sessionResult.error) logInterviewLoadError("session", sessionResult.error);
@@ -207,6 +210,7 @@ export async function loadInterviewPageState(): Promise<InterviewPageState> {
       topic: row.topic,
       gapType: row.gap_type,
       status: row.status as InterviewQuestionStatus,
+      knowledgeGuided: hasInterviewKnowledgeGrounding(row.grounding_sources),
       createdAt: row.created_at,
     }));
 
@@ -216,7 +220,7 @@ export async function loadInterviewPageState(): Promise<InterviewPageState> {
   if (activeSession) {
     const [questionResult, historyResult, extractionResult] = await Promise.all([
       admin.from("interview_questions")
-        .select("id,ordinal,question,topic,why_this_question,gap_type,follow_up_recommended,created_at")
+        .select("id,ordinal,question,topic,why_this_question,gap_type,follow_up_recommended,grounding_sources,created_at")
         .eq("session_id", activeSession.id).eq("created_by", userId).eq("status", "asked")
         .limit(1).maybeSingle(),
       admin.from("interview_questions").select("status")
@@ -243,6 +247,7 @@ export async function loadInterviewPageState(): Promise<InterviewPageState> {
         whyThisQuestion: question.why_this_question,
         gapType: question.gap_type,
         followUpRecommended: question.follow_up_recommended,
+        knowledgeGuided: hasInterviewKnowledgeGrounding(question.grounding_sources),
         createdAt: question.created_at,
       };
     }
