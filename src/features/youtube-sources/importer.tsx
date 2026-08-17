@@ -16,6 +16,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   "provider-not-configured": "خدمة جلب Transcript من YouTube غير مفعلة على السيرفر حالياً.",
   "transcript-unavailable": "لم نجد Transcript أو Captions متاحة لهذا الفيديو باللغة المطلوبة.",
   "provider-failed": "تعذر جلب Transcript من YouTube الآن. أعد المحاولة بدون تغيير أي مصدر محفوظ.",
+  "source-exists": "هذا الفيديو موجود بالفعل في مكتبة المعرفة لكنه يحتاج متابعة حالته أو إعادة الفهرسة من قائمة المصادر.",
   "storage-failed": "تم جلب Transcript لكن تعذر حفظه بأمان في مكتبة المعرفة.",
   "index-failed": "تم حفظ Transcript كمصدر، لكن تجهيز البحث يحتاج إعادة محاولة من قائمة المصادر.",
   "transcript-too-large": "Transcript أكبر من الحد الآمن للاستيراد.",
