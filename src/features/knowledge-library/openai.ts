@@ -9,13 +9,28 @@ import {
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const OPENAI_KNOWLEDGE_TIMEOUT_MS = 90_000;
 const OPENAI_KNOWLEDGE_CONFIRM_TIMEOUT_MS = 15_000;
+const OPENAI_KNOWLEDGE_SEARCH_TIMEOUT_MS = 20_000;
 const KNOWLEDGE_INDEX_LEASE_MS = 180_000;
+export const KNOWLEDGE_VECTOR_SEARCH_MAX_RESULTS = 12;
+export const KNOWLEDGE_VECTOR_SEARCH_SCORE_THRESHOLD = 0.15;
 
 type VectorStoreFileState = {
   id: string;
   vector_store_id: string;
   status: "in_progress" | "completed" | "cancelled" | "failed";
   last_error: { code?: string; message?: string } | null;
+};
+
+export type KnowledgeVectorSearchResult = {
+  file_id?: unknown;
+  filename?: unknown;
+  score?: unknown;
+  attributes?: unknown;
+  content?: unknown;
+};
+
+type KnowledgeVectorSearchResponse = {
+  data?: unknown;
 };
 
 export class KnowledgeProviderError extends Error {
@@ -139,6 +154,38 @@ export async function retrieveKnowledgeVectorStore(
     });
   }
   return id;
+}
+
+/** Searches the configured vector store with bounded Interview-safe retrieval parameters. */
+export async function searchKnowledgeVectorStore(vectorStoreId: string, queries: string[]) {
+  const boundedQueries = queries
+    .map((query) => query.trim())
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((query) => query.slice(0, 500));
+  if (!vectorStoreId.trim() || !boundedQueries.length) return [] as KnowledgeVectorSearchResult[];
+
+  const payload = await openAIRequest<KnowledgeVectorSearchResponse>(
+    `/vector_stores/${encodeURIComponent(vectorStoreId)}/search`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        query: boundedQueries.length === 1 ? boundedQueries[0] : boundedQueries,
+        max_num_results: KNOWLEDGE_VECTOR_SEARCH_MAX_RESULTS,
+        rewrite_query: true,
+        ranking_options: {
+          ranker: "auto",
+          score_threshold: KNOWLEDGE_VECTOR_SEARCH_SCORE_THRESHOLD,
+        },
+      }),
+    },
+    { beta: true, timeoutMs: OPENAI_KNOWLEDGE_SEARCH_TIMEOUT_MS },
+  );
+
+  if (!payload || !Array.isArray(payload.data)) return [];
+  return payload.data.filter(
+    (result): result is KnowledgeVectorSearchResult => Boolean(result && typeof result === "object"),
+  );
 }
 
 /** Deletes an unused vector store created by a lost singleton-creation race. */

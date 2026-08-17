@@ -23,6 +23,10 @@ import {
   findSemanticInterviewDuplicate,
 } from "@/features/interview-eslam/intelligence-server";
 import {
+  mergeInterviewKnowledgeSources,
+} from "@/features/interview-eslam/knowledge-guidance-core";
+import { loadInterviewKnowledgeGuidance } from "@/features/interview-eslam/knowledge-guidance";
+import {
   interviewQuestionPayloadToJson,
   loadInterviewAnswerForExtraction,
   loadInterviewGenerationIntelligence,
@@ -84,10 +88,12 @@ async function ensureNextInterviewQuestion(sessionId: string, userId: string): P
     return "failed";
   }
   if (existing) return "ready";
-  const [context, intelligence] = await Promise.all([
+  const [baseContext, intelligence] = await Promise.all([
     loadInterviewQuestionContext(userId),
     loadInterviewGenerationIntelligence(userId, sessionId),
   ]);
+  const knowledgeSources = await loadInterviewKnowledgeGuidance(baseContext, intelligence);
+  const context = mergeInterviewKnowledgeSources(baseContext, knowledgeSources);
   if (!context.sources.length) return "needs-context";
   const model = getOpenAIModel();
   let rejectionReason: string | undefined;

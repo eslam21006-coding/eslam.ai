@@ -19,7 +19,7 @@ type InterviewPageProps = { searchParams: Promise<{ notice?: string; count?: str
 /** Maps server-action outcomes to concise Arabic Admin notices without conflating failure causes. */
 function noticeText(notice: string | undefined, count: string | undefined) {
   switch (notice) {
-    case "started": return "بدأت أو استكملت المقابلة. السؤال الحالي مبني على معلومات موجودة فعلاً عن إسلام.";
+    case "started": return "بدأت أو استكملت المقابلة. السؤال الحالي اجتاز Grounded Question Contract.";
     case "answer-saved": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft للمراجعة، وتم تجهيز السؤال التالي.`;
     case "answer-saved-extraction-failed": return "تم حفظ إجابتك والسؤال التالي بأمان، لكن استخراج Brain drafts لم يكتمل. يمكنك إعادة المحاولة بدون كتابة الإجابة مرة أخرى.";
     case "answer-saved-needs-context": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft. لم يجد النظام مادة كافية لسؤال جديد يحقق شرط الـ Grounding بدون اختراع سؤال عام.`;
@@ -30,7 +30,7 @@ function noticeText(notice: string | undefined, count: string | undefined) {
     case "not-relevant": return "تم تسجيل السؤال كغير ذي صلة وسيتم كبح الأسئلة المشابهة.";
     case "topic-suppressed": return "تم تسجيل السؤال كغير ذي صلة وحفظ تفضيل دائم بعدم السؤال عن هذا الموضوع.";
     case "question-ready": return "تم إنشاء سؤال جديد يطابق Grounded Question Contract وقواعد عدم التكرار.";
-    case "needs-context": return "لا توجد مادة كافية حالياً لإنشاء سؤال محدد ومفيد ضمن الـ Focus الحالي بدون سؤال عام. أضف أو راجع مواد تعليمية أو غيّر الـ Focus ثم حاول مرة أخرى.";
+    case "needs-context": return "لا توجد مادة كافية حالياً لإنشاء سؤال محدد ومفيد ضمن الـ Focus الحالي بدون سؤال عام. أضف أو راجع مواد تعليمية أو Knowledge Library أو غيّر الـ Focus ثم حاول مرة أخرى.";
     case "exhausted": return "توجد مادة Grounding، لكن المحاولات لم تنتج سؤالاً اجتاز قواعد التحقق وعدم التكرار. أعد المحاولة لاحقاً.";
     case "focus-updated": return "تم حفظ Focus المقابلة. سيؤثر على السؤال التالي فقط، ولن يُستخدم أبداً كدليل أو Grounding.";
     case "focus-cleared": return "تم إلغاء Focus المقابلة. سيعود النظام لتوسيع التغطية بين المجالات.";
@@ -83,7 +83,7 @@ export default async function InterviewEslamPage({ searchParams }: InterviewPage
             <p className="text-xs font-medium text-[var(--gold-muted)]">Teach Eslam · Intelligent Interview</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">مقابلة إسلام</h1>
             <p className="mt-4 text-sm leading-7 text-[var(--foreground-muted)] sm:text-base">
-              سؤال واحد في كل مرة، مبني على شيء نعرفه بالفعل عن إسلام. النظام يتابع التغطية، يمنع التكرار المعنوي، ويوازن بين الـ Follow-up وتوسيع المعرفة. إجاباتك تظل مصادر خام وتتحول فقط إلى Brain drafts للمراجعة.
+              سؤال واحد في كل مرة، مبني على Grounding حقيقي: ما نعرفه عن إسلام أو مادة مرجعية مرتبطة من Knowledge Library. أي مرجع خارجي يظل مرجعاً فقط؛ السؤال يطلب رأي إسلام أو قاعدته أو تطبيقه، وإجابتك وحدها هي التي يمكن أن تتحول إلى Brain drafts للمراجعة.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -136,7 +136,7 @@ export default async function InterviewEslamPage({ searchParams }: InterviewPage
             <div className="max-w-2xl">
               <p className="text-xs font-medium text-[var(--gold-muted)]">الجلسة الحالية · Resume تلقائي</p>
               <h2 className="mt-2 text-lg font-semibold">Focus اختياري للمقابلة</h2>
-              <p className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">الـ Focus يحدد أين نبحث عن فجوة، لكنه لا يُعامل كحقيقة ولا يمكن أن يحل محل الـ Grounding. لو السؤال الحالي مفتوح، التغيير يبدأ من السؤال التالي.</p>
+              <p className="mt-2 text-sm leading-7 text-[var(--foreground-muted)]">الـ Focus يحدد أين نبحث عن فجوة وأي Knowledge نبحث عنه، لكنه لا يُعامل كحقيقة ولا يمكن أن يحل محل الـ Grounding. لو السؤال الحالي مفتوح، التغيير يبدأ من السؤال التالي.</p>
             </div>
             <div className="grid grid-cols-3 gap-2 text-center text-xs">
               <div className="rounded-[var(--radius-sm)] border border-[var(--border)] p-3"><strong className="block text-base" dir="ltr">{state.counts.answered}</strong>إجابة</div>
@@ -179,7 +179,7 @@ export default async function InterviewEslamPage({ searchParams }: InterviewPage
       {!state.sessionId ? (
         <section className="mt-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8">
           <h2 className="text-xl font-semibold">ابدأ جلسة مقابلة جديدة</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--foreground-muted)]">سيستخدم النظام Business DNA والتعليمات الحالية وإجابات المقابلات السابقة، ثم يبحث عن فجوة محددة تستحق السؤال. لن يستبدل نقص الأدلة باستبيان عام.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--foreground-muted)]">سيستخدم النظام Business DNA والتعليمات الحالية وإجابات المقابلات السابقة، ويبحث أيضاً داخل Knowledge Library عن مرجع مرتبط، ثم يبحث عن فجوة محددة تستحق السؤال. لن يستبدل نقص الأدلة باستبيان عام.</p>
           <form action={startInterviewAction} className="mt-5"><button type="submit" className="min-h-12 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)]">بدء جلسة جديدة</button></form>
         </section>
       ) : question ? (
@@ -187,9 +187,11 @@ export default async function InterviewEslamPage({ searchParams }: InterviewPage
           <article className="rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-5 sm:p-8">
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-3 py-1 text-xs font-semibold text-[var(--gold-bright)]">{question.topic}</span>
+              {question.knowledgeGuided ? <span className="rounded-full border border-[var(--border-strong)] px-3 py-1 text-xs font-medium text-[var(--foreground-muted)]">Knowledge-guided</span> : null}
               <span className="text-xs text-[var(--foreground-subtle)]" dir="ltr">Q{question.ordinal}</span>
             </div>
             <h2 className="mt-5 text-xl font-semibold leading-9 sm:text-2xl" dir="auto">{question.question}</h2>
+            {question.knowledgeGuided ? <p className="mt-3 text-xs leading-6 text-[var(--foreground-subtle)]">السؤال استفاد من مادة مرجعية مرتبطة، لكن المرجع لا يُعتبر رأي إسلام. إجابتك هي التي تثبت موقفك.</p> : null}
             <details className="mt-5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
               <summary className="cursor-pointer text-sm font-semibold">لماذا أسأل هذا السؤال؟</summary>
               <p className="mt-3 text-sm leading-7 text-[var(--foreground-muted)]" dir="auto">{question.whyThisQuestion}</p>
@@ -222,7 +224,7 @@ export default async function InterviewEslamPage({ searchParams }: InterviewPage
       ) : (
         <section className="mt-6 rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8">
           <h2 className="text-xl font-semibold">لا يوجد سؤال مفتوح حالياً</h2>
-          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--foreground-muted)]">يمكن محاولة إيجاد فجوة جديدة في المادة الحالية. التحقق يشمل الـ Grounding وعدم التكرار اللفظي والمعنوي وحدود الـ Follow-up.</p>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--foreground-muted)]">يمكن محاولة إيجاد فجوة جديدة في المادة الحالية وKnowledge Library. التحقق يشمل الـ Grounding وعدم التكرار اللفظي والمعنوي وحدود الـ Follow-up.</p>
           <form action={generateInterviewQuestionAction} className="mt-5"><button type="submit" className="min-h-12 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-5 py-3 text-sm font-semibold text-[var(--gold-bright)]">إنشاء السؤال التالي</button></form>
         </section>
       )}
@@ -238,6 +240,7 @@ export default async function InterviewEslamPage({ searchParams }: InterviewPage
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-xs font-semibold text-[var(--gold-muted)]">{item.topic}</span>
+                      {item.knowledgeGuided ? <span className="text-xs font-medium text-[var(--foreground-subtle)]">Knowledge-guided</span> : null}
                       <span className="text-xs text-[var(--foreground-subtle)]" dir="ltr">Q{item.ordinal}</span>
                     </div>
                     <span className="text-xs text-[var(--foreground-subtle)]">{historyStatus(item)} · {formatInterviewDate(item.createdAt)}</span>

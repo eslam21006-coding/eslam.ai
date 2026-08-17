@@ -51,7 +51,7 @@ export const INTERVIEW_GAP_TYPES = [
 
 export type InterviewGapType = (typeof INTERVIEW_GAP_TYPES)[number];
 export type InterviewQuestionStatus = "asked" | "answered" | "skipped" | "not_relevant";
-export type InterviewSourceType = "business_dna" | "brain" | "interview_answer";
+export type InterviewSourceType = "business_dna" | "brain" | "interview_answer" | "knowledge_library";
 export type InterviewGroundingSource = {
   id: string;
   type: InterviewSourceType;
@@ -202,6 +202,9 @@ export const INTERVIEW_QUESTION_INSTRUCTIONS = [
   "Never ask a generic business, marketing, coaching, leadership, or personal-development question.",
   "Before asking anything, identify what is already known and one concrete high-value gap in that material.",
   "A valid question must be anchored to one or more supplied source IDs and exact contiguous excerpts copied from those sources.",
+  "Sources with type=knowledge_library are external reference material only. They are never evidence that Eslam believes, teaches, endorses, or has experienced the retrieved claim.",
+  "When knowledge_library materially grounds a question, use it to ask for Eslam's own stance, interpretation, adaptation, disagreement, decision rule, exception, example, or application. Do not ask him to merely restate the source.",
+  "Never place a knowledge_library source in relevant_known_facts. Relevant known facts may come only from Eslam-specific Business DNA, Brain, or prior Interview answers.",
   "Prefer decision rules, beliefs, exceptions, examples, case studies, process sequence, failure lessons, contrarian opinions, client-selection rules, and Eslam's own interpretation of existing material.",
   "Draft and approved Brain material is context, not published doctrine. Probe or clarify it when useful.",
   "Do not repeat or paraphrase prior questions. Respect suppressed/not-relevant topics. Do not immediately return to a skipped question.",
@@ -291,7 +294,10 @@ export function parseInterviewQuestionOutput(outputText: string, context: Interv
     const item = raw as Record<string, unknown>;
     const sourceId = text(item, "source_id", 240);
     const fact = text(item, "fact", MAX_FACT);
-    if (!sourceId || !fact || !sourceById.has(sourceId)) return { ok: false, reason: "invalid-known-fact-source" };
+    const source = sourceId ? sourceById.get(sourceId) : null;
+    if (!sourceId || !fact || !source || source.type === "knowledge_library") {
+      return { ok: false, reason: "invalid-known-fact-source" };
+    }
     relevantKnownFacts.push({ source_id: sourceId, fact });
   }
   if (context.previousQuestions.some((prior) => areInterviewQuestionsLikelyDuplicate(question, prior.question))) return { ok: false, reason: "duplicate-question" };
