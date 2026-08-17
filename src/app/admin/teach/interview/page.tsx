@@ -38,7 +38,7 @@ function noticeText(notice: string | undefined, count: string | undefined) {
     case "focus-failed": return "تعذر تحديث Focus المقابلة. لم تتغير الجلسة.";
     case "session-completed": return "تم إنهاء الجلسة وحفظ تاريخها. يمكنك بدء جلسة جديدة في أي وقت.";
     case "session-invalid":
-    case "session-failed": return "تعذر إنهاء الجلسة الحالية. لم يتم حذف أي تاريخ أو إجابات.";
+    case "session-failed": return "تعذر إنهاء الجلسة الحالية. لو توجد إجابة تحتاج Extraction، أعد استخراجها أولاً. لم يتم حذف أي تاريخ أو إجابات.";
     case "extraction-complete": return `اكتمل استخراج الإجابة إلى ${count ?? "0"} Brain draft للمراجعة.`;
     case "extraction-busy": return "استخراج هذه الإجابة قيد التنفيذ بالفعل.";
     case "answer-invalid": return "اكتب إجابة غير فارغة ضمن الحد المسموح ثم حاول مرة أخرى.";
@@ -53,12 +53,12 @@ function noticeText(notice: string | undefined, count: string | undefined) {
   }
 }
 
-/** Formats persisted UTC timestamps for compact Arabic history labels. */
+/** Formats persisted UTC timestamps as Cairo local time for compact Arabic history labels. */
 function formatInterviewDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? value
-    : new Intl.DateTimeFormat("ar-EG", { dateStyle: "medium", timeStyle: "short" }).format(date);
+    : new Intl.DateTimeFormat("ar-EG", { dateStyle: "medium", timeStyle: "short", timeZone: "Africa/Cairo" }).format(date);
 }
 
 /** Maps persisted question states to concise Admin-facing Arabic labels. */
