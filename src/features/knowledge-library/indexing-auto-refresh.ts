@@ -1,13 +1,13 @@
 "use server";
 
 import { refreshKnowledgeSourceAction } from "@/features/knowledge-library/actions";
+import { validateKnowledgeSourceId } from "@/features/knowledge-library/core";
 import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 import { requireAdmin } from "@/lib/auth/admin";
 
 const MAX_PROVIDER_STATUS_REFRESH_SOURCES = 10;
 const MAX_EXPIRED_RECLAIMS = 1;
 const AUTO_REFRESH_CONCURRENCY = 5;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type KnowledgeIndexAutoRefreshResult = {
   ok: boolean;
@@ -21,10 +21,6 @@ type KnowledgeIndexAutoRefreshInput = {
 };
 
 type IndexingRow = { id: string };
-
-function validCursor(value: unknown): value is string {
-  return typeof value === "string" && UUID_PATTERN.test(value);
-}
 
 async function loadProviderIndexingBatch(
   admin: ReturnType<typeof getKnowledgeAdminClient>,
@@ -77,7 +73,7 @@ export async function refreshKnowledgeIndexingSourcesAction(
 ): Promise<KnowledgeIndexAutoRefreshResult> {
   await requireAdmin();
   const admin = getKnowledgeAdminClient();
-  const afterId = validCursor(input.afterId) ? input.afterId : null;
+  const afterId = validateKnowledgeSourceId(input.afterId);
 
   const [providerResult, reclaimResult] = await Promise.all([
     loadProviderIndexingBatch(admin, afterId),

@@ -79,7 +79,11 @@ export function KnowledgeUploader() {
     setMessage(null);
   };
 
-  const finalizeIntent = async (item: UploadItem, intent: KnowledgeUploadIntent) => {
+  const finalizeIntent = async (
+    item: UploadItem,
+    intent: KnowledgeUploadIntent,
+    onIndexFailed?: () => void,
+  ) => {
     patchItem(item.id, {
       status: "finalizing",
       pendingIntent: intent,
@@ -111,6 +115,7 @@ export function KnowledgeUploader() {
 
     if (result.error === "index-failed") {
       removeItem(item.id);
+      onIndexFailed?.();
       setMessage("تم حفظ المصدر، لكن الفهرسة تحتاج إعادة محاولة من قائمة مكتبة المعرفة.");
       router.refresh();
       return true;
@@ -127,13 +132,13 @@ export function KnowledgeUploader() {
     return false;
   };
 
-  const uploadItem = async (item: UploadItem) => {
+  const uploadItem = async (item: UploadItem, onIndexFailed?: () => void) => {
     if (validationMessage(item.file, item.title)) {
       patchItem(item.id, { status: "error", message: validationMessage(item.file, item.title) });
       return false;
     }
 
-    if (item.pendingIntent) return finalizeIntent(item, item.pendingIntent);
+    if (item.pendingIntent) return finalizeIntent(item, item.pendingIntent, onIndexFailed);
     patchItem(item.id, { status: "uploading", message: "جارٍ رفع المصدر إلى التخزين الخاص…" });
 
     let intentResult: Awaited<ReturnType<typeof createKnowledgeUploadAction>>;
@@ -203,7 +208,7 @@ export function KnowledgeUploader() {
       return false;
     }
 
-    return finalizeIntent(item, intent);
+    return finalizeIntent(item, intent, onIndexFailed);
   };
 
   const uploadQueued = async () => {
@@ -213,14 +218,25 @@ export function KnowledgeUploader() {
     setBusy(true);
     setMessage(null);
     let moved = 0;
+    let indexFailed = 0;
     try {
       for (const item of queued) {
-        if (await uploadItem(item)) moved += 1;
+        if (
+          await uploadItem(item, () => {
+            indexFailed += 1;
+          })
+        ) {
+          moved += 1;
+        }
       }
-      setMessage(
+      const summary =
         moved === queued.length
           ? `تم نقل ${moved} ${moved === 1 ? "مصدر" : "مصادر"} إلى مكتبة المعرفة.`
-          : `اكتملت الدفعة: انتقل ${moved} من ${queued.length}. راجع الملفات التي تحتاج تدخلاً.`,
+          : `اكتملت الدفعة: انتقل ${moved} من ${queued.length}. راجع الملفات التي تحتاج تدخلاً.`;
+      setMessage(
+        indexFailed > 0
+          ? `${summary} ${indexFailed} منها تحتاج إعادة فهرسة من قائمة المكتبة.`
+          : summary,
       );
     } finally {
       if (mounted.current) setBusy(false);
@@ -296,9 +312,9 @@ export function KnowledgeUploader() {
       </label>
 
       {items.length > 0 ? (
-        <div className="mt-5 grid gap-3" aria-label="مصادر المعرفة المختارة">
+        <div className="mt-5 grid gap-3" role="list" aria-label="مصادر المعرفة المختارة">
           {items.map((item) => (
-            <article key={item.id} className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
+            <article key={item.id} role="listitem" className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] p-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                 <div className="min-w-0">
                   <p className="break-all text-sm font-semibold">{item.file.name}</p>

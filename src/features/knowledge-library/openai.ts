@@ -8,6 +8,7 @@ import {
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
 const OPENAI_KNOWLEDGE_TIMEOUT_MS = 90_000;
+const OPENAI_KNOWLEDGE_CONFIRM_TIMEOUT_MS = 15_000;
 const KNOWLEDGE_INDEX_LEASE_MS = 180_000;
 
 type VectorStoreFileState = {
@@ -272,7 +273,11 @@ async function deleteKnowledgeVectorStoreFile(vectorStoreId: string, fileId: str
   const remaining = await openAIRequest<VectorStoreFileState>(
     `/vector_stores/${encodeURIComponent(vectorStoreId)}/files/${encodeURIComponent(fileId)}`,
     { method: "GET" },
-    { beta: true, allowNotFound: true },
+    {
+      beta: true,
+      allowNotFound: true,
+      timeoutMs: OPENAI_KNOWLEDGE_CONFIRM_TIMEOUT_MS,
+    },
   );
   if (remaining) {
     throw new KnowledgeProviderError("Knowledge vector-store file deletion was not confirmed", {
@@ -327,7 +332,10 @@ export async function deleteKnowledgeOpenAIFile(fileId: string) {
   const remainingFile = await openAIRequest<{ id?: unknown }>(
     `/files/${encodeURIComponent(fileId)}`,
     { method: "GET" },
-    { allowNotFound: true },
+    {
+      allowNotFound: true,
+      timeoutMs: OPENAI_KNOWLEDGE_CONFIRM_TIMEOUT_MS,
+    },
   );
   if (remainingFile) {
     throw new KnowledgeProviderError("Knowledge OpenAI file deletion was not confirmed", {

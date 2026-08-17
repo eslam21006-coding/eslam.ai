@@ -21,6 +21,11 @@ const STATUS_LABELS: Record<KnowledgeSourceStatus, string> = {
   deleting: "جارٍ الحذف",
 };
 
+type KnowledgeSourceOperationResult = {
+  ok: boolean;
+  error?: string;
+};
+
 export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -29,8 +34,9 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
 
   const run = (
     sourceId: string,
-    operation: () => Promise<{ ok: boolean }>,
+    operation: () => Promise<KnowledgeSourceOperationResult>,
     failureMessage: string,
+    messageByError: Record<string, string> = {},
   ) => {
     if (isPending) return;
     setPendingId(sourceId);
@@ -38,7 +44,9 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
     startTransition(async () => {
       try {
         const result = await operation();
-        if (!result.ok) setMessage(failureMessage);
+        if (!result.ok) {
+          setMessage((result.error && messageByError[result.error]) ?? failureMessage);
+        }
         router.refresh();
       } catch (error) {
         console.error("Knowledge Library source operation failed", {
@@ -120,6 +128,10 @@ export function KnowledgeSourceList({ page }: { page: KnowledgeSourcePage }) {
                         source.id,
                         () => finalizeKnowledgeUploadAction({ sourceId: source.id }),
                         "تعذر إكمال حفظ المصدر. إذا لم يعد الملف موجوداً يمكنك حذف المحاولة وإعادة الرفع.",
+                        {
+                          "index-failed":
+                            "تم حفظ المصدر، لكن الفهرسة تحتاج إعادة محاولة من هذه القائمة.",
+                        },
                       )
                     }
                     className="min-h-10 rounded-[var(--radius-sm)] border border-[var(--gold-muted)] bg-[var(--gold-soft)] px-3 py-2 text-xs font-semibold text-[var(--gold-bright)] disabled:opacity-50"
