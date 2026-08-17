@@ -59,6 +59,15 @@ test("YouTube import materializes into the existing private Knowledge lifecycle 
   assert.doesNotMatch(actions, /eslam_brain_items|eslam_brain_versions|create_teach_eslam|publish/i);
 });
 
+test("Existing pending or failed YouTube sources never masquerade as active indexing", () => {
+  const actions = readSource("src/features/youtube-sources/actions.ts");
+  const existingResult = actions.slice(actions.indexOf("function existingImportResult"), actions.indexOf("async function deleteStagingImport"));
+  assert.match(existingResult, /source\.status === "ready"/);
+  assert.match(existingResult, /source\.status === "indexing"/);
+  assert.doesNotMatch(existingResult, /source\.status === "pending"/);
+  assert.match(existingResult, /error: "source-exists"/);
+});
+
 test("Async YouTube job races preserve the first audit actor and remain globally operable by Admin", () => {
   const actions = readSource("src/features/youtube-sources/actions.ts");
   const saveJob = actions.slice(actions.indexOf("async function saveProviderJob"), actions.indexOf("export async function importYouTubeSourceAction"));
@@ -70,6 +79,14 @@ test("Async YouTube job races preserve the first audit actor and remain globally
   assert.match(refreshJob, /await requireAdmin\(\)/);
   assert.doesNotMatch(refreshJob, /\.eq\("created_by",/);
   assert.match(refreshJob, /actorId: staged\.created_by/);
+});
+
+test("Active YouTube jobs are loaded independently from bounded failed history", () => {
+  const data = readSource("src/features/knowledge-library/data.ts");
+  const loader = data.slice(data.indexOf("export async function loadYouTubeTranscriptImports"));
+  assert.match(loader, /processingResult[\s\S]*\.eq\("status", "processing"\)[\s\S]*\.limit\(1000\)/);
+  assert.match(loader, /failedResult[\s\S]*\.eq\("status", "failed"\)[\s\S]*\.limit\(12\)/);
+  assert.match(loader, /processingResult\.data[\s\S]*failedResult\.data/);
 });
 
 test("Task 27 migrations keep YouTube staging and provenance service-only and cover its creator FK", () => {
