@@ -31,9 +31,14 @@ test("streaming OpenAI boundary reuses the bounded request contract with store d
   const request = readSource("src/features/conversations/assistant-request.ts");
   const events = readSource("src/features/conversations/assistant-stream-events.ts");
 
+  assert.match(assistant, /createWithKnowledgeFallback\(/);
   assert.match(assistant, /buildBasicEslamStreamingResponseRequest/);
-  assert.match(assistant, /responses\.create\(request, \{/);
-  assert.match(assistant, /signal: options\.signal/);
+  assert.match(
+    assistant,
+    /client\.responses\.create\([\s\S]{0,700}?buildBasicEslamStreamingResponseRequest\([\s\S]{0,700}?\{ signal: options\.signal \}/,
+    "stream creation must use the bounded streaming request builder and forward the abort signal inside the Knowledge fallback boundary",
+  );
+  assert.match(assistant, /consumeBasicEslamStream\(stream/);
   assert.match(request, /MAX_MODEL_TRANSCRIPT_MESSAGES = 64/);
   assert.match(request, /MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000/);
   assert.match(request, /store: false/);
