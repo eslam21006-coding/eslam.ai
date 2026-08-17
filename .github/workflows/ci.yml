@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@3d3c42e5aac5ba805825406e3c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -100,7 +100,8 @@ jobs:
             supabase/tests/document_teaching_uploads_runtime.sql \
             supabase/tests/document_teaching_extraction_runtime.sql \
             supabase/tests/knowledge_library_runtime.sql \
-            supabase/tests/knowledge_library_hardening_runtime.sql; do
+            supabase/tests/knowledge_library_hardening_runtime.sql \
+            supabase/tests/interview_eslam_runtime.sql; do
             echo "Running $regression"
             docker exec --interactive "$container_name" \
               psql --set ON_ERROR_STOP=1 --username postgres \
