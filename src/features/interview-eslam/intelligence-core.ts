@@ -1,6 +1,7 @@
 import {
   INTERVIEW_GAP_TYPES,
   areInterviewTopicsLikelySimilar,
+  normalizeInterviewText,
   type InterviewGapType,
   type InterviewQuestionHistoryItem,
 } from "./core.ts";
@@ -141,6 +142,17 @@ export function buildInterviewCoverage(aggregates: InterviewCoverageAggregate[])
   };
 }
 
+/** Detects a topic thread more broadly than durable suppression, using shared multi-token cores. */
+function areInterviewTopicsSameThread(candidate: string, previous: string) {
+  if (areInterviewTopicsLikelySimilar(candidate, previous)) return true;
+  const left = new Set(normalizeInterviewText(candidate).split(" ").filter((token) => token.length >= 2));
+  const right = new Set(normalizeInterviewText(previous).split(" ").filter((token) => token.length >= 2));
+  if (left.size < 2 || right.size < 2) return false;
+  let intersection = 0;
+  for (const token of left) if (right.has(token)) intersection += 1;
+  return intersection >= 2 && intersection / Math.min(left.size, right.size) >= 2 / 3;
+}
+
 /** Prevents immediate skip repeats and unbounded same-topic drill-down outside explicit focus mode. */
 export function shouldRejectInterviewTopicSequence(
   candidateTopic: string,
@@ -149,11 +161,11 @@ export function shouldRejectInterviewTopicSequence(
 ) {
   const recent = previousQuestions.slice(-2);
   const last = recent.at(-1);
-  if (last?.status === "skipped" && areInterviewTopicsLikelySimilar(candidateTopic, last.topic)) return true;
+  if (last?.status === "skipped" && areInterviewTopicsSameThread(candidateTopic, last.topic)) return true;
 
-  const focused = Boolean(focusTopic?.trim() && areInterviewTopicsLikelySimilar(candidateTopic, focusTopic));
+  const focused = Boolean(focusTopic?.trim() && areInterviewTopicsSameThread(candidateTopic, focusTopic));
   if (focused || recent.length < 2) return false;
-  return recent.every((item) => areInterviewTopicsLikelySimilar(candidateTopic, item.topic));
+  return recent.every((item) => areInterviewTopicsSameThread(candidateTopic, item.topic));
 }
 
 /** Produces trusted prioritization instructions; focus and coverage guide selection but never establish facts. */
