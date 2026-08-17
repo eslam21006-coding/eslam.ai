@@ -207,7 +207,7 @@ test("blocking and streaming requests receive identical Brain and Business DNA s
   assert.match(withoutBrain.instructions, /Business DNA JSON:/);
 });
 
-test("blocking and streaming paths load and pass the same global Brain context", () => {
+test("blocking and streaming paths load and pass Brain context alongside later optional context layers", () => {
   const actions = readSource("src/features/conversations/actions.ts");
   const route = readSource("src/app/api/chat/stream/route.ts");
   const assistant = readSource("src/features/conversations/assistant.ts");
@@ -217,16 +217,16 @@ test("blocking and streaming paths load and pass the same global Brain context",
   assert.match(actions, /loadEslamBrainModelContext\(\)/);
   assert.match(
     actions,
-    /generateBasicEslamReply\(messages, businessDnaContext, eslamBrainContext\)/,
+    /generateBasicEslamReply\([\s\S]{0,650}?businessDnaContext,[\s\S]{0,650}?eslamBrainContext/,
   );
 
   assert.match(route, /Promise\.all\(\[/);
   assert.match(route, /loadBusinessDnaModelContext\(userId\)/);
   assert.match(route, /loadEslamBrainModelContext\(\)/);
-  assert.match(route, /streamBasicEslamReply\([\s\S]*businessDnaContext,[\s\S]*eslamBrainContext/);
+  assert.match(route, /streamBasicEslamReply\([\s\S]{0,650}?businessDnaContext,[\s\S]{0,650}?eslamBrainContext/);
 
-  assert.match(assistant, /buildBasicEslamResponseRequest[\s\S]*eslamBrainContext/);
-  assert.match(assistant, /buildBasicEslamStreamingResponseRequest[\s\S]*eslamBrainContext/);
+  assert.match(assistant, /buildBasicEslamResponseRequest[\s\S]{0,900}?eslamBrainContext/);
+  assert.match(assistant, /buildBasicEslamStreamingResponseRequest[\s\S]{0,900}?eslamBrainContext/);
 });
 
 test("client roles still have no direct Brain table privileges", () => {
@@ -250,18 +250,15 @@ test("client roles still have no direct Brain table privileges", () => {
   assert.doesNotMatch(hardening, /grant .* to (anon|authenticated)/i);
 });
 
-test("Task 14 stays retrieval-only and does not introduce later roadmap features", () => {
+test("Brain retrieval implementation remains read-only even as later response layers add optional tools", () => {
   const sources = [
     readSource("src/features/eslam-brain/model-context-core.ts"),
     readSource("src/features/eslam-brain/model-context-data.ts"),
-    readSource("src/features/conversations/assistant-request.ts"),
-    readSource("src/features/conversations/assistant.ts"),
-    readSource("src/features/conversations/actions.ts"),
-    readSource("src/app/api/chat/stream/route.ts"),
   ].join("\n");
 
   assert.doesNotMatch(
     sources,
     /vector_store|file_search|web_search|teaching_sources|mentee_memor|metric_snapshots|voice_transcription|document_ingestion|tools:/i,
   );
+  assert.doesNotMatch(sources, /\.insert\(|\.update\(|\.delete\(/);
 });

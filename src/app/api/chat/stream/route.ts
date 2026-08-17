@@ -15,6 +15,8 @@ import { prepareMessageResponseFlow } from "@/features/conversations/response-fl
 import { createResponsePreparationDependencies } from "@/features/conversations/response-flow-server";
 import { executePreparedStreamingResponse } from "@/features/conversations/streaming-response-flow";
 import { loadEslamBrainModelContext } from "@/features/eslam-brain/model-context-data";
+import { loadKnowledgeVectorStoreId } from "@/features/knowledge-library/model-context-data";
+import { isAdmin } from "@/lib/auth/admin";
 import { getAuthenticatedUserId } from "@/lib/auth/session";
 
 export const runtime = "nodejs";
@@ -85,9 +87,11 @@ export async function POST(request: Request) {
     return errorResponse(400, "invalid_input");
   }
 
-  const [businessDnaContext, eslamBrainContext] = await Promise.all([
+  const [businessDnaContext, eslamBrainContext, knowledgeVectorStoreId, knowledgeSourceAttributionAllowed] = await Promise.all([
     loadBusinessDnaModelContext(userId),
     loadEslamBrainModelContext(),
+    loadKnowledgeVectorStoreId(),
+    isAdmin(),
   ]);
   const preparationDependencies = await createResponsePreparationDependencies();
   const prepared = await prepareMessageResponseFlow(
@@ -134,8 +138,6 @@ export async function POST(request: Request) {
         controller.enqueue(encoder.encode(serializeChatStreamEvent(event)));
       };
 
-      // Commit the HTTP response immediately. Application failures after this point
-      // travel as structured stream events instead of aborting the transport.
       send({ type: "ready", conversationId: prepared.conversationId });
 
       void executePreparedStreamingResponse(
@@ -157,6 +159,8 @@ export async function POST(request: Request) {
               options,
               businessDnaContext,
               eslamBrainContext,
+              knowledgeVectorStoreId,
+              knowledgeSourceAttributionAllowed,
             ),
           persistAssistant: persistAssistantMessage,
           releaseGeneration: preparationDependencies.releaseGeneration,

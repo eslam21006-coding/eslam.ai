@@ -31,9 +31,14 @@ test("streaming OpenAI boundary reuses the bounded request contract with store d
   const request = readSource("src/features/conversations/assistant-request.ts");
   const events = readSource("src/features/conversations/assistant-stream-events.ts");
 
+  assert.match(assistant, /createWithKnowledgeFallback\(/);
   assert.match(assistant, /buildBasicEslamStreamingResponseRequest/);
-  assert.match(assistant, /responses\.create\(request, \{/);
-  assert.match(assistant, /signal: options\.signal/);
+  assert.match(
+    assistant,
+    /client\.responses\.create\([\s\S]{0,700}?buildBasicEslamStreamingResponseRequest\([\s\S]{0,700}?\{ signal: options\.signal \}/,
+    "stream creation must use the bounded streaming request builder and forward the abort signal inside the Knowledge fallback boundary",
+  );
+  assert.match(assistant, /consumeBasicEslamStream\(stream/);
   assert.match(request, /MAX_MODEL_TRANSCRIPT_MESSAGES = 64/);
   assert.match(request, /MAX_ESTIMATED_TRANSCRIPT_TOKENS = 32_000/);
   assert.match(request, /store: false/);
@@ -43,7 +48,7 @@ test("streaming OpenAI boundary reuses the bounded request contract with store d
   assert.match(events, /response\.completed/);
   assert.match(events, /response\.failed/);
   assert.match(events, /response\.incomplete/);
-  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /file_search|web_search|vector_store/i);
+  assert.doesNotMatch(`${assistant}\n${request}\n${events}`, /web_search/i);
 });
 
 test("Business DNA is present at runtime in both request modes without enabling tools", async () => {
@@ -147,7 +152,7 @@ test("streaming UI consumes fetch body, survives strict-mode effect replay, and 
   assert.match(button, /streaming \|\| actionPending/);
 });
 
-test("Task 10 injects Business DNA without later-stage intelligence or tools", () => {
+test("Business DNA remains a bounded context layer and does not itself enable optional search tools", async () => {
   const sources = [
     readSource("src/app/api/chat/stream/route.ts"),
     readSource("src/features/conversations/assistant.ts"),
@@ -155,7 +160,17 @@ test("Task 10 injects Business DNA without later-stage intelligence or tools", (
     readSource("src/features/conversations/actions.ts"),
     readSource("src/features/conversations/conversation-chat.tsx"),
   ].join("\n");
+  const { buildBasicEslamResponseRequest } = await importSource(
+    "src/features/conversations/assistant-request.ts",
+  );
 
   assert.match(sources, /businessDnaContext|loadBusinessDnaModelContext/);
-  assert.doesNotMatch(sources, /eslam_principles|eslam_playbooks|file_search|web_search|vector_store|tools:/i);
+  assert.doesNotMatch(sources, /eslam_principles|eslam_playbooks|web_search/i);
+
+  const request = buildBasicEslamResponseRequest(
+    [{ role: "user", content: "راجع البزنس" }],
+    "test-model",
+    '{"business_name":"Acme"}',
+  );
+  assert.equal(Object.hasOwn(request, "tools"), false);
 });
