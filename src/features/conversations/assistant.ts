@@ -6,6 +6,7 @@ import {
 } from "@/features/conversations/assistant-request";
 import { consumeBasicEslamStream } from "@/features/conversations/assistant-stream-events";
 import { MAX_MESSAGE_LENGTH, type MessageRecord } from "@/features/conversations/contracts";
+import { createWithKnowledgeFallback } from "@/features/conversations/knowledge-response-fallback";
 import { getOpenAIClient, getOpenAIModel } from "@/lib/openai/client";
 import { getSupabaseAdminClient } from "@/lib/supabase/admin";
 
@@ -16,15 +17,22 @@ export async function generateBasicEslamReply(
   knowledgeVectorStoreId: string | null = null,
   knowledgeSourceAttributionAllowed = false,
 ) {
-  const request = buildBasicEslamResponseRequest(
-    messages,
-    getOpenAIModel(),
-    businessDnaContext,
-    eslamBrainContext,
+  const client = getOpenAIClient();
+  const model = getOpenAIModel();
+  const response = await createWithKnowledgeFallback(
     knowledgeVectorStoreId,
-    knowledgeSourceAttributionAllowed,
+    (activeKnowledgeVectorStoreId) =>
+      client.responses.create(
+        buildBasicEslamResponseRequest(
+          messages,
+          model,
+          businessDnaContext,
+          eslamBrainContext,
+          activeKnowledgeVectorStoreId,
+          knowledgeSourceAttributionAllowed,
+        ),
+      ),
   );
-  const response = await getOpenAIClient().responses.create(request);
 
   const content = response.output_text.trim();
   if (!content || content.length > MAX_MESSAGE_LENGTH) {
@@ -45,17 +53,23 @@ export async function streamBasicEslamReply(
   knowledgeVectorStoreId: string | null = null,
   knowledgeSourceAttributionAllowed = false,
 ) {
-  const request = buildBasicEslamStreamingResponseRequest(
-    messages,
-    getOpenAIModel(),
-    businessDnaContext,
-    eslamBrainContext,
+  const client = getOpenAIClient();
+  const model = getOpenAIModel();
+  const stream = await createWithKnowledgeFallback(
     knowledgeVectorStoreId,
-    knowledgeSourceAttributionAllowed,
+    (activeKnowledgeVectorStoreId) =>
+      client.responses.create(
+        buildBasicEslamStreamingResponseRequest(
+          messages,
+          model,
+          businessDnaContext,
+          eslamBrainContext,
+          activeKnowledgeVectorStoreId,
+          knowledgeSourceAttributionAllowed,
+        ),
+        { signal: options.signal },
+      ),
   );
-  const stream = await getOpenAIClient().responses.create(request, {
-    signal: options.signal,
-  });
 
   return consumeBasicEslamStream(stream, {
     maxMessageLength: MAX_MESSAGE_LENGTH,
