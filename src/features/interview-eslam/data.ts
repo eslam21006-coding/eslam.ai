@@ -214,7 +214,8 @@ export async function loadInterviewQuestionContext(userId: string): Promise<Inte
     loadBusinessDnaSources(userId), loadBrainSources(userId), loadInterviewHistory(userId),
   ]);
   return {
-    sources: [...businessDnaSources, ...brainSources, ...interviewHistory.answerSources],
+    // Previous answers come first so the global prompt cap cannot erase the evidence needed for grounded follow-ups.
+    sources: [...interviewHistory.answerSources, ...businessDnaSources, ...brainSources],
     previousQuestions: interviewHistory.history,
     suppressedTopics: interviewHistory.suppressedTopics,
   };
