@@ -1,11 +1,15 @@
 import "server-only";
 
-import { YOUTUBE_TRANSCRIPT_MAX_CHARS } from "@/features/youtube-sources/core";
+import {
+  YOUTUBE_TRANSCRIPT_MAX_BYTES,
+  YOUTUBE_TRANSCRIPT_MAX_CHARS,
+} from "@/features/youtube-sources/core";
 
 const SUPADATA_BASE_URL = "https://api.supadata.ai/v1";
 const SUPADATA_TIMEOUT_MS = 20_000;
 const PROVIDER_ID_MAX = 200;
 const PROVIDER_MAX_SEGMENTS = 20_000;
+const PROVIDER_MAX_RESPONSE_BYTES = YOUTUBE_TRANSCRIPT_MAX_BYTES * 2;
 
 export type YouTubeProviderMetadata = {
   title: string;
@@ -54,6 +58,47 @@ function safeProviderErrorCode(value: unknown) {
   return null;
 }
 
+/** Reads provider JSON through a hard byte ceiling before parsing untrusted response content. */
+async function readBoundedProviderJson(response: Response) {
+  const contentLength = response.headers.get("content-length");
+  if (contentLength) {
+    const declaredBytes = Number(contentLength);
+    if (Number.isFinite(declaredBytes) && declaredBytes > PROVIDER_MAX_RESPONSE_BYTES) {
+      throw new YouTubeTranscriptProviderError("provider-response-too-large", "Transcript provider response exceeds the local byte limit");
+    }
+  }
+  if (!response.body) return null;
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const parts: string[] = [];
+  let receivedBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value?.byteLength) continue;
+      receivedBytes += value.byteLength;
+      if (receivedBytes > PROVIDER_MAX_RESPONSE_BYTES) {
+        await reader.cancel("provider-response-too-large");
+        throw new YouTubeTranscriptProviderError("provider-response-too-large", "Transcript provider response exceeds the local byte limit");
+      }
+      parts.push(decoder.decode(value, { stream: true }));
+    }
+    parts.push(decoder.decode());
+  } finally {
+    reader.releaseLock();
+  }
+
+  const body = parts.join("").trim();
+  if (!body) return null;
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 async function request(path: string) {
   const response = await fetch(`${SUPADATA_BASE_URL}${path}`, {
     method: "GET",
@@ -65,12 +110,7 @@ async function request(path: string) {
     signal: AbortSignal.timeout(SUPADATA_TIMEOUT_MS),
   });
 
-  let payload: unknown = null;
-  try {
-    payload = await response.json();
-  } catch {
-    payload = null;
-  }
+  const payload = await readBoundedProviderJson(response);
 
   if (response.status === 206 || response.status === 404) {
     return { payload, unavailable: true as const };
