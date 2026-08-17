@@ -8,9 +8,19 @@ import type { Database as BaseDatabase, Json } from "@/types/database";
 type BasePublic = BaseDatabase["public"];
 type SimpleTable<Row, Insert> = { Row: Row; Insert: Insert; Update: Partial<Insert>; Relationships: [] };
 
+type InterviewSessionRow = {
+  id: string;
+  status: string;
+  created_by: string;
+  focus_topic: string | null;
+  focus_topic_key: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
 type InterviewSessionTable = SimpleTable<
-  { id: string; status: string; created_by: string; created_at: string; updated_at: string },
-  { id?: string; status?: string; created_by: string; created_at?: string; updated_at?: string }
+  InterviewSessionRow,
+  Partial<InterviewSessionRow> & Pick<InterviewSessionRow, "created_by">
 >;
 type InterviewQuestionRow = {
   id: string; session_id: string; created_by: string; ordinal: number; status: string;
@@ -53,11 +63,14 @@ export type InterviewDatabase = Omit<BaseDatabase, "public"> & {
       claim_interview_answer_extraction: { Args: { p_answer_id: string; p_created_by: string; p_model: string; p_prompt_version?: number; p_lease_seconds?: number }; Returns: Array<{ answer_id: string | null; claim_state: string; claim_token: string | null; attempt_count: number }> };
       complete_interview_answer_extraction: { Args: { p_answer_id: string; p_created_by: string; p_claim_token: string; p_candidates: Json }; Returns: Array<{ candidate_ordinal: number; brain_item_id: string }> };
       fail_interview_answer_extraction: { Args: { p_answer_id: string; p_created_by: string; p_claim_token: string; p_error_code: string }; Returns: boolean };
+      set_interview_session_focus: { Args: { p_session_id: string; p_created_by: string; p_focus_topic: string | null; p_focus_topic_key: string | null }; Returns: boolean };
+      complete_interview_session: { Args: { p_session_id: string; p_created_by: string }; Returns: boolean };
+      get_interview_intelligence_stats: { Args: { p_created_by: string }; Returns: Json };
     };
   };
 };
 
-/** Narrows the existing server-only Admin client to Task 24's forward database contract. */
+/** Narrows the existing server-only Admin client to the current Interview Eslam database contract. */
 export function getInterviewAdminClient() {
   return getSupabaseAdminClient() as unknown as SupabaseClient<InterviewDatabase>;
 }

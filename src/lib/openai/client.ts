@@ -79,6 +79,11 @@ export function getOpenAIModel() {
   return process.env.OPENAI_MODEL?.trim() || "gpt-5-mini";
 }
 
+/** Resolves the embedding model used for semantic Interview Eslam duplicate checks. */
+export function getOpenAIEmbeddingModel() {
+  return process.env.OPENAI_EMBEDDING_MODEL?.trim() || "text-embedding-3-small";
+}
+
 /** Resolves the speech-to-text model. */
 export function getOpenAITranscriptionModel() {
   return resolveVoiceTranscriptionModel(process.env.OPENAI_TRANSCRIPTION_MODEL);
