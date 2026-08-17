@@ -12,19 +12,23 @@ import { INTERVIEW_MAX_ANSWER_CHARS } from "@/features/interview-eslam/core";
 import { loadInterviewPageState } from "@/features/interview-eslam/data";
 
 type InterviewPageProps = { searchParams: Promise<{ notice?: string; count?: string; next?: string }> };
+
+/** Maps server-action outcomes to concise Arabic Admin notices without conflating failure causes. */
 function noticeText(notice: string | undefined, count: string | undefined) {
   switch (notice) {
     case "started": return "بدأت المقابلة. السؤال الحالي مبني على معلومات موجودة فعلاً عن إسلام.";
     case "answer-saved": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft للمراجعة، وتم تجهيز السؤال التالي.`;
     case "answer-saved-extraction-failed": return "تم حفظ إجابتك والسؤال التالي بأمان، لكن استخراج Brain drafts لم يكتمل. يمكنك إعادة المحاولة بدون كتابة الإجابة مرة أخرى.";
-    case "answer-saved-needs-context": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft. لم يجد النظام سؤالاً جديداً يحقق شرط الـ Grounding بدون اختراع سؤال عام.`;
-    case "answer-saved-next-failed": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft، لكن إنشاء السؤال التالي لم يكتمل.`;
+    case "answer-saved-needs-context": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft. لم يجد النظام مادة كافية لسؤال جديد يحقق شرط الـ Grounding بدون اختراع سؤال عام.`;
+    case "answer-saved-exhausted": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft، لكن محاولات إنشاء السؤال التالي لم تنتج سؤالاً اجتاز التحقق. لا تحتاج لإضافة مواد بسبب هذا الخطأ ويمكن إعادة المحاولة.`;
+    case "answer-saved-next-failed": return `تم حفظ إجابتك واستخراج ${count ?? "0"} Brain draft، لكن إنشاء السؤال التالي لم يكتمل بسبب خطأ تقني.`;
     case "answer-saved-partial": return "تم حفظ الإجابة نفسها بأمان. تعذر جزء من المعالجة اللاحقة ويمكن إعادة المحاولة.";
     case "skipped": return "تم تخطي السؤال وحفظه في التاريخ حتى لا يعود فوراً بصياغة أخرى.";
     case "not-relevant": return "تم تسجيل السؤال كغير ذي صلة وسيتم كبح الأسئلة المشابهة.";
     case "topic-suppressed": return "تم تسجيل السؤال كغير ذي صلة وحفظ تفضيل دائم بعدم السؤال عن هذا الموضوع.";
     case "question-ready": return "تم إنشاء سؤال جديد يطابق Grounded Question Contract.";
     case "needs-context": return "لا توجد مادة كافية حالياً لإنشاء سؤال محدد ومفيد بدون الوقوع في سؤال عام. أضف أو راجع مواد تعليمية ثم حاول مرة أخرى.";
+    case "exhausted": return "توجد مادة Grounding كافية، لكن محاولات إنشاء السؤال لم تنتج سؤالاً اجتاز قواعد التحقق. أعد المحاولة؛ لا تحتاج لإضافة مواد جديدة بسبب هذه النتيجة.";
     case "extraction-complete": return `اكتمل استخراج الإجابة إلى ${count ?? "0"} Brain draft للمراجعة.`;
     case "extraction-busy": return "استخراج هذه الإجابة قيد التنفيذ بالفعل.";
     case "answer-invalid": return "اكتب إجابة غير فارغة ضمن الحد المسموح ثم حاول مرة أخرى.";
@@ -34,11 +38,12 @@ function noticeText(notice: string | undefined, count: string | undefined) {
     case "extraction-failed":
     case "extraction-invalid": return "لم يكتمل استخراج الإجابة إلى Brain drafts. الإجابة الأصلية محفوظة ويمكن إعادة المحاولة.";
     case "start-failed": return "تعذر بدء أو استكمال جلسة المقابلة.";
-    case "failed": return "تعذر إنشاء سؤال جديد حالياً. لم يتم اختراع سؤال بديل عام.";
+    case "failed": return "تعذر إنشاء سؤال جديد حالياً بسبب خطأ تقني. لم يتم اختراع سؤال بديل عام.";
     default: return null;
   }
 }
 
+/** Renders the Admin-only Interview Eslam MVP workbench and its current persisted state. */
 export default async function InterviewEslamPage({ searchParams }: InterviewPageProps) {
   const params = await searchParams;
   const state = await loadInterviewPageState();
