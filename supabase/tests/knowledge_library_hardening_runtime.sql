@@ -146,5 +146,49 @@ begin
 end;
 $$;
 
+-- Expired claims retain their provider cleanup pointers when reclaimed. The configured-store
+-- pointer therefore continues to fail retrieval closed until the replacement attempt reconciles it.
+update public.knowledge_sources
+set status = 'indexing',
+    size_bytes = 100,
+    openai_file_id = 'file_reclaimed_current',
+    vector_store_id = 'vs_current',
+    indexed_at = null,
+    last_error_code = null,
+    index_claim_token = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+    index_lease_expires_at = timezone('utc', now()) - interval '1 second',
+    updated_at = now()
+where id = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+do $$
+declare
+  v_claim record;
+  v_retrieval text;
+begin
+  select * into v_claim
+  from public.claim_knowledge_source_index(
+    'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    '55555555-5555-4555-8555-555555555555',
+    100,
+    180
+  );
+
+  if v_claim.claim_state <> 'claimed'
+    or v_claim.claim_token is null
+    or v_claim.claim_token = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'::uuid
+    or v_claim.previous_openai_file_id <> 'file_reclaimed_current'
+    or v_claim.previous_vector_store_id <> 'vs_current' then
+    raise exception 'expired Knowledge claim was not reclaimed with retained provider cleanup pointers';
+  end if;
+
+  select vector_store_id into v_retrieval
+  from public.get_knowledge_retrieval_state();
+
+  if v_retrieval is not null then
+    raise exception 'reclaimed configured-store indexing unexpectedly left Knowledge retrieval enabled';
+  end if;
+end;
+$$;
+
 reset role;
 rollback;
