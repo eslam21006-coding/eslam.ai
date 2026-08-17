@@ -49,6 +49,16 @@ type KnowledgeSourceRow = {
   indexed_at: string | null;
 };
 
+type YouTubeTranscriptImportRow = {
+  id: string;
+  video_id: string;
+  canonical_url: string;
+  video_title: string;
+  channel_name: string | null;
+  status: string;
+  created_at: string;
+};
+
 /** Loads one deterministic global Admin page and clamps stale page numbers after deletion. */
 export async function loadKnowledgeSourcePage(page: number): Promise<KnowledgeSourcePage> {
   const admin = getKnowledgeAdminClient();
@@ -99,26 +109,51 @@ export async function loadKnowledgeSourcePage(page: number): Promise<KnowledgeSo
   };
 }
 
-/** Loads bounded service-only YouTube provider jobs that have not materialized into Knowledge yet. */
+function youtubeImportView(row: YouTubeTranscriptImportRow): YouTubeTranscriptImportView | null {
+  if (row.status !== "processing" && row.status !== "failed") return null;
+  return {
+    id: row.id,
+    videoId: row.video_id,
+    canonicalUrl: row.canonical_url,
+    videoTitle: row.video_title,
+    channelName: row.channel_name,
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+/** Keeps active provider jobs visible independently from a bounded failed-import history. */
 export async function loadYouTubeTranscriptImports(): Promise<YouTubeTranscriptImportView[]> {
   const admin = getKnowledgeAdminClient();
-  const { data, error } = await admin
-    .from("youtube_transcript_imports")
-    .select("id,video_id,canonical_url,video_title,channel_name,status,created_at")
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(12);
-  if (error) throw new Error(`Unable to load YouTube transcript imports: ${error.message}`);
-  return (data ?? []).flatMap((row) => {
-    if (row.status !== "processing" && row.status !== "failed") return [];
-    return [{
-      id: row.id,
-      videoId: row.video_id,
-      canonicalUrl: row.canonical_url,
-      videoTitle: row.video_title,
-      channelName: row.channel_name,
-      status: row.status,
-      createdAt: row.created_at,
-    } satisfies YouTubeTranscriptImportView];
+  const select = "id,video_id,canonical_url,video_title,channel_name,status,created_at";
+  const [processingResult, failedResult] = await Promise.all([
+    admin
+      .from("youtube_transcript_imports")
+      .select(select)
+      .eq("status", "processing")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1000),
+    admin
+      .from("youtube_transcript_imports")
+      .select(select)
+      .eq("status", "failed")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(12),
+  ]);
+  if (processingResult.error) {
+    throw new Error(`Unable to load active YouTube transcript imports: ${processingResult.error.message}`);
+  }
+  if (failedResult.error) {
+    throw new Error(`Unable to load failed YouTube transcript imports: ${failedResult.error.message}`);
+  }
+
+  return [
+    ...((processingResult.data ?? []) as YouTubeTranscriptImportRow[]),
+    ...((failedResult.data ?? []) as YouTubeTranscriptImportRow[]),
+  ].flatMap((row) => {
+    const view = youtubeImportView(row);
+    return view ? [view] : [];
   });
 }
