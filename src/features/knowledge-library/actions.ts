@@ -26,6 +26,7 @@ import { requireAdmin } from "@/lib/auth/admin";
 
 const KNOWLEDGE_ADMIN_PATH = "/admin/knowledge";
 const KNOWLEDGE_INDEX_LEASE_SECONDS = 180;
+const KNOWLEDGE_STORAGE_DOWNLOAD_TIMEOUT_MS = 120_000;
 
 type KnowledgeAdminClient = ReturnType<typeof getKnowledgeAdminClient>;
 
@@ -300,7 +301,11 @@ async function indexStoredSource(
     vectorStoreId = await ensureKnowledgeVectorStore(admin);
     const { data: sourceBlob, error: downloadError } = await admin.storage
       .from(source.storage_bucket)
-      .download(source.storage_path);
+      .download(
+        source.storage_path,
+        {},
+        { signal: AbortSignal.timeout(KNOWLEDGE_STORAGE_DOWNLOAD_TIMEOUT_MS) },
+      );
     if (downloadError || !sourceBlob) {
       throw new Error(downloadError?.message ?? "Knowledge source could not be downloaded");
     }
