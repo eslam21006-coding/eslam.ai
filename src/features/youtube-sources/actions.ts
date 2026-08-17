@@ -231,16 +231,24 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
 
   if (transcript.state === "unavailable") return { ok: false, error: "transcript-unavailable" };
   if (transcript.state === "processing") {
-    const importId = await saveProviderJob({
-      actorId: authorization.userId,
-      videoId: validated.videoId,
-      canonicalUrl: validated.canonicalUrl,
-      requestedLanguage: validated.requestedLanguage,
-      metadata,
-      jobId: transcript.jobId,
-    });
-    refreshYouTubeSourcePages();
-    return { ok: true, state: "processing", importId };
+    try {
+      const importId = await saveProviderJob({
+        actorId: authorization.userId,
+        videoId: validated.videoId,
+        canonicalUrl: validated.canonicalUrl,
+        requestedLanguage: validated.requestedLanguage,
+        metadata,
+        jobId: transcript.jobId,
+      });
+      refreshYouTubeSourcePages();
+      return { ok: true, state: "processing", importId };
+    } catch (error) {
+      console.error("YouTube transcript staging could not be saved", {
+        videoId: validated.videoId,
+        message: error instanceof Error ? error.message : "Unknown staging persistence error",
+      });
+      return { ok: false, error: "storage-failed" };
+    }
   }
 
   return materializeYouTubeTranscript({
@@ -290,7 +298,7 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
         importId,
         code: updateError.code,
       });
-      throw new Error("YouTube transcript failed state could not be persisted");
+      return { ok: false, error: "provider-failed" };
     }
     refreshYouTubeSourcePages();
     return { ok: false, error: result.state === "unavailable" ? "transcript-unavailable" : "provider-failed" };
