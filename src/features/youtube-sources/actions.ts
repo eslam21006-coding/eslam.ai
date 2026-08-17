@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 
 import { finalizeKnowledgeUploadAction } from "@/features/knowledge-library/actions";
-import { KNOWLEDGE_LIBRARY_BUCKET, type KnowledgeSourceStatus } from "@/features/knowledge-library/core";
+import { KNOWLEDGE_LIBRARY_BUCKET } from "@/features/knowledge-library/core";
 import { getKnowledgeAdminClient } from "@/features/knowledge-library/database";
 import {
   buildYouTubeTranscriptArtifact,
+  classifyExistingYouTubeSource,
+  type YouTubeExistingSourceStatus,
   type YouTubeImportRefreshResult,
   type YouTubeImportResult,
   validateYouTubeImportId,
@@ -17,6 +19,7 @@ import {
   pollYouTubeProviderTranscript,
   startYouTubeProviderTranscript,
   youtubeProviderErrorCode,
+  type YouTubeProviderJobResult,
   type YouTubeProviderMetadata,
   type YouTubeProviderStartResult,
   type YouTubeProviderTranscript,
@@ -28,7 +31,7 @@ const INTERVIEW_PATH = "/admin/teach/interview";
 
 type ExistingYouTubeSource = {
   sourceId: string;
-  status: KnowledgeSourceStatus;
+  status: YouTubeExistingSourceStatus;
 };
 
 function refreshYouTubeSourcePages() {
@@ -59,13 +62,7 @@ async function existingYouTubeSource(videoId: string): Promise<ExistingYouTubeSo
   if (!["pending", "indexing", "ready", "failed", "deleting"].includes(data.status)) {
     throw new Error("YouTube Knowledge source returned an invalid state");
   }
-  return { sourceId: data.id, status: data.status as KnowledgeSourceStatus };
-}
-
-function existingImportResult(source: ExistingYouTubeSource): YouTubeImportResult {
-  if (source.status === "ready") return { ok: true, state: "ready", sourceId: source.sourceId };
-  if (source.status === "indexing") return { ok: true, state: "indexing", sourceId: source.sourceId };
-  return { ok: false, error: "source-exists" };
+  return { sourceId: data.id, status: data.status as YouTubeExistingSourceStatus };
 }
 
 async function deleteStagingImport(importId: string) {
@@ -85,7 +82,7 @@ async function materializeYouTubeTranscript(input: {
 }): Promise<YouTubeImportResult> {
   const existing = await existingYouTubeSource(input.videoId);
   if (existing) {
-    const result = existingImportResult(existing);
+    const result = classifyExistingYouTubeSource(existing.sourceId, existing.status);
     return result.ok ? result : { ok: false, error: "index-failed" };
   }
 
@@ -123,7 +120,7 @@ async function materializeYouTubeTranscript(input: {
     if (insertError.code === "23505") {
       const raced = await existingYouTubeSource(input.videoId);
       if (raced) {
-        const result = existingImportResult(raced);
+        const result = classifyExistingYouTubeSource(raced.sourceId, raced.status);
         return result.ok ? result : { ok: false, error: "index-failed" };
       }
     }
@@ -208,7 +205,7 @@ export async function importYouTubeSourceAction(input: unknown): Promise<YouTube
     });
     return null;
   });
-  if (existing) return existingImportResult(existing);
+  if (existing) return classifyExistingYouTubeSource(existing.sourceId, existing.status);
 
   const admin = getKnowledgeAdminClient();
   const { data: staged, error: stagedError } = await admin
@@ -269,7 +266,7 @@ export async function refreshYouTubeTranscriptImportAction(input: unknown): Prom
   if (error || !staged) return { ok: false, error: "not-found" };
   if (staged.status === "failed") return { ok: false, error: "provider-failed" };
 
-  let result;
+  let result: YouTubeProviderJobResult;
   try {
     result = await pollYouTubeProviderTranscript(staged.provider_job_id);
   } catch (providerError) {
