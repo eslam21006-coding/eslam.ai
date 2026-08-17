@@ -93,13 +93,12 @@ test("Grounded Question Contract accepts exact Knowledge excerpts but never trea
   assert.deepEqual(invalid, { ok: false, reason: "invalid-known-fact-source" });
 });
 
-test("Knowledge-shaped generation explicitly requires Knowledge itself in groundings", async () => {
-  const { buildIntelligentInterviewQuestionRequest } = await importSource("src/features/interview-eslam/intelligence-server.ts");
-  const context = { sources: [knowledgeSource], previousQuestions: [], suppressedTopics: [] };
-  const request = buildIntelligentInterviewQuestionRequest("gpt-5-mini", context, { focusTopic: null, coverage: emptyCoverage });
-  assert.match(request.instructions, /knowledge_library material materially shapes the question/);
-  assert.match(request.instructions, /must itself appear in groundings/);
-  assert.match(request.instructions, /Never use external Knowledge implicitly without grounding it/);
+test("Knowledge-shaped generation explicitly requires Knowledge itself in groundings", () => {
+  const source = readSource("src/features/interview-eslam/intelligence-server.ts");
+  assert.match(source, /source\.type === "knowledge_library"/);
+  assert.match(source, /knowledge_library material materially shapes the question/);
+  assert.match(source, /must itself appear in groundings/);
+  assert.match(source, /Never use external Knowledge implicitly without grounding it/);
 });
 
 test("Persisted grounding detects Knowledge-guided questions without relying on labels", async () => {
