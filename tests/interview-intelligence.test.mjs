@@ -87,8 +87,9 @@ test("Interview Admin workbench exposes focus, coverage, history, and safe sessi
   assert.doesNotMatch(data, /knowledge_sources|youtube|google_drive/i);
 });
 
-test("Task 25 migration is forward-only, service-only, and CI executes its runtime regression", () => {
+test("Task 25 migrations are forward-only, service-only, retry-safe, and CI runs the runtime regression", () => {
   const migration = readSource("supabase/migrations/20260817125000_add_interview_intelligence.sql");
+  const completionGuard = readSource("supabase/migrations/20260817130500_guard_interview_completion_extraction.sql");
   const oldMigration = readSource("supabase/migrations/20260817101500_create_interview_eslam.sql");
   const runtime = readSource("supabase/tests/interview_intelligence_runtime.sql");
   const ci = readSource(".github/workflows/ci.yml");
@@ -98,7 +99,10 @@ test("Task 25 migration is forward-only, service-only, and CI executes its runti
   assert.match(migration, /create or replace function public\.get_interview_intelligence_stats/);
   assert.match(migration, /revoke all on function public\.set_interview_session_focus[\s\S]*from public, anon, authenticated, service_role/);
   assert.match(migration, /grant execute on function public\.get_interview_intelligence_stats[\s\S]*to service_role/);
+  assert.match(completionGuard, /extraction_status in \('pending', 'processing', 'failed'\)/);
+  assert.match(completionGuard, /revoke all on function public\.complete_interview_session[\s\S]*from public, anon, authenticated, service_role/);
   assert.match(runtime, /cross-owner focus update did not fail closed/);
+  assert.match(runtime, /session completion hid an unresolved interview extraction/);
   assert.match(runtime, /open question was not preserved as skipped when session completed/);
   assert.match(oldMigration, /-- Task 24 — Interview Eslam MVP\./);
   assert.match(ci, /interview_intelligence_runtime\.sql/);
