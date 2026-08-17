@@ -28,16 +28,19 @@ const INTERVIEW_PATH = "/admin/teach/interview";
 const BRAIN_PATH = "/admin/brain";
 const TEACH_PATH = "/admin/teach";
 const MAX_QUESTION_GENERATION_ATTEMPTS = 2;
-type NextQuestionResult = "ready" | "needs-context" | "failed";
+type NextQuestionResult = "ready" | "needs-context" | "exhausted" | "failed";
 type ExtractionResult =
   | { ok: true; state: "completed" | "busy"; createdCount: number }
   | { ok: false; error: "not-found" | "openai" | "invalid-output" | "save-failed" };
 
+/** Redirects back to the Interview Eslam workbench with a bounded status notice. */
 function redirectToInterview(notice: string, extras: Record<string, string | number | undefined> = {}): never {
   const params = new URLSearchParams({ notice });
   for (const [key, value] of Object.entries(extras)) if (value !== undefined) params.set(key, String(value));
   redirect(`${INTERVIEW_PATH}?${params.toString()}`);
 }
+
+/** Reduces unknown runtime errors to safe diagnostic metadata for server logs. */
 function errorSummary(error: unknown) {
   if (error && typeof error === "object") {
     const candidate = error as { code?: unknown; message?: unknown };
@@ -48,6 +51,8 @@ function errorSummary(error: unknown) {
   }
   return { message: "Unknown Interview Eslam error" };
 }
+
+/** Persists a fenced extraction failure without replacing the durable raw answer. */
 async function failInterviewExtraction(answerId: string, userId: string, claimToken: string, errorCode: string) {
   const admin = getInterviewAdminClient();
   try {
@@ -111,7 +116,7 @@ async function ensureNextInterviewQuestion(sessionId: string, userId: string): P
       return "failed";
     }
   }
-  return "needs-context";
+  return "exhausted";
 }
 
 /** Extracts one saved answer into ordinary Brain drafts under a fenced retryable claim. */
@@ -219,7 +224,14 @@ export async function saveInterviewAnswerAction(formData: FormData) {
   revalidatePath(INTERVIEW_PATH);
   if (!extraction.ok && next !== "ready") redirectToInterview("answer-saved-partial", { next });
   if (!extraction.ok) redirectToInterview("answer-saved-extraction-failed");
-  if (next !== "ready") redirectToInterview(next === "needs-context" ? "answer-saved-needs-context" : "answer-saved-next-failed", { count: extraction.createdCount });
+  if (next !== "ready") {
+    const notice = next === "needs-context"
+      ? "answer-saved-needs-context"
+      : next === "exhausted"
+        ? "answer-saved-exhausted"
+        : "answer-saved-next-failed";
+    redirectToInterview(notice, { count: extraction.createdCount });
+  }
   redirectToInterview("answer-saved", { count: extraction.createdCount });
 }
 
