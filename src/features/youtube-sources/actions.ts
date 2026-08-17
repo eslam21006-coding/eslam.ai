@@ -63,9 +63,7 @@ async function existingYouTubeSource(videoId: string): Promise<ExistingYouTubeSo
 
 function existingImportResult(source: ExistingYouTubeSource): YouTubeImportResult {
   if (source.status === "ready") return { ok: true, state: "ready", sourceId: source.sourceId };
-  if (source.status === "pending" || source.status === "indexing") {
-    return { ok: true, state: "indexing", sourceId: source.sourceId };
-  }
+  if (source.status === "indexing") return { ok: true, state: "indexing", sourceId: source.sourceId };
   return { ok: false, error: "source-exists" };
 }
 
