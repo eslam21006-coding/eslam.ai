@@ -14,7 +14,7 @@ export type InterviewGenerationIntelligence = {
   coverage: InterviewCoverage;
 };
 
-/** Adds trusted focus/coverage priorities to the existing grounded-question request contract. */
+/** Adds trusted focus/coverage priorities and explicit Knowledge provenance to the grounded-question request contract. */
 export function buildIntelligentInterviewQuestionRequest(
   model: string,
   context: InterviewQuestionContext,
@@ -22,9 +22,16 @@ export function buildIntelligentInterviewQuestionRequest(
   rejectionReason?: string,
 ) {
   const base = buildInterviewQuestionRequest(model, context, rejectionReason);
+  const knowledgeGroundingDirective = context.sources.some((source) => source.type === "knowledge_library")
+    ? "If knowledge_library material materially shapes the question, that exact knowledge_library source must itself appear in groundings with a copied contiguous excerpt. Never use external Knowledge implicitly without grounding it."
+    : "";
   return {
     ...base,
-    instructions: `${base.instructions} ${buildInterviewIntelligenceDirective(intelligence.focusTopic, intelligence.coverage)}`,
+    instructions: [
+      base.instructions,
+      buildInterviewIntelligenceDirective(intelligence.focusTopic, intelligence.coverage),
+      knowledgeGroundingDirective,
+    ].filter(Boolean).join(" "),
   };
 }
 
