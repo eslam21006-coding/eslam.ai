@@ -121,11 +121,16 @@ test("admin navigation contains only implemented destinations with teaching chil
   assert.ok(training && "children" in training);
   assert.deepEqual(
     training.children.map((item) => item.href),
-    ["/admin/teach/text", "/admin/teach/voice", "/admin/teach/documents"],
+    [
+      "/admin/teach/text",
+      "/admin/teach/voice",
+      "/admin/teach/documents",
+      "/admin/teach/interview",
+    ],
   );
   assert.deepEqual(
     training.children.map((item) => item.label),
-    ["تعليم بالنص", "تعليم بالصوت", "مستندات تعليمية"],
+    ["تعليم بالنص", "تعليم بالصوت", "مستندات تعليمية", "مقابلة إسلام"],
   );
 
   const activeNavigation = JSON.stringify(adminNavigation);
@@ -139,6 +144,7 @@ test("admin navigation distinguishes exact links from active groups", () => {
   assert.equal(isAdminNavigationActive("/admin/teach/text", "/admin/teach"), false);
   assert.equal(isAdminNavigationGroupActive("/admin/teach/text", "/admin/teach"), true);
   assert.equal(isAdminNavigationGroupActive("/admin/teach/documents", "/admin/teach"), true);
+  assert.equal(isAdminNavigationGroupActive("/admin/teach/interview", "/admin/teach"), true);
   assert.equal(isAdminNavigationActive("/admin/knowledge", "/admin/knowledge"), true);
   assert.equal(isAdminNavigationGroupActive("/admin/brain", "/admin"), false);
 });
